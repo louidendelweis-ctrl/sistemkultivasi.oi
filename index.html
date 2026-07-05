@@ -3136,7 +3136,7 @@ function resetSectionConfig(tab) {
 
 function DEFAULT_STATE(){
   return {
-    meta:{ lastActiveDate:null, lastWeekKey:null, lastMonthKey:null, completedTodayCount:0, levelCurve:1, startDate: todayStr(), activityLog: {}, dailyExpEarned:0, dailyExpLog:{} },
+    meta:{ lastActiveDate:null, lastWeekKey:null, lastMonthKey:null, completedTodayCount:0, levelCurve:1, startDate: todayStr(), activityLog: {}, activityNotes: {}, dailyExpEarned:0, dailyExpLog:{} },
     ui:{ tab:'home', questFilter:'all' },
     character:{ name:'Jian Haikal', age:22, job:'Pejuang', shift:'pagi', avatarColor: 'linear-gradient(135deg,var(--arise),var(--cyan))', level:1, exp:0, hp: 100, maxHp: 100, realmIndex:0, realmEnergy:0, lifeScore:0, streak:0, longestStreak:0, failStreak:0, recoveryMode:false, lifetimeIncome:0, bossesDefeated:0, goalsCompleted:0, totalQuests:0, failedQuests:0, failedGoals:0, failedProjects:0, heavenBridges: 0, equippedTitle:'The Beginner', equippedMedal:'', titlesUnlocked:['The Beginner', 'Wealth Core Lord'], lifePrinciple:'Disiplin mengalahkan motivasi.', },
     _realmMigratedV2:false,
@@ -3161,7 +3161,7 @@ function DEFAULT_STATE(){
 }
 
 function migrateState(s){
-  if(!Array.isArray(s.goals)) s.goals = []; if(!Array.isArray(s.habits)) s.habits = []; if(!s.meta.activityLog) s.meta.activityLog = {}; if(!Array.isArray(s.goalHistory)) s.goalHistory = []; if(!Array.isArray(s.lifeTimeline)) s.lifeTimeline = []; if(!Array.isArray(s.lifeMomentum)) s.lifeMomentum = [];
+  if(!Array.isArray(s.goals)) s.goals = []; if(!Array.isArray(s.habits)) s.habits = []; if(!s.meta.activityLog) s.meta.activityLog = {}; if(!s.meta.activityNotes) s.meta.activityNotes = {}; if(!Array.isArray(s.goalHistory)) s.goalHistory = []; if(!Array.isArray(s.lifeTimeline)) s.lifeTimeline = []; if(!Array.isArray(s.lifeMomentum)) s.lifeMomentum = [];
   if(typeof s.meta.dailyExpEarned !== 'number') s.meta.dailyExpEarned = 0; if(!s.meta.dailyExpLog) s.meta.dailyExpLog = {}; if(!s.sip) s.sip = DEFAULT_STATE().sip;
   if(!s.schedule || !s.schedule.pagi) s.schedule = JSON.parse(JSON.stringify(DEFAULT_SCHEDULE));
   if(!s._realmMigratedV2){ s.character.realmIndex = s.character.realmIndex || 0; s._realmMigratedV2 = true; }
@@ -3232,7 +3232,7 @@ function deepMerge(def, loaded){
 function loadState(){ try{ const saved = localStorage.getItem(STORAGE_KEY); if(saved) return JSON.parse(saved); } catch(e) { console.error(e); } return null; }
 function save(){ clearTimeout(saveTimer); saveTimer = setTimeout(()=>{ if(!state) return; try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) {} }, 350); }
 
-function addActivityLog(note, exp = 0) { const today = todayStr(); state.meta.activityLog = state.meta.activityLog || {}; state.meta.activityLog[today] = (state.meta.activityLog[today] || 0) + 1; }
+function addActivityLog(note, exp = 0) { const today = todayStr(); state.meta.activityLog = state.meta.activityLog || {}; state.meta.activityLog[today] = (state.meta.activityLog[today] || 0) + 1; if(note) { state.meta.activityNotes = state.meta.activityNotes || {}; state.meta.activityNotes[today] = state.meta.activityNotes[today] || []; state.meta.activityNotes[today].push({ text: note, exp, ts: Date.now() }); } }
 
 // ═══════════════════════════════════════════════════════════════
 // KURVA EXP EKSPONENSIAL TERSKALA — 5× per Realm
@@ -4463,7 +4463,7 @@ function _renderDailyHistoryModal() {
     const _questsFailDay = (state.quests||[]).filter(q => {
         if(q.status!=='failed') return false;
         const failCnt = (state.questFailLog||{})[d]||0;
-        return failCnt>0 && false; // fallback: tampilkan dari questFailLog
+        return failCnt>0;
     });
     const _failCntDay = (state.questFailLog||{})[d]||0;
     if(_failCntDay>0) {
@@ -8027,7 +8027,7 @@ function resetNavGroupOrder() {
       if (remoteStr !== localStr) {
         var merged = migrateState(deepMerge(DEFAULT_STATE(), fbData));
         _localSeq = merged._localSeq || 0;
-        localStorage.setItem(STORAGE_KEY, remoteStr);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
         state = merged;
         rollover(); recomputeLifeScore(); render();
       }
