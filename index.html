@@ -3800,7 +3800,11 @@ function getTodayActiveShift() { const map = ['minggu','senin','selasa','rabu','
 
 function rollover(){
   const today = todayStr();
-  if(!state.meta.lastActiveDate){ state.meta.lastActiveDate = today; state.meta.lastWeekKey = weekKey(new Date()); state.meta.lastMonthKey = monthKey(new Date()); state.character.streak = Math.max(state.character.streak||0, 1); state.character.longestStreak = Math.max(state.character.longestStreak||0, state.character.streak); return; }
+  // BUG #3 FIX: path first-open sebelumnya return tanpa save() → _localSeq tetap 0
+  // → Firebase data dengan _localSeq lebih tinggi selalu menang di _isNewer(), menimpa
+  // streak=1 yang baru saja diset. Sekarang save() dipanggil sebelum return agar state
+  // first-open langsung persist + _localSeq naik + Firebase dapat push yang benar.
+  if(!state.meta.lastActiveDate){ state.meta.lastActiveDate = today; state.meta.lastWeekKey = weekKey(new Date()); state.meta.lastMonthKey = monthKey(new Date()); state.character.streak = Math.max(state.character.streak||0, 1); state.character.longestStreak = Math.max(state.character.longestStreak||0, state.character.streak); save(); return; }
   const activeShift = getTodayActiveShift(); if(activeShift !== 'libur' && activeShift !== 'custom') state.character.shift = activeShift;
   if(state.meta.lastActiveDate === today) return;
 
@@ -5128,7 +5132,7 @@ function renderRitualButton(item, isCustom = false) {
         return `<div class="spirit-btn">
             <div style="font-size:14px; margin-bottom:6px;">${item.icon} ${escapeHtml(item.label)}</div>
             <div style="display:flex; justify-content:space-between; gap:4px; margin-top:auto;">
-               <button class="btn btn-secondary btn-sm" style="flex:1; color:var(--jade); border-color:rgba(52,211,153,0.3);" onclick="logSpiritual(${jsParam.replace('${val}','true')})">✓</button>
+               <button class="btn btn-secondary btn-sm" style="flex:1; color:var(--jade); border-color:rgba(52,211,153,0.3);" onclick="logSpiritual(${jsParam.replace('${val}','true')})">b=�</button>
                <button class="btn btn-secondary btn-sm" style="flex:1; color:var(--crimson); border-color:rgba(255,71,104,0.3);" onclick="logSpiritual(${jsParam.replace('${val}','false')})">✕</button>
             </div>
             ${isCustom ? `<button class="icon-btn" style="position:absolute; top:2px; right:2px; padding:2px;" onclick="deleteCustomRitual('${item.id}')"><svg viewBox="0 0 24 24" width="12" height="12"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2"/></svg></button>`:''}
@@ -8192,11 +8196,102 @@ function resetNavGroupOrder() {
   // ── Terapkan data Firebase ke state lokal ───────────────────────────────
   function _applyFbData(fbData) {
     try {
+      // Snapshot lokal sebelum merge — dipakai oleh Bug #1 & Bug #4 guard.
+      // Jika Firebase membawa data stale (kemarin), guard merestore section
+      // yang sudah di-mutasi rollover hari ini dari snapshot ini.
+      var _prevDate    = state && state.meta      ? state.meta.lastActiveDate    : null;
+      var _prevStreak  = state && state.character ? (state.character.streak || 0) : 0; // Bug #1 guard masih butuh ini
+      var _prevSnap    = null;
+      if (state) { try { _prevSnap = JSON.parse(JSON.stringify(state)); } catch(_se) {} }
+
       var merged = migrateState(deepMerge(DEFAULT_STATE(), fbData));
-      _localSeq  = merged._localSeq || 0;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+
+      // ── BUG #1 GUARD ──────────────────────────────────────────────────────────
+      // Masalah: init() → rollover() → streak=1 (first-open) → _localSeq=1
+      //          lalu Firebase sync datang dengan _localSeq lebih tinggi tapi streak=0
+      //          (sisa sesi sebelumnya yang belum di-rollover). Firebase "menang" di
+      //          _isNewer(), dan karena lastActiveDate=today, rollover() di dalam
+      //          _applyFbData langsung exit-early → streak tetap 0.
+      //
+      // Fix: jika lokal sudah rollover hari ini (lastActiveDate=today, streak≥1)
+      //      tapi Firebase membawa streak=0 untuk hari yang sama → tolak override itu.
+      //      Kita TIDAK menolak Firebase jika Firebase punya streak>0 (biar Firebase
+      //      menang untuk kasus cross-device yang valid).
+      var _today = (typeof todayStr === 'function') ? todayStr()
+                   : new Date().toLocaleDateString('en-CA');
+      var _streakCorrected = false;
+      if (_prevDate === _today && merged.meta && merged.meta.lastActiveDate === _today) {
+        var _fbStreak = merged.character ? (merged.character.streak || 0) : 0;
+        if (_prevStreak > 0 && _fbStreak === 0) {
+          // Firebase punya streak=0 untuk hari yang sama — ini pasti data basi/stale,
+          // bukan reset yang disengaja (tidak ada fitur reset streak di app ini).
+          merged.character.streak        = _prevStreak;
+          merged.character.longestStreak = Math.max(merged.character.longestStreak || 0, _prevStreak);
+          _streakCorrected = true;
+        }
+      }
+
+      _localSeq = merged._localSeq || 0;
       state = merged;
+
+      // ── BUG #4 FIX: cegah double-rollover ketika lokal sudah rollover hari ini ─
+      // Skenario: init() → rollover() hari ini (streak naik, HP penalty dikenakan) →
+      // Firebase datang dengan data kemarin (_localSeq lebih tinggi dari device lain) →
+      // _applyFbData timpa state → state.lastActiveDate = kemarin → rollover() jalan
+      // lagi → HP penalty + EXP penalty dikenakan DUA KALI, streak juga naik dobel.
+      //
+      // Fix: jika lokal sudah rollover hari ini (_prevDate === today) tapi Firebase
+      // membawa data dari hari sebelumnya (state.meta.lastActiveDate !== today), kita
+      // pre-process state sebelum rollover() dipanggil:
+      //   1. Reset daily quests ke pending (sama dengan yang rollover() lakukan — idempotent)
+      //   2. Reset daily counter & sip
+      //   3. Set lastActiveDate = today → rollover() akan exit-early di guard baris 3809
+      //      tanpa menerapkan HP/EXP penalty dan streak increment lagi
+      //   4. Pertahankan streak dari lokal (yang sudah di-rollover dengan benar)
+      var _needsDoubleRolloverGuard = (
+        _prevDate === _today &&
+        state.meta && state.meta.lastActiveDate !== _today
+      );
+      if (_needsDoubleRolloverGuard && _prevSnap) {
+        // Firebase membawa data KEMARIN (stale) — lokal sudah post-rollover hari ini.
+        // Rollover() sudah: naikkan/reset streak, potong HP/EXP, mark goal/project
+        // overdue, reset daily quests, update charHistory, dll.
+        // Daripada merestore field satu per satu (rawan miss), kita restore seluruh
+        // section yang di-mutasi rollover langsung dari snapshot lokal:
+        var _rolledSections = [
+          'character',           // hp, exp, level, streak, failedQuests, failStreak, …
+          'charHistory',         // riwayat streak/level/hp yang baru ditambahkan rollover
+          'goals',               // goal overdue sudah di-mark failed oleh rollover
+          'kanban',              // project overdue sudah di-mark failed oleh rollover
+          'quests',              // daily quests sudah di-reset ke pending
+          'sip',                 // sip pagi/siang sudah di-reset
+          'spiritual',           // dailyLog[today] sudah diinisialisasi
+          'meta',                // lastActiveDate=today, completedTodayCount=0, week/monthKey
+          'momentum',            // recordMomentumHistory() di akhir rollover; key diinisialisasi migrateState(), bukan DEFAULT_STATE()
+          'achievementsUnlocked' // checkAchievements() dipanggil di akhir rollover
+        ];
+        _rolledSections.forEach(function(k) {
+          if (_prevSnap[k] !== undefined) state[k] = _prevSnap[k];
+        });
+        // Dengan meta.lastActiveDate = today (dari snapshot), rollover() akan
+        // exit-early di guard baris 3809 — tidak ada double penalty.
+        _streakCorrected = true; // push kembali ke Firebase dengan state yang benar
+      }
+
+      // ── BUG #2 FIX ────────────────────────────────────────────────────────────
+      // localStorage.setItem dipindah ke SETELAH rollover() selesai, bukan sebelumnya.
+      // Dulu: save dulu → rollover() ubah streak/lastActiveDate/quest/HP → perubahan
+      //       hilang (tidak tersimpan di localStorage, reload berikutnya re-apply stale).
+      // Sekarang: rollover() jalan dulu → baru simpan state final ke localStorage.
+      // rollover() path normal sudah memanggil save() sendiri (debounced 350ms +
+      // Firebase push) — persist sinkron di sini sekadar menjamin data langsung ada
+      // di localStorage sebelum save() async selesai.
       rollover(); recomputeLifeScore(); render();
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(_e) {}
+
+      // Jika streak dikoreksi (Bug #1/#4 guard) push kembali ke Firebase
+      // agar device lain ikut sinkron dengan state yang sudah benar.
+      if (_streakCorrected && typeof save === 'function') save();
     } catch(e) {}
   }
 
