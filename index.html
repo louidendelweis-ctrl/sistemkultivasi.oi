@@ -8180,6 +8180,13 @@ function resetNavGroupOrder() {
   // Patch save() — tambahkan sinkronisasi ke Firebase setelah save lokal
   var _origSave = window.save;
   window.save = function() {
+    // Sinkronkan _localSeq dengan localStorage terbaru sebelum increment —
+    // mencegah konflik antar tab paralel yang mulai dari seq yang sama lalu
+    // saling timpa tanpa deteksi (Bug 2).
+    try {
+      var _lsCheck = localStorage.getItem(STORAGE_KEY);
+      if (_lsCheck) { var _lsChk = JSON.parse(_lsCheck); if ((_lsChk._localSeq || 0) > _localSeq) _localSeq = _lsChk._localSeq; }
+    } catch(e) {}
     // Naikkan sequence & langsung blok incoming Firebase update
     _localSeq++;
     if (state) state._localSeq = _localSeq;
@@ -8199,11 +8206,26 @@ function resetNavGroupOrder() {
   };
 
   // Saat load pertama: ambil dari Firebase jika localStorage kosong
+  // ATAU jika Firebase punya versi data yang lebih baru (fbSeq > localSeq).
+  //
+  // Bug sebelumnya: kondisi `if (!localData)` terlalu ketat — setiap proses
+  // yang memanggil save() sebelum Firebase merespons (mis. recordMomentumHistory
+  // di init()) akan mengisi localStorage lebih dulu, sehingga Firebase diabaikan
+  // selamanya di sesi itu, dan progres tidak terbawa ke tab/browser baru.
+  //
+  // Fix: bandingkan _localSeq. Firebase menang hanya jika seq-nya lebih tinggi,
+  // sehingga data lokal yang lebih baru tidak tertimpa oleh Firebase yang lebih lama.
   dataRef.once('value', function(snapshot) {
     var fbData = snapshot.val();
     if (!fbData) return;
     var localData = localStorage.getItem(STORAGE_KEY);
-    if (!localData) {
+    var localSeq = 0;
+    var fbSeq = fbData._localSeq || 0;
+    if (localData) {
+      try { var _lp = JSON.parse(localData); localSeq = _lp._localSeq || 0; } catch(e) {}
+    }
+    // Muat dari Firebase jika: tidak ada data lokal, ATAU Firebase punya versi lebih baru
+    if (!localData || fbSeq > localSeq) {
       try {
         var merged = migrateState(deepMerge(DEFAULT_STATE(), fbData));
         _localSeq = merged._localSeq || 0;
