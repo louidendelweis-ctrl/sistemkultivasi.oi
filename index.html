@@ -1927,6 +1927,12 @@ function todayStr(){ return new Date().toLocaleDateString('en-CA'); }
 function weekKey(d){ const date=new Date(d); const day=(date.getDay()+6)%7; date.setDate(date.getDate()-day); return date.toLocaleDateString('en-CA'); }
 function monthKey(d){ return new Date(d).toLocaleDateString('en-CA').slice(0,7); }
 function diffDays(a,b){ const A=new Date(a+'T00:00:00'), B=new Date(b+'T00:00:00'); return Math.round((B-A)/86400000); }
+// Sumber tunggal hitungan "Hari ke-N" — dipakai oleh header DAY counter maupun kedua widget Momentum,
+// supaya tidak ada dua angka hari yang berbeda untuk data yang sama.
+function getGameDay(){
+  if(!state || !state.meta) return 1;
+  return diffDays(state.meta.startDate||todayStr(), todayStr()) + 1;
+}
 function formatRupiah(n){
   const rounded = Math.round(n);
   const abs = Math.abs(rounded);
@@ -2309,6 +2315,22 @@ const HP_GAIN_BY_DIFFICULTY = {easy:3, normal:10, hard:13, epic:15};
 const HP_LOSS_BY_DIFFICULTY = {easy:5, normal:10, hard:15, epic:20};
 function hpGainForQuest(q){ return HP_GAIN_BY_DIFFICULTY[q && q.difficulty] ?? HP_GAIN_BY_DIFFICULTY.normal; }
 function hpLossForQuest(q){ return HP_LOSS_BY_DIFFICULTY[q && q.difficulty] ?? HP_LOSS_BY_DIFFICULTY.normal; }
+
+// ═══ Riwayat perubahan HP (biar user bisa lihat kapan & kenapa HP berkurang/bertambah) ═══
+function logHpChange(delta, reason){
+  if(!state || !delta) return;
+  if(!state.hpEventLog) state.hpEventLog = [];
+  state.hpEventLog.push({
+    ts: Date.now(),
+    date: todayStr(),
+    delta: Math.round(delta),
+    reason: reason || '-',
+    hpAfter: state.character ? state.character.hp : null,
+    maxHp: state.character ? state.character.maxHp : null
+  });
+  // Simpan maksimal 100 entri terakhir biar data tidak membengkak
+  if(state.hpEventLog.length > 100) state.hpEventLog = state.hpEventLog.slice(-100);
+}
 
 // ═══════════════════════════════════
 // PATCH 1 — Penalti EXP saat HP mencapai 0 (bertingkat sesuai level karakter)
@@ -3194,10 +3216,19 @@ function migrateState(s){
   if(!s.refleksi) s.refleksi = {journals:[],questions:[]};
   if(!Array.isArray(s.refleksi.journals)) s.refleksi.journals = [];
   if(!Array.isArray(s.refleksi.questions)) s.refleksi.questions = [];
+  // Migrasi: tambahkan answers[] ke pertanyaan lama yang belum punya riwayat
+  s.refleksi.questions.forEach(q => {
+    if(!Array.isArray(q.answers)) {
+      q.answers = (q.answer && q.ts) ? [{text: q.answer, ts: q.ts, date: q.date||''}] : [];
+    }
+  });
   if(typeof s.settings.showRefleksiHome !== 'boolean') s.settings.showRefleksiHome = true;
   if(typeof s.settings.showRefleksiProfile !== 'boolean') s.settings.showRefleksiProfile = true;
   if(!Array.isArray(s.hallOfFame)) s.hallOfFame = [];
   if(!s.sectionConfig) s.sectionConfig = {};
+  // Bersihkan seksi refleksi-profil yang sudah tidak dipakai dari sectionConfig
+  if(s.sectionConfig.profile && s.sectionConfig.profile['refleksi-profil'])
+    delete s.sectionConfig.profile['refleksi-profil'];
   if(!Array.isArray(s.settings.navGroupOrder)) s.settings.navGroupOrder = ['home','quest','progres','finansial','profil'];
   if(s.boss) { // Migrate old boss to targets array
       s.targets = [{id: uid('t'), name: s.boss.name || 'Target HP / Laptop', maxHp: s.boss.maxHp || 10000000, currentHp: s.boss.currentHp || 10000000, deadline: ''}];
@@ -3506,6 +3537,7 @@ function submitBridgeTrial(success){
     c.realmEnergy = Math.max(0, c.realmEnergy - energyLoss);
     const hpLoss = Math.floor(c.maxHp * 0.2);
     c.hp = Math.max(0, c.hp - hpLoss);
+    logHpChange(-hpLoss, `Gagal Trial Jembatan Surga ke-${c.heavenBridges + 1}`);
     addActivityLog(`Gagal Trial Bridge ${c.heavenBridges + 1} — Kehilangan Energi!`);
     showToast(`Trial Gagal! HP -${hpLoss}, Energy -${energyLoss.toLocaleString()}`, 'bad');
     SFX.error();
@@ -3525,7 +3557,9 @@ function applyHtQiDeviation(){
 
 function recoverFromQiDeviation(){
   state.character.htQiDeviation = false;
+  const _prevHp = state.character.hp;
   state.character.hp = Math.floor(state.character.maxHp * 0.5);
+  logHpChange(state.character.hp - _prevHp, 'Pulih dari Qi Deviation');
   showToast('Qi Deviation teratasi. HP pulih 50%.', 'ach');
   render(); save();
 }
@@ -3584,8 +3618,8 @@ function rewardFor(q){
   return Math.max(1, Math.round(base * comboBonus * streakBonus * realmBonus));
 }
 
-function canCompleteQuestToday(q){ if(!q.dailyLimit) return true; return (q.completionsToday || 0) < q.dailyLimit; }
-function getRemainingCompletions(q){ if(!q.dailyLimit) return '∞'; return Math.max(0, q.dailyLimit - (q.completionsToday || 0)); }
+function canCompleteQuestToday(q){ if(!q.dailyLimit) return true; const todayCount = q.lastCompletedDate === todayStr() ? (q.completionsToday || 0) : 0; return todayCount < q.dailyLimit; }
+function getRemainingCompletions(q){ if(!q.dailyLimit) return '∞'; const todayCount = q.lastCompletedDate === todayStr() ? (q.completionsToday || 0) : 0; return Math.max(0, q.dailyLimit - todayCount); }
 function afterQuestComplete(q){ q.completionsToday = (q.completionsToday || 0) + 1; q.lastCompletedDate = todayStr(); }
 
 function completeQuest(id){
@@ -3594,7 +3628,9 @@ function completeQuest(id){
   const exp = rewardFor(q); q.status='done'; q.lastCompletedAt = Date.now();
   state.meta.completedTodayCount = (state.meta.completedTodayCount||0)+1; state.character.totalQuests = (state.character.totalQuests||0)+1;
   afterQuestComplete(q); addActivityLog(`Quest Selesai: ${q.title}`); state.questSuccessLog = state.questSuccessLog || {}; state.questSuccessLog[todayStr()] = (state.questSuccessLog[todayStr()]||0)+1; gainExp(exp); addRealmEnergy(Math.round(exp*0.5));
+  const _prevHp631 = state.character.hp;
   state.character.hp = Math.min(state.character.maxHp, state.character.hp + hpGainForQuest(q)); // Restore HP (skala kesulitan)
+  logHpChange(state.character.hp - _prevHp631, `Selesai Quest: ${q.title}`);
   { if(!state.charHistory) state.charHistory={level:[],hp:[],realm:[],streak:[]}; const _hpD=todayStr(); if(!state.charHistory.hp.length||state.charHistory.hp[state.charHistory.hp.length-1].ts!==_hpD) state.charHistory.hp.push({ts:_hpD, val:state.character.hp}); }
   if(state.settings.showFloatingExp) showFloatingExp(exp); SFX.success(); checkAchievements(); render(); save();
   gainBondExp(2);
@@ -3623,6 +3659,7 @@ function failQuest(id){
   
   const hpLoss = hpLossForQuest(q);
   state.character.hp -= hpLoss;
+  logHpChange(-hpLoss, `Gagal Quest: ${q.title}`);
   if (state.character.hp <= 0) {
       state.character.hp = 0;
       if(isHeavenTrampling()){
@@ -3787,6 +3824,7 @@ function rollover(){
               // HP berkurang 50% setiap hari melewatkan target
               const htHpLoss = Math.floor(state.character.maxHp * 0.5);
               state.character.hp = Math.max(0, state.character.hp - htHpLoss);
+              logHpChange(-htHpLoss, `Heaven Trampling Punishment: ${missedCount} quest terlewat`);
               // Kehilangan 1 LV — level global turun, realm ikut sync otomatis via gainExp
               if(isHeavenTrampling()){
                   state.character.level = Math.max(MAX_LEVEL, state.character.level - 1);
@@ -3805,6 +3843,7 @@ function rollover(){
               }
           } else {
               state.character.hp -= missedHpLoss;
+              logHpChange(-missedHpLoss, `Quest terlewat saat reset harian (${missedCount} quest)`);
               if (state.character.level > 20) {
                   const penalty = missedCount * 50 * Math.max(1, state.character.level / 10);
                   gainExp(-penalty);
@@ -3844,7 +3883,7 @@ function rollover(){
   state.character.longestStreak = Math.max(state.character.longestStreak, state.character.streak);
   if(state.character.streak > 0){ if(!state.charHistory) state.charHistory={level:[],hp:[],realm:[],streak:[]}; const _stD=todayStr(); if(!state.charHistory.streak.length||state.charHistory.streak[state.charHistory.streak.length-1].ts!==_stD) state.charHistory.streak.push({ts:_stD, val:state.character.streak}); }
 
-  (state.quests || []).forEach(q => { if(q.type==='daily') q.status='pending'; q.completionsToday = 0; });
+  (state.quests || []).forEach(q => { if(q.type==='daily'){ q.status='pending'; q.completionsToday = 0; } });
   state.meta.completedTodayCount = 0; state.meta.dailyExpEarned = 0;
   // Reset HT quest completion tracking setiap hari
   state.character.htQuestCompletedToday = {};
@@ -3853,6 +3892,7 @@ function rollover(){
 
   const wk = weekKey(new Date()); if(wk !== state.meta.lastWeekKey){ state.quests.filter(q=>q.type==='weekly').forEach(q=>q.status='pending'); state.meta.lastWeekKey = wk; }
   const mk = monthKey(new Date()); if(mk !== state.meta.lastMonthKey){ state.quests.filter(q=>q.type==='monthly').forEach(q=>q.status='pending'); state.meta.lastMonthKey = mk; }
+  recordMomentumHistory();
   state.meta.lastActiveDate = today; checkAchievements(); save();
 }
 
@@ -3949,6 +3989,7 @@ function logSpiritual(key, isSuccess, isCustom = false){
         state.spiritual.exp = Math.max(0, state.spiritual.exp - 10);
         gainExp(-50);
         state.character.hp = Math.max(0, (state.character.hp||100) - 20);
+        logHpChange(-20, `Gagal Ritual Wajib: ${item.label}`);
         bumpStat('discipline', -1);
         showToast(`Gagal ${item.label}: -50 EXP, -20 HP, -10 Spiritual EXP`, 'bad');
       } else {
@@ -4733,6 +4774,30 @@ function changeCalMonth(offset) { calViewMonth += offset; if (calViewMonth > 11)
 function renderRecoveryBanner(){ const slot = document.getElementById('recovery-banner-slot'); if(!slot) return; slot.innerHTML=''; }
 function renderHpZeroBanner(){ const slot = document.getElementById('hp-zero-banner-slot'); if(!slot) return; if(state.character.hp <= 0){ slot.innerHTML = `<div class="hp-zero-banner">⚡ Energi Anda Habis. Selesaikan Quest untuk Memulihkan HP.<small>HP pulih bertahap setiap kali kamu menyelesaikan Quest.</small></div>`; } else slot.innerHTML=''; }
 
+function renderHpLogModal(){
+  const slot = document.getElementById('hp-log-list');
+  if(!slot) return;
+  const log = (state.hpEventLog || []).slice().reverse();
+  if(!log.length){
+    slot.innerHTML = `<div class="small muted" style="text-align:center; padding:20px 0;">Belum ada riwayat perubahan HP.</div>`;
+    return;
+  }
+  slot.innerHTML = log.map(e => {
+    const isGain = e.delta > 0;
+    const color = isGain ? 'var(--cyan)' : 'var(--crimson)';
+    const sign = isGain ? '+' : '';
+    const d = new Date(e.ts);
+    const timeStr = isNaN(d.getTime()) ? e.date : `${e.date} · ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+    return `<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:9px 12px; border-radius:10px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.06);">
+      <div style="min-width:0;">
+        <div style="font-size:12.5px; color:var(--bone); line-height:1.4;">${e.reason}</div>
+        <div style="font-size:10px; color:var(--muted); margin-top:2px;">${timeStr}${e.maxHp!=null ? ` · HP jadi ${e.hpAfter}/${e.maxHp}` : ''}</div>
+      </div>
+      <div style="font-weight:700; font-size:14px; color:${color}; white-space:nowrap;">${sign}${e.delta} HP</div>
+    </div>`;
+  }).join('');
+}
+
 function renderCalendar() {
     const daysInMonth = new Date(calViewYear, calViewMonth + 1, 0).getDate(); const firstDay = new Date(calViewYear, calViewMonth, 1).getDay(); const monthNames = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
     let html = `<div class="section-title">Consistency Calendar</div><div class="card calendar-card glass-panel"><div class="cal-header"><button class="cal-nav-btn" onclick="changeCalMonth(-1)"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button><div>${monthNames[calViewMonth]} ${calViewYear}</div><button class="cal-nav-btn" onclick="changeCalMonth(1)"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button></div><div class="cal-grid">${['Min','Sen','Sel','Rab','Kam','Jum','Sab'].map(d => `<div class="cal-day-name">${d}</div>`).join('')}`;
@@ -4953,7 +5018,7 @@ function applyRealmFX(){
 function render(){
   if(!state) return; 
   const streakApi = state.character.streak > 0 ? ` 🔥${state.character.streak}` : '';
-  document.getElementById('day-counter').textContent = 'DAY '+(diffDays(state.meta.startDate, todayStr())+1) + streakApi;
+  document.getElementById('day-counter').textContent = 'DAY '+getGameDay() + streakApi;
   
   renderRecoveryBanner(); renderHpZeroBanner(); renderNav(); renderBottomNav(); updateMoodChip();
   const main = document.getElementById('main'); const tab = state.ui && state.ui.tab ? state.ui.tab : 'home';
@@ -5204,7 +5269,7 @@ function renderHome(){
       <div class="spiritual-track"><div class="spiritual-fill" style="width:${spiritFrac}%"></div></div>
     </div>
     <div class="hp-bar-wrap" style="margin-top:10px;">
-      <div class="row-between small" style="margin-bottom:5px;"><span class="muted" style="font-weight:700; color:var(--crimson);">Vitality (HP)</span><span class="muted" style="color:var(--crimson)">${c.hp}/${c.maxHp}</span></div>
+      <div class="row-between small" style="margin-bottom:5px;"><span class="muted" style="font-weight:700; color:var(--crimson);">Vitality (HP)</span><span class="muted" style="color:var(--crimson); display:flex; align-items:center; gap:6px;">${c.hp}/${c.maxHp}<button onclick="openModal('modal-hp-log'); renderHpLogModal();" style="background:none; border:1px solid rgba(255,71,104,0.4); color:var(--crimson); border-radius:6px; font-size:9px; padding:2px 6px; cursor:pointer;">Riwayat</button></span></div>
       <div class="stat-track" style="background:rgba(255,71,104,0.1);"><div class="stat-fill" style="width:${(c.hp/c.maxHp)*100}%; background:linear-gradient(90deg, #8a1c1c, var(--crimson)); box-shadow: 0 0 8px rgba(255,71,104,0.5);"></div></div>
     </div>
 
@@ -5260,7 +5325,6 @@ function renderHome(){
   </div></div>
 
   <div data-sec-tab="home" data-sec-id="mood-energi">${renderMoodCard()}</div>
-  <div data-sec-tab="home" data-sec-id="daily-journal">${renderDailyJournal()}</div>
   `;
 }
 
@@ -5901,7 +5965,7 @@ function addRefleksiQuestion(){
   const el = document.getElementById('rf-new-question'); if(!el) return;
   const q = el.value.trim(); if(!q){ showToast('Tulis pertanyaanmu dulu.','bad'); return; }
   if(!state.refleksi) state.refleksi={journals:[],questions:[]};
-  state.refleksi.questions.push({id:uid('rq'), q, answer:'', ts:'', pinnedProfile:false});
+  state.refleksi.questions.push({id:uid('rq'), q, answer:'', ts:'', pinnedProfile:false, answers:[]});
   el.value=''; save(); render(); showToast('Pertanyaan ditambahkan! ✦','ach');
 }
 function saveRefleksiAnswer(qId){
@@ -5909,9 +5973,17 @@ function saveRefleksiAnswer(qId){
   const el = document.getElementById('rf-ans-'+qId); if(!el) return;
   const answer = el.value.trim(); if(!answer){ showToast('Jawaban tidak boleh kosong.','bad'); return; }
   const q = state.refleksi.questions.find(x=>x.id===qId); if(!q) return;
-  q.answer = answer;
-  const now = new Date(); q.ts = now.toLocaleString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
-  if(!q.date) q.date = now.toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric'});
+  const now = new Date();
+  const ts = now.toLocaleString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  const date = now.toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric'});
+  // Simpan jawaban lama ke riwayat sebelum overwrite
+  if(!Array.isArray(q.answers)) q.answers = [];
+  if(q.answer && q.answer.trim() && q.answer.trim() !== answer) {
+    q.answers.push({text: q.answer, ts: q.ts||'', date: q.date||''});
+    if(q.answers.length > 50) q.answers = q.answers.slice(-50); // max 50 riwayat
+  }
+  q.answer = answer; q.ts = ts;
+  if(!q.date) q.date = date;
   save(); render(); showToast('Jawaban tersimpan! ✦','ach');
 }
 function deleteRefleksiQuestion(qId){
@@ -5932,7 +6004,31 @@ function renderRefleksiProfileChip(){
   const q = (rf.questions||[]).find(x=>x.pinnedProfile && x.answer);
   if(!q) return '';
   const short = q.answer.slice(0,80)+(q.answer.length>80?'…':'');
-  return `<div class="refleksi-profile-chip" onclick="setTab('refleksi')" title="Refleksi Diri · Klik untuk lihat"><span>✦</span><span>${escapeHtml(short)}</span></div>`;
+  return `<div style="margin-top:7px;">
+    <div class="refleksi-profile-chip" style="cursor:default;"><span>✦</span><span>${escapeHtml(short)}</span></div>
+    <button class="btn btn-ghost btn-sm" onclick="openRefleksiFullModal()" style="margin-top:5px;font-size:10px;padding:3px 10px;letter-spacing:0.3px;">📖 Baca Selengkapnya</button>
+  </div>`;
+}
+
+function openRefleksiFullModal(){
+  const rf = state.refleksi || {};
+  const q = (rf.questions||[]).find(x=>x.pinnedProfile && x.answer);
+  if(!q) return;
+  document.getElementById('rfm-question').textContent = q.q;
+  document.getElementById('rfm-answer').textContent   = q.answer;
+  document.getElementById('rfm-ts').textContent       = q.ts ? '📅 Diperbarui: '+q.ts : '';
+  openModal('modal-refleksi-full');
+}
+
+// Lookup sementara untuk konten "Lihat Penuh" — diisi saat render, dibaca saat klik
+var _lihatPenuhLookup = [];
+function openLihatPenuhModal(idx){
+  const entry = _lihatPenuhLookup[idx];
+  if(!entry) return;
+  document.getElementById('lpm-judul').textContent   = entry.judul;
+  document.getElementById('lpm-konten').textContent  = entry.konten;
+  document.getElementById('lpm-tanggal').textContent = entry.tanggal ? '📅 '+entry.tanggal : '';
+  openModal('modal-lihat-penuh');
 }
 
 function renderRefleksi(){
@@ -5941,8 +6037,18 @@ function renderRefleksi(){
   const journals = (rf.journals||[]).slice().reverse();
   const questions = rf.questions||[];
 
+  // Reset lookup tiap render
+  _lihatPenuhLookup = [];
+
   // Journal history HTML
   function jEntryHtml(j, idx){
+    const preview = j.content.length > 120 ? j.content.slice(0,120)+'…' : j.content;
+    const needsFull = j.content.length > 120;
+    let lihatBtn = '';
+    if(needsFull){
+      const lIdx = _lihatPenuhLookup.push({judul:'📔 Jurnal · '+j.date, konten:j.content, tanggal:j.ts||''}) - 1;
+      lihatBtn = `<button class="btn btn-ghost btn-sm" onclick="openLihatPenuhModal(${lIdx})" style="margin-top:6px;font-size:10px;padding:2px 10px;">🔍 Lihat Penuh</button>`;
+    }
     return `<div class="refleksi-history-item">
       <div class="row-between small" style="margin-bottom:5px;align-items:flex-start;">
         <div><div style="color:rgba(200,168,75,0.85);font-weight:800;font-size:10px;letter-spacing:0.5px;">📅 ${j.date}</div><div style="font-size:9px;color:var(--muted-2);">${j.ts||''}</div></div>
@@ -5951,7 +6057,8 @@ function renderRefleksi(){
           <button class="btn btn-sm btn-xs btn-ghost" onclick="deleteRefleksiJournal('${j.id}')" style="font-size:11px;padding:3px 7px;">🗑</button>
         </div>
       </div>
-      <div style="font-size:12.5px;line-height:1.65;color:var(--bone);white-space:pre-wrap;word-break:break-word;">${escapeHtml(j.content)}</div>
+      <div style="font-size:12.5px;line-height:1.65;color:var(--bone);white-space:pre-wrap;word-break:break-word;">${escapeHtml(preview)}</div>
+      ${lihatBtn}
     </div>`;
   }
   const jRecent = journals.slice(0,3).map((j,i)=>jEntryHtml(j,i)).join('');
@@ -5960,7 +6067,43 @@ function renderRefleksi(){
     ? `<div class="small muted" style="text-align:center;padding:14px 0;">Belum ada jurnal. Tulis dan simpan jurnalmu pertama di atas.</div>`
     : `<div>${jRecent}</div>${jRest?`<div id="rf-j-all" style="display:none;">${jRest}</div><button class="btn btn-ghost btn-block" id="rf-j-more-btn" onclick="document.getElementById('rf-j-all').style.display='block';this.style.display='none';">Lihat Semua ${journals.length} Jurnal →</button>`:''}`;
 
-  // Questions HTML
+  // Questions HTML — dengan riwayat jawaban
+  function qAnswerHistoryHtml(q){
+    const hist = (q.answers||[]).slice().reverse(); // terbaru dulu
+    if(!hist.length) return '';
+    const rows = hist.map((h,i)=>`
+      <div class="refleksi-history-item" style="${i===0?'':''}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;">
+          <div style="font-size:9.5px;color:rgba(200,168,75,0.6);font-weight:700;">📅 ${h.date||''} · ${h.ts||''}</div>
+        </div>
+        <div style="font-size:12px;line-height:1.65;color:var(--bone);white-space:pre-wrap;word-break:break-word;opacity:0.8;">${escapeHtml(h.text||'')}</div>
+      </div>`).join('');
+    const histId = 'rf-hist-'+q.id;
+    const btnId  = 'rf-hist-btn-'+q.id;
+    const first3 = hist.slice(0,3);
+    const rest   = hist.slice(3);
+    function histEntryHtml(h){
+      const preview = (h.text||'').length > 120 ? h.text.slice(0,120)+'…' : (h.text||'');
+      const needsFull = (h.text||'').length > 120;
+      let lihatBtn = '';
+      if(needsFull){
+        const lIdx = _lihatPenuhLookup.push({judul:'💬 Jawaban Refleksi · '+(h.date||''), konten:h.text||'', tanggal:h.ts||''}) - 1;
+        lihatBtn = `<button class="btn btn-ghost btn-sm" onclick="openLihatPenuhModal(${lIdx})" style="margin-top:5px;font-size:10px;padding:2px 10px;">🔍 Lihat Penuh</button>`;
+      }
+      return `<div class="refleksi-history-item">
+        <div style="font-size:9.5px;color:rgba(200,168,75,0.6);font-weight:700;margin-bottom:3px;">📅 ${h.date||''} · ${h.ts||''}</div>
+        <div style="font-size:12px;line-height:1.65;color:var(--bone);white-space:pre-wrap;word-break:break-word;opacity:0.8;">${escapeHtml(preview)}</div>
+        ${lihatBtn}
+      </div>`;
+    }
+    return `<div style="margin-top:12px;border-top:1px solid rgba(200,168,75,0.15);padding-top:10px;">
+      <div style="font-size:10px;font-weight:800;color:rgba(200,168,75,0.7);letter-spacing:0.5px;margin-bottom:8px;">📜 RIWAYAT JAWABAN <span style="font-weight:500;color:var(--muted);">(${hist.length} entri)</span></div>
+      <div>${first3.map(h=>histEntryHtml(h)).join('')}</div>
+      ${rest.length?`<div id="${histId}" style="display:none;">${rest.map(h=>histEntryHtml(h)).join('')}</div>
+      <button class="btn btn-ghost btn-block" id="${btnId}" style="font-size:11px;margin-top:6px;" onclick="var e=document.getElementById('${histId}');var b=document.getElementById('${btnId}');e.style.display='block';b.style.display='none';">Lihat Semua ${rest.length} Riwayat Lainnya →</button>`:''}
+    </div>`;
+  }
+
   const qHtml = questions.length===0
     ? `<div class="small muted" style="text-align:center;padding:14px 0;">Belum ada pertanyaan. Tambahkan pertanyaan refleksimu di atas.</div>`
     : questions.map(q=>`<div class="card refleksi-q-card" style="margin-bottom:12px;padding:14px;">
@@ -5977,6 +6120,7 @@ function renderRefleksi(){
           <button class="btn btn-secondary btn-sm" onclick="saveRefleksiAnswer('${q.id}')">💾 Simpan Jawaban</button>
         </div>
         ${q.pinnedProfile?`<div style="margin-top:6px;font-size:10px;color:rgba(200,168,75,0.7);font-weight:700;">⚜️ Ditampilkan di Profil</div>`:''}
+        ${qAnswerHistoryHtml(q)}
       </div>`).join('');
 
   return `<div>
@@ -6724,6 +6868,7 @@ function buildModals() {
   <div id="settings-slot">${renderSettingsModal()}</div>
   <div class="modal-overlay" id="modal-section-mgr"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">🗂️ Kelola Tampilan Seksi</div><div class="small muted" style="margin:-4px 0 14px;line-height:1.5;">Aktifkan/nonaktifkan seksi tiap tab, ubah urutannya dengan ▲ ▼. Perubahan langsung tersimpan.</div><div id="secmgr-slot"></div><button class="btn btn-secondary btn-block mt-14" onclick="closeModal('modal-section-mgr')">Tutup</button></div></div>
   <div class="modal-overlay" id="modal-bridge-trial"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title" style="color:var(--gold-soft);">🌉 Trial Jembatan Surga</div><div class="small" style="line-height:1.6; color:var(--bone); margin:10px 0;">Kamu telah mencapai puncak <strong>Bridge <span id="bt-bridge-num">?</span></strong>. Untuk menembus ke Bridge berikutnya, kamu harus menjalani Trial Jembatan.<br><br>Gagal berarti kehilangan <strong>30% Energy Bridge</strong> dan <strong>HP -20%</strong>. Jika HP mencapai 0: <strong>Qi Deviation (Level -3)</strong>.<br><br>Apakah kamu siap menghadapi Trial?</div><div class="modal-actions"><button class="btn btn-ghost" onclick="submitBridgeTrial(false)">✕ Mundur (Tangguhkan)</button><button class="btn btn-gold" onclick="submitBridgeTrial(true)">⚔️ Hadapi Trial!</button></div></div></div>
+  <div class="modal-overlay" id="modal-hp-log"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title" style="color:var(--crimson);">💔 Riwayat Perubahan HP</div><div class="small muted" style="margin:-6px 0 12px; line-height:1.5;">Daftar kapan & kenapa HP kamu berkurang atau bertambah, urut dari yang terbaru.</div><div id="hp-log-list" style="max-height:55vh; overflow-y:auto; display:flex; flex-direction:column; gap:8px;"></div><button class="btn btn-secondary btn-block mt-14" onclick="closeModal('modal-hp-log')">Tutup</button></div></div>
   <div class="modal-overlay" id="modal-add-quest"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title" id="modal-add-quest-title">Tambah Quest</div><div class="field"><label>Judul Quest</label><input type="text" id="aq-title" placeholder="Contoh: Latihan 10 menit" class="input"></div><div class="field"><label>Tipe Quest</label><select id="aq-type" class="input" onchange="toggleLegendaryExp()"><option value="daily">Daily — Harian</option><option value="weekly">Weekly — Mingguan</option><option value="monthly">Monthly — Bulanan</option><option value="special">Special — Spesial</option><option value="mythic">⚔️ Mythic (25.000 EXP)</option><option value="legendary">👑 Legendary (5.000 EXP)</option></select></div><div class="field"><label>Tingkat Kesulitan</label><select id="aq-difficulty" class="input" onchange="updateMaxQuestExpHint()"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option><option value="epic">Epic</option></select></div><div class="small muted" id="aq-max-exp-hint" style="margin:0 0 10px; padding:0 4px;"></div><div class="field"><label>Stat Reward (maks. 2)</label><div class="check-grid">${allStatKeys().map(k=>`<label class="check-item"><input type="checkbox" class="aq-stat" value="${k}" onchange="limitStatChecks(this)"> ${statDef(k).label}${STAT_ID_LABELS[k]?'<span style="display:block;font-size:9px;color:var(--muted);font-weight:400;line-height:1.2;margin-top:1px;">'+STAT_ID_LABELS[k]+'</span>':''}</label>`).join('')}</div></div><div class="field"><label class="checkbox-row" style="margin-bottom:0;"><input type="checkbox" id="aq-core"> Tandai sebagai Core Habit</label></div><div class="field"><label>Catatan (opsional)</label><textarea id="aq-notes" placeholder="Detail tambahan..." class="input"></textarea></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-add-quest')">Batal</button><button class="btn btn-primary" onclick="addQuest()">Simpan</button></div></div></div>
   <div class="modal-overlay" id="modal-blueprint"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title" id="bp-modal-title">📐 Tambah Tahapan Blueprint</div><input type="hidden" id="bp-edit-id"><div class="field"><label>Nama Tahapan / Fase</label><input type="text" id="bp-label" placeholder="Contoh: Riset &amp; Perencanaan" class="input"></div><div class="field"><label>Deskripsi (opsional)</label><textarea id="bp-desc" placeholder="Detail tujuan tahapan ini..." class="input" rows="2"></textarea></div><div class="form-row"><div class="form-group half"><label>Tgl Mulai</label><input type="date" id="bp-dateStart" class="input"></div><div class="form-group half"><label>Deadline</label><input type="date" id="bp-deadline" class="input"></div></div><div class="field"><label>Prioritas</label><select id="bp-priority" class="input"><option value="low">🟢 Rendah</option><option value="medium" selected>🟡 Sedang</option><option value="high">🔴 Tinggi</option></select></div><div class="field"><label>Status</label><select id="bp-status" class="input"><option value="planning">📋 Perencanaan</option><option value="building">🔨 Sedang Dibangun</option><option value="done">✅ Selesai</option></select></div><div class="field"><label>Catatan Tambahan (opsional)</label><textarea id="bp-notes" placeholder="Referensi, link, detail penting..." class="input" rows="2"></textarea></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-blueprint')">Batal</button><button class="btn btn-primary" onclick="submitBlueprintItem()">Simpan</button></div></div></div>
   <div class="modal-overlay" id="modal-kanban-edit"><div class="modal-sheet"><div class="modal-handle"></div><h2 class="modal-title" id="modal-card-title">Detail Materi</h2><input type="hidden" id="km-id"><input type="hidden" id="km-col"><div class="field"><label>Judul Materi</label><input type="text" id="km-title" placeholder="Nama buku, course, dll" class="input"></div><div class="field"><label>Tipe</label><select id="km-type" class="input"><option value="Buku">📖 Buku</option><option value="Course">🎓 Course</option><option value="Video">🎬 Video</option><option value="Artikel">📄 Artikel</option><option value="Lainnya">📦 Lainnya</option></select></div><div class="form-row"><div class="form-group half"><label>Tgl Mulai</label><input type="date" id="km-dateStart" class="input"></div><div class="form-group half"><label>Target Selesai</label><input type="date" id="km-dateTarget" class="input"></div></div><div class="field"><label>Progress: <span id="card-prog-val">0</span>%</label><input type="range" id="km-progress" min="0" max="100" value="0" style="width:100%; accent-color:var(--cyan);" oninput="document.getElementById('card-prog-val').textContent=this.value"></div><div class="field"><label>Kolom</label><select id="card-modal-col" class="input"><option value="mau_dipelajari">📚 Mau Dipelajari</option><option value="sedang_dipelajari">🔥 Sedang Dipelajari</option><option value="direview">🔍 Direview</option><option value="selesai">✅ Selesai</option></select></div><div class="field"><label>Insight / Catatan</label><textarea id="km-notes" placeholder="Tulis hal penting di sini..." class="input"></textarea></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-kanban-edit')">Batal</button><button class="btn btn-danger" onclick="deleteCardFromModal()">Hapus Item</button><button class="btn btn-primary" onclick="submitCardModal()">Simpan</button></div></div></div>
@@ -6741,6 +6886,43 @@ function buildModals() {
   <div class="modal-overlay" id="modal-add-stat"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">Tambah Stat Kustom</div><div class="field"><label>Nama Stat</label><input type="text" id="as-label" placeholder="Contoh: Kreativitas" class="input"></div><div class="field"><label>Kategori</label><select id="as-group" class="input"><option value="Body">💪 Body</option><option value="Mind">🧠 Mind</option><option value="Social">💬 Social</option><option value="Soul">🌌 Soul</option><option value="Finansial">💰 Finansial</option><option value="Custom" selected>✨ Custom</option></select></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-add-stat')">Batal</button><button class="btn btn-primary" onclick="addCustomStat()">Tambah</button></div></div></div>
   <div class="modal-overlay" id="modal-add-heaven-quest"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title" id="modal-add-heaven-quest-title" style="color:var(--gold-soft);">🌉 Tambah Heaven Quest</div><div class="field"><label>Nama Quest</label><input type="text" id="hq-title" placeholder="Contoh: Capai 10 juta dalam sebulan" class="input"></div><div class="field"><label>Target / Deskripsi</label><textarea id="hq-target" placeholder="Detail target yang harus dicapai..." class="input" rows="3"></textarea></div><div class="field"><label>Reward EXP</label><input type="number" id="hq-exp" placeholder="Contoh: 500000" inputmode="numeric" class="input" min="1"></div><div class="field"><label>Deadline (opsional)</label><input type="date" id="hq-deadline" class="input"></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-add-heaven-quest')">Batal</button><button class="btn btn-gold" onclick="addHeavenQuest()">Simpan</button></div></div></div>
   <div class="modal-overlay" id="modal-add-habit"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">Tambah Habit Baru</div><div class="field"><label>Nama Habit</label><input type="text" id="ah-title" placeholder="Contoh: Minum air 2 Liter" class="input"></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-add-habit')">Batal</button><button class="btn btn-primary" onclick="addHabit()">Simpan Habit</button></div></div></div>
+
+  <div class="modal-overlay" id="modal-lihat-penuh">
+    <div class="modal-sheet" style="max-height:88vh;display:flex;flex-direction:column;">
+      <div class="modal-handle"></div>
+      <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+        <span id="lpm-judul" style="font-size:13px;font-weight:800;color:rgba(200,168,75,0.9);"></span>
+        <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-lihat-penuh')">✕</button>
+      </div>
+      <div id="lpm-tanggal" style="font-size:9.5px;color:var(--muted-2);margin-bottom:12px;flex-shrink:0;"></div>
+      <div style="overflow-y:auto;flex:1;padding:0 2px 16px;">
+        <div id="lpm-konten" style="font-size:13px;line-height:1.8;color:var(--bone);white-space:pre-wrap;word-break:break-word;"></div>
+      </div>
+      <div style="padding-top:10px;flex-shrink:0;">
+        <button class="btn btn-ghost btn-block" onclick="closeModal('modal-lihat-penuh')">← Kembali</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal-refleksi-full">
+    <div class="modal-sheet" style="max-height:88vh;display:flex;flex-direction:column;">
+      <div class="modal-handle"></div>
+      <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+        <span style="background:linear-gradient(90deg,#c8a84b,#ffe680,#c8a84b);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;font-weight:900;">✦ Refleksi Diri</span>
+        <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-refleksi-full')">✕</button>
+      </div>
+      <div style="overflow-y:auto;flex:1;padding:4px 2px 16px;">
+        <div style="font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:rgba(200,168,75,0.6);margin-bottom:8px;">❓ Pertanyaan</div>
+        <div id="rfm-question" style="font-family:var(--font-display);font-weight:800;font-size:13.5px;color:rgba(200,168,75,0.95);line-height:1.65;margin-bottom:20px;white-space:pre-wrap;word-break:break-word;"></div>
+        <div style="font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:rgba(200,168,75,0.6);margin-bottom:8px;">💬 Jawaban</div>
+        <div id="rfm-answer" style="font-size:13px;line-height:1.8;color:var(--bone);white-space:pre-wrap;word-break:break-word;"></div>
+        <div id="rfm-ts" style="margin-top:16px;font-size:10px;color:var(--muted-2);"></div>
+      </div>
+      <div style="padding-top:10px;flex-shrink:0;">
+        <button class="btn btn-ghost btn-block" onclick="closeModal('modal-refleksi-full')">← Kembali</button>
+      </div>
+    </div>
+  </div>
 
   <div class="modal-overlay" id="modal-journal-history">
     <div class="modal-sheet" style="max-height:85vh; display:flex; flex-direction:column;">
@@ -7008,13 +7190,14 @@ function deleteCardFromModal() {
 function init(){
   let loaded = loadState(); 
   state = loaded ? migrateState(deepMerge(DEFAULT_STATE(), loaded)) : DEFAULT_STATE();
-  rollover(); recomputeLifeScore(); buildModals(); spiritCompanionGreet(); render(); 
+  rollover(); recomputeLifeScore(); recordMomentumHistory(); buildModals(); spiritCompanionGreet(); render(); 
   
   // Auto-refresh interval (Midnight reset trigger)
   setInterval(() => {
       updateTimeBlockUI();
       if(state.meta.lastActiveDate !== todayStr()) {
           rollover();
+          recordMomentumHistory();
           render();
           save();
       }
@@ -7270,11 +7453,17 @@ function recordMomentumHistory() {
   if(!state) return;
   if(!state.momentum) state.momentum = { history: [], lastRecordedDate: '' };
   const today = todayStr();
-  if(state.momentum.lastRecordedDate === today) return;
   const pts = calcMomentumPoints();
   const tier = getMomentumTier(pts);
-  state.momentum.history.unshift({ date: today, pts, level: tier.level, name: tier.name });
-  if(state.momentum.history.length > 30) state.momentum.history = state.momentum.history.slice(0, 30);
+  const todayEntry = state.momentum.history[0];
+  if(todayEntry && todayEntry.date === today) {
+    // Perbarui catatan hari ini secara live, jangan biarkan beku di nilai lama
+    todayEntry.pts = pts; todayEntry.level = tier.level; todayEntry.name = tier.name;
+  } else {
+    state.momentum.history.unshift({ date: today, pts, level: tier.level, name: tier.name });
+    if(state.momentum.history.length > 30) state.momentum.history = state.momentum.history.slice(0, 30);
+  }
+  if(state.momentum.lastRecordedDate === today) return;
   state.momentum.lastRecordedDate = today;
   save();
 }
@@ -7314,6 +7503,7 @@ function renderCharacterMomentumTab() {
   const tier = getMomentumTier(pts);
   const today = todayStr();
   const c = state.character;
+  const gameDay = getGameDay();
 
   // Inactivity decay banner
   let decayBanner = '';
@@ -7420,7 +7610,7 @@ function renderCharacterMomentumTab() {
     ${renderStreakMomentum()}
     <div class="momentum-hero" style="--momentum-color:${tier.color};--momentum-color-start:${tier.colorStart};--momentum-color-faint:${tier.glow}">
       <div class="momentum-aura"></div>
-      <div class="momentum-tier-badge">TIER ${tier.level} — MOMENTUM</div>
+      <div class="momentum-tier-badge">TIER ${tier.level} — MOMENTUM · HARI KE-${gameDay}</div>
       <div class="momentum-tier-name">${tier.name}</div>
       <div class="momentum-pts-row">
         <div class="momentum-pts-num">${pts}</div>
@@ -7634,6 +7824,7 @@ function renderStreakMomentum() {
   const today = todayStr();
   const lastActive = (state.meta && state.meta.lastActiveDate) || today;
   const atRisk = lastActive !== today && streak > 0;
+  const gameDay = getGameDay();
 
   const TIERS = [
     { min:0,  fires:0, name:'Belum Mulai',     color:'#5a5a7a', glow:'rgba(90,90,122,0)',    tagline:'Satu hari pertama mengubah segalanya. Mulai sekarang.' },
@@ -7700,7 +7891,7 @@ function renderStreakMomentum() {
 
   return `<div class="smom-card" style="background:var(--surface);border:1.5px solid ${tier.fires > 0 ? tier.color + '44' : 'var(--border)'};box-shadow:${tier.fires > 0 ? '0 0 24px ' + tier.glow.replace(/[\d.]+\)$/, '0.12)') : 'none'};">
     <div class="smom-hero-bg" style="background:linear-gradient(150deg,${tier.glow.replace(/[\d.]+\)$/, '0.13)')} 0%,transparent 65%);">
-      <div class="smom-tier-label" style="color:${tier.color};">🔥 Momentum Produktivitas</div>
+      <div class="smom-tier-label" style="color:${tier.color};">🔥 Momentum Produktivitas · HARI KE-${gameDay}</div>
       <div class="smom-body-row">
         <div class="smom-fires-row">${firesHTML}</div>
         <div class="smom-info">
@@ -7712,6 +7903,7 @@ function renderStreakMomentum() {
         </div>
       </div>
       <div class="smom-tagline">${tier.tagline}</div>
+      ${streak !== gameDay ? `<div style="font-size:10px;color:var(--muted);margin-top:6px;font-family:var(--font-system);">📅 Akun berjalan hari ke-${gameDay} · streak beruntun saat ini ${streak} hari${streak < gameDay ? ' (pernah putus)' : ''}</div>` : ''}
       ${alertBadge}
     </div>
 
@@ -7966,7 +8158,7 @@ function resetNavGroupOrder() {
 (function() {
   // Inisialisasi Firebase dengan database realtime Anda
   var firebaseConfig = {
-    databaseURL: "https://mylifekultivasirealtime-default-rtdb.asia-southeast1.firebasedatabase.app/"
+    databaseURL: "https://sistemkultivasi-default-rtdb.asia-southeast1.firebasedatabase.app/"
   };
   firebase.initializeApp(firebaseConfig);
 
@@ -7974,7 +8166,16 @@ function resetNavGroupOrder() {
   var dataRef = db.ref('mysistem/' + STORAGE_KEY);
 
   var _fbWriting = false;
-  var _localSeq = 0; // sequence number untuk melacak versi data lokal
+  // Lanjutkan sequence dari data lokal yang sudah tersimpan, jangan reset ke 0 saat reload —
+  // reset ke 0 menyebabkan save() pertama setelah reload terkirim dengan seq kecil dan bisa
+  // ditimpa/menimpa data dari sesi/device lain yang seq-nya sudah lebih besar.
+  var _localSeq = (function() {
+    try {
+      var saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) { var parsed = JSON.parse(saved); return parsed._localSeq || 0; }
+    } catch(e) {}
+    return 0;
+  })();
 
   // Patch save() — tambahkan sinkronisasi ke Firebase setelah save lokal
   var _origSave = window.save;
@@ -8013,26 +8214,15 @@ function resetNavGroupOrder() {
     }
   });
 
-  // Dengarkan perubahan real-time (multi-device sync)
-  dataRef.on('value', function(snapshot) {
-    if (_fbWriting) return; // abaikan selama sedang/baru saja nulis
-    var fbData = snapshot.val();
-    if (!fbData || !state) return;
-    // Tolak data Firebase yang sequence-nya lebih lama dari data lokal
-    var remoteSeq = fbData._localSeq || 0;
-    if (remoteSeq < _localSeq) return;
-    try {
-      var remoteStr = JSON.stringify(fbData);
-      var localStr  = localStorage.getItem(STORAGE_KEY);
-      if (remoteStr !== localStr) {
-        var merged = migrateState(deepMerge(DEFAULT_STATE(), fbData));
-        _localSeq = merged._localSeq || 0;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-        state = merged;
-        rollover(); recomputeLifeScore(); render();
-      }
-    } catch(e) {}
-  });
+  // Listener real-time (multi-device sync) DIMATIKAN atas permintaan pengguna.
+  // Alasan: listener ini sebelumnya bisa memicu render ulang / kemungkinan reset di tengah hari
+  // setiap kali ada perubahan data di Firebase (dari device/tab lain), yang terasa seperti
+  // "sistem ngerefresh sendiri". Sekarang data tetap DIKIRIM ke Firebase (lihat window.save di atas)
+  // dan tetap DIAMBIL sekali saat pertama kali dibuka (dataRef.once di atas), tapi aplikasi TIDAK
+  // lagi mendengarkan perubahan real-time dari device lain selama sesi berjalan.
+  // Reset harian (rollover) sekarang HANYA dipicu oleh timer 30 detik lokal saat tanggal berganti.
+  //
+  // dataRef.on('value', function(snapshot) { ... }); // <- dinonaktifkan
 })();
 </script>
 </body>
