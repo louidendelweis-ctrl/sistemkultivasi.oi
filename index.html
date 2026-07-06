@@ -3800,7 +3800,7 @@ function getTodayActiveShift() { const map = ['minggu','senin','selasa','rabu','
 
 function rollover(){
   const today = todayStr();
-  if(!state.meta.lastActiveDate){ state.meta.lastActiveDate = today; state.meta.lastWeekKey = weekKey(new Date()); state.meta.lastMonthKey = monthKey(new Date()); return; }
+  if(!state.meta.lastActiveDate){ state.meta.lastActiveDate = today; state.meta.lastWeekKey = weekKey(new Date()); state.meta.lastMonthKey = monthKey(new Date()); state.character.streak = Math.max(state.character.streak||0, 1); state.character.longestStreak = Math.max(state.character.longestStreak||0, state.character.streak); return; }
   const activeShift = getTodayActiveShift(); if(activeShift !== 'libur' && activeShift !== 'custom') state.character.shift = activeShift;
   if(state.meta.lastActiveDate === today) return;
 
@@ -3878,7 +3878,9 @@ function rollover(){
       }
   });
 
-  if(gap===1 && allDone){ state.character.streak += 1; state.character.failStreak = 0; } 
+  // Streak naik cukup dengan membuka app hari berikutnya (login-like),
+  // tidak perlu semua quest selesai. Penalty quest (HP/EXP) tetap berjalan terpisah di atas.
+  if(gap===1){ state.character.streak += 1; state.character.failStreak = 0; } 
   else { state.character.streak = 0; state.character.failStreak += gap; }
   state.character.longestStreak = Math.max(state.character.longestStreak, state.character.streak);
   if(state.character.streak > 0){ if(!state.charHistory) state.charHistory={level:[],hp:[],realm:[],streak:[]}; const _stD=todayStr(); if(!state.charHistory.streak.length||state.charHistory.streak[state.charHistory.streak.length-1].ts!==_stD) state.charHistory.streak.push({ts:_stD, val:state.character.streak}); }
