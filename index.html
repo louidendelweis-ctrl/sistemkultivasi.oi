@@ -8156,95 +8156,175 @@ function resetNavGroupOrder() {
 <!-- ── FIREBASE REALTIME DATABASE INTEGRATION ── -->
 <script>
 (function() {
-  // Inisialisasi Firebase dengan database realtime Anda
   var firebaseConfig = {
     databaseURL: "https://sistemkultivasi-default-rtdb.asia-southeast1.firebasedatabase.app/"
   };
   firebase.initializeApp(firebaseConfig);
 
-  var db = firebase.database();
+  var db      = firebase.database();
   var dataRef = db.ref('mysistem/' + STORAGE_KEY);
 
-  var _fbWriting = false;
-  // Lanjutkan sequence dari data lokal yang sudah tersimpan, jangan reset ke 0 saat reload —
-  // reset ke 0 menyebabkan save() pertama setelah reload terkirim dengan seq kecil dan bisa
-  // ditimpa/menimpa data dari sesi/device lain yang seq-nya sudah lebih besar.
+  // ID unik per page-load — dipakai untuk deteksi echo dari save sendiri.
+  // Setiap buka tab/reload menghasilkan ID baru; device lain pasti beda ID.
+  var _pageId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+  var _fbWriting     = false;
+  var _pendingFbData = null; // update dari device lain yang masuk saat _fbWriting aktif
+
+  // Lanjutkan seq dari localStorage agar tidak kirim seq kecil setelah reload
   var _localSeq = (function() {
-    try {
-      var saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) { var parsed = JSON.parse(saved); return parsed._localSeq || 0; }
-    } catch(e) {}
+    try { var s = localStorage.getItem(STORAGE_KEY); if (s) { var p = JSON.parse(s); return p._localSeq || 0; } } catch(e) {}
     return 0;
   })();
 
-  // Patch save() — tambahkan sinkronisasi ke Firebase setelah save lokal
+  // ── Perbandingan versi: seq + timestamp sebagai tiebreaker ───────────────
+  // candidate lebih baru dari ref jika seq-nya lebih tinggi,
+  // atau seq sama tapi timestamp lebih baru (mengatasi equal-seq conflict).
+  function _isNewer(candidate, ref) {
+    var cSeq = candidate._localSeq || 0, rSeq = ref._localSeq || 0;
+    if (cSeq > rSeq) return true;
+    if (cSeq === rSeq && (candidate._updatedAt || 0) > (ref._updatedAt || 0)) return true;
+    return false;
+  }
+
+  // ── Terapkan data Firebase ke state lokal ───────────────────────────────
+  function _applyFbData(fbData) {
+    try {
+      var merged = migrateState(deepMerge(DEFAULT_STATE(), fbData));
+      _localSeq  = merged._localSeq || 0;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+      state = merged;
+      rollover(); recomputeLifeScore(); render();
+    } catch(e) {}
+  }
+
+  // ── Rekonsiliasi pasca-write ─────────────────────────────────────────────
+  // Setelah setiap write selesai: terapkan buffered update ATAU baca ulang
+  // Firebase sekali untuk menangkap update yang terlewat selama window write.
+  function _postWriteReconcile() {
+    _fbWriting = false;
+    if (_pendingFbData && state && _isNewer(_pendingFbData, state)) {
+      var toApply = _pendingFbData;
+      _pendingFbData = null;
+      _applyFbData(toApply);
+      if (typeof showToast === 'function') showToast('🔄 Data disinkronkan dari device lain', 'info');
+    } else {
+      _pendingFbData = null;
+      // Baca ulang Firebase untuk tangkap equal-seq atau update yang tertahan
+      dataRef.once('value', function(snap) {
+        var latest = snap.val();
+        if (latest && latest._pageId !== _pageId && state && _isNewer(latest, state)) {
+          _applyFbData(latest);
+          if (typeof showToast === 'function') showToast('🔄 Data disinkronkan dari device lain', 'info');
+        }
+      });
+    }
+  }
+
+  // ── Patch save(): kirim ke Firebase via transaction ─────────────────────
+  // Transaction menjamin:
+  //   • device offline/stale tidak bisa timpa data yang lebih baru di Firebase
+  //   • equal-seq: tiebreak via _updatedAt (timestamp)
+  //   • _pendingFbData TIDAK direset di sini — dipertahankan hingga setelah write
   var _origSave = window.save;
   window.save = function() {
-    // Sinkronkan _localSeq dengan localStorage terbaru sebelum increment —
-    // mencegah konflik antar tab paralel yang mulai dari seq yang sama lalu
-    // saling timpa tanpa deteksi (Bug 2).
+    // Sync seq dari localStorage: fix parallel-tab conflict
     try {
-      var _lsCheck = localStorage.getItem(STORAGE_KEY);
-      if (_lsCheck) { var _lsChk = JSON.parse(_lsCheck); if ((_lsChk._localSeq || 0) > _localSeq) _localSeq = _lsChk._localSeq; }
+      var _ls = localStorage.getItem(STORAGE_KEY);
+      if (_ls) { var _lsp = JSON.parse(_ls); if ((_lsp._localSeq || 0) > _localSeq) _localSeq = _lsp._localSeq; }
     } catch(e) {}
-    // Naikkan sequence & langsung blok incoming Firebase update
+
     _localSeq++;
     if (state) state._localSeq = _localSeq;
-    _fbWriting = true; // blok segera, bukan setelah delay
+    _fbWriting = true;
+    // Sengaja TIDAK reset _pendingFbData — mungkin sudah ada update dari device lain
     _origSave();
+
     clearTimeout(window._fbSaveTimer);
     window._fbSaveTimer = setTimeout(function() {
-      if (!state) return;
+      if (!state) { _fbWriting = false; return; }
       try {
-        var payload = JSON.parse(JSON.stringify(state));
-        payload._localSeq = _localSeq; // pastikan seq terikut di Firebase
-        dataRef.set(payload)
-          .then(function() { setTimeout(function(){ _fbWriting = false; }, 2500); })
-          .catch(function() { _fbWriting = false; });
+        var payload       = JSON.parse(JSON.stringify(state));
+        payload._localSeq  = _localSeq;
+        payload._updatedAt = Date.now();
+        payload._pageId    = _pageId;
+
+        // Transaction: commit hanya jika payload lebih baru dari Firebase
+        dataRef.transaction(function(current) {
+          if (current && !_isNewer(payload, current)) {
+            return undefined; // abort — Firebase sudah lebih baru atau sama
+          }
+          return payload;
+        }, function(err, committed, snapshot) {
+          if (committed) {
+            // Write sukses — rekonsiliasi setelah jeda singkat
+            setTimeout(_postWriteReconcile, 800);
+          } else {
+            // Firebase tolak write — periksa alasannya
+            _fbWriting    = false;
+            _pendingFbData = null;
+            var fbData = snapshot ? snapshot.val() : null;
+            var fbSeq  = fbData ? (fbData._localSeq || 0) : 0;
+
+            if (fbData && fbSeq > _localSeq) {
+              // Firebase punya seq lebih tinggi (device lain lebih maju) — terapkan
+              if (_isNewer(fbData, state || {})) {
+                _applyFbData(fbData);
+                if (typeof showToast === 'function') showToast('🔄 Data disinkronkan dari device lain', 'info');
+              }
+            } else if (fbSeq === _localSeq) {
+              // Equal-seq conflict (clock skew tiebreak kalah) —
+              // JANGAN timpa state lokal; retry save dengan seq+1 agar menang.
+              // Ini menjaga editan lokal pengguna tetap aman.
+              setTimeout(function() { if (state && typeof save === 'function') save(); }, 600);
+            }
+            // fbSeq < _localSeq: tidak mungkin terjadi jika kita pakai transaction
+          }
+        }, false /* applyLocally:false — cegah double apply */);
+
       } catch(e) { _fbWriting = false; }
     }, 1200);
   };
 
-  // Saat load pertama: ambil dari Firebase jika localStorage kosong
-  // ATAU jika Firebase punya versi data yang lebih baru (fbSeq > localSeq).
-  //
-  // Bug sebelumnya: kondisi `if (!localData)` terlalu ketat — setiap proses
-  // yang memanggil save() sebelum Firebase merespons (mis. recordMomentumHistory
-  // di init()) akan mengisi localStorage lebih dulu, sehingga Firebase diabaikan
-  // selamanya di sesi itu, dan progres tidak terbawa ke tab/browser baru.
-  //
-  // Fix: bandingkan _localSeq. Firebase menang hanya jika seq-nya lebih tinggi,
-  // sehingga data lokal yang lebih baru tidak tertimpa oleh Firebase yang lebih lama.
-  dataRef.once('value', function(snapshot) {
+  // ── Real-time listener: load pertama + sync antar device ────────────────
+  var _initialLoadDone = false;
+
+  dataRef.on('value', function(snapshot) {
     var fbData = snapshot.val();
+
+    // ── LOAD PERTAMA ──────────────────────────────────────────────────────
+    if (!_initialLoadDone) {
+      _initialLoadDone = true;
+      if (!fbData) return;
+      var localData  = localStorage.getItem(STORAGE_KEY);
+      var localState = null;
+      if (localData) { try { localState = JSON.parse(localData); } catch(e) {} }
+      // Terapkan Firebase jika tidak ada data lokal atau Firebase lebih baru
+      if (!localState || _isNewer(fbData, localState)) { _applyFbData(fbData); }
+      return;
+    }
+
+    // ── REAL-TIME UPDATE dari device/tab lain ─────────────────────────────
     if (!fbData) return;
-    var localData = localStorage.getItem(STORAGE_KEY);
-    var localSeq = 0;
-    var fbSeq = fbData._localSeq || 0;
-    if (localData) {
-      try { var _lp = JSON.parse(localData); localSeq = _lp._localSeq || 0; } catch(e) {}
+
+    // Abaikan echo write kita sendiri (pageId sama = dari page ini, seq sama = masih update lama)
+    if (fbData._pageId === _pageId && (fbData._localSeq || 0) === _localSeq) return;
+
+    if (_fbWriting) {
+      // Sedang menulis — buffer jika lebih baru, terapkan setelah write selesai
+      if (!state || _isNewer(fbData, state)) _pendingFbData = fbData;
+      return;
     }
-    // Muat dari Firebase jika: tidak ada data lokal, ATAU Firebase punya versi lebih baru
-    if (!localData || fbSeq > localSeq) {
-      try {
-        var merged = migrateState(deepMerge(DEFAULT_STATE(), fbData));
-        _localSeq = merged._localSeq || 0;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-        state = merged;
-        rollover(); recomputeLifeScore(); render();
-      } catch(e) {}
+
+    if (!state || _isNewer(fbData, state)) {
+      _applyFbData(fbData);
+      if (typeof showToast === 'function') showToast('🔄 Data disinkronkan dari device lain', 'info');
     }
+
+  }, function(err) {
+    console.warn('[Firebase] Sync error:', err.message);
   });
 
-  // Listener real-time (multi-device sync) DIMATIKAN atas permintaan pengguna.
-  // Alasan: listener ini sebelumnya bisa memicu render ulang / kemungkinan reset di tengah hari
-  // setiap kali ada perubahan data di Firebase (dari device/tab lain), yang terasa seperti
-  // "sistem ngerefresh sendiri". Sekarang data tetap DIKIRIM ke Firebase (lihat window.save di atas)
-  // dan tetap DIAMBIL sekali saat pertama kali dibuka (dataRef.once di atas), tapi aplikasi TIDAK
-  // lagi mendengarkan perubahan real-time dari device lain selama sesi berjalan.
-  // Reset harian (rollover) sekarang HANYA dipicu oleh timer 30 detik lokal saat tanggal berganti.
-  //
-  // dataRef.on('value', function(snapshot) { ... }); // <- dinonaktifkan
 })();
 </script>
 </body>
