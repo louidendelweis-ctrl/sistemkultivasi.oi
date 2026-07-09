@@ -7,10 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800;900&family=Cinzel+Decorative:wght@400;700;900&family=Rajdhani:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,800;1,700&family=Orbitron:wght@600;800&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<!-- Firebase Realtime Database SDK -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js" onerror="console.warn('Chart.js gagal dimuat dari CDN — fitur grafik/chart tidak akan berfungsi. Periksa koneksi internet.')"></script>
 <style>
 :root{
   --void:#08080F;
@@ -75,6 +72,23 @@ a{color:var(--cyan);}
     text-shadow: 0 0 15px rgba(45, 212, 244, 0.4);
 }
 @keyframes holoFlow { 0% { background-position: 0% 50%; } 100% { background-position: 100% 50%; } }
+
+.name-holo-gold, .name-holo-rainbow, .name-holo-silver {
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: holoFlow 4s linear infinite;
+}
+.name-holo-gold { background-image: linear-gradient(90deg, #ffffff, #F0B93B, #fff9e6, #F7D27A, #ffffff); }
+.name-holo-rainbow { background-image: linear-gradient(90deg, #FF4768, #F0B93B, #34D399, #2DD4F4, #7C5CFF, #FF4768); }
+.name-holo-silver { background-image: linear-gradient(90deg, #cfd3da, #ffffff, #9aa0ab, #ffffff, #cfd3da); }
+.name-holo-swatch { width:30px; height:30px; border-radius:50%; border:2px solid var(--border-strong); cursor:pointer; flex:0 0 auto; display:flex; align-items:center; justify-content:center; transition:all 0.15s; }
+.name-holo-swatch.active { border-color: var(--arise-bright); box-shadow: 0 0 0 2px rgba(124,92,255,0.35); }
+.name-holo-swatch.swatch-none { background: rgba(255,255,255,0.05); color: var(--muted); font-size:10px; }
+.name-holo-swatch.swatch-gold { background: linear-gradient(135deg, #ffffff, #F0B93B, #F7D27A); }
+.name-holo-swatch.swatch-rainbow { background: linear-gradient(135deg, #FF4768, #F0B93B, #34D399, #2DD4F4, #7C5CFF); }
+.name-holo-swatch.swatch-silver { background: linear-gradient(135deg, #cfd3da, #ffffff, #9aa0ab); }
 
 #bg-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
 
@@ -510,6 +524,7 @@ a{color:var(--cyan);}
 .quest-card.status-done{opacity:0.55;}
 .quest-card.is-legendary{background:linear-gradient(110deg, rgba(240,185,59,0.07), rgba(124,92,255,0.05) 60%);}
 .quest-card.is-mythic{background:linear-gradient(110deg, rgba(239,68,68,0.10), rgba(220,38,38,0.05) 60%); border-color:rgba(239,68,68,0.25);}
+.quest-drag-over{outline:2px dashed var(--arise);outline-offset:-2px;}
 .quest-title-row{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;}
 .quest-title{font-family:var(--font-body);font-weight:600;font-size:14px;line-height:1.3;}
 .quest-meta{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center;}
@@ -2292,6 +2307,66 @@ function toggleSpiritCompanion(){
 
 const STORAGE_KEY = 'jian-ascension-state-vfinal-updated';
 
+// ═══ FIREBASE REALTIME DATABASE (cloud backup & sync) ═══
+// Link database ditanam di sini — data otomatis disimpan & ditarik dari sini
+// via REST API (tanpa perlu library Firebase SDK).
+const FIREBASE_DB_URL = 'https://database-d9332-default-rtdb.asia-southeast1.firebasedatabase.app';
+const FIREBASE_DATA_PATH = 'mysistem-jian-ascension'; // node tempat data disimpan di Firebase
+let _fbSyncTimer = null;
+let _fbSyncing = false;
+let _fbErrNotified = false;
+
+function _fbUrl(){ return `${FIREBASE_DB_URL}/${FIREBASE_DATA_PATH}.json`; }
+
+// Ambil data terbaru dari Firebase. Return null kalau gagal/kosong.
+async function firebasePull(){
+  try{
+    const res = await fetch(_fbUrl(), { cache: 'no-store' });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    return data || null;
+  } catch(e){
+    console.error('[FIREBASE] Gagal mengambil data:', e);
+    return null;
+  }
+}
+
+// Kirim state saat ini ke Firebase (debounced, dipanggil dari save()).
+function firebasePush(snapshot){
+  clearTimeout(_fbSyncTimer);
+  _fbSyncTimer = setTimeout(async () => {
+    if(_fbSyncing) return;
+    _fbSyncing = true;
+    try{
+      const res = await fetch(_fbUrl(), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(snapshot),
+      });
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      _fbErrNotified = false;
+    } catch(e){
+      console.error('[FIREBASE] Gagal sinkron ke cloud:', e);
+      if(!_fbErrNotified){
+        _fbErrNotified = true;
+        showToast('⚠️ Gagal sinkron ke cloud. Progres tetap tersimpan di perangkat ini.', 'bad');
+      }
+    } finally {
+      _fbSyncing = false;
+    }
+  }, 800);
+}
+
+// Bandingkan data lokal vs cloud, pakai yang paling baru (berdasarkan meta.updatedAt).
+async function firebaseResolveOnLoad(localState){
+  const cloud = await firebasePull();
+  if(!cloud) return localState;
+  if(!localState) return cloud;
+  const localTs = (localState.meta && localState.meta.updatedAt) || 0;
+  const cloudTs = (cloud.meta && cloud.meta.updatedAt) || 0;
+  return cloudTs > localTs ? cloud : localState;
+}
+
 const STAT_META = {
   strength:{label:'Strength',group:'Body',color:'var(--jade)'}, health:{label:'Health',group:'Body',color:'var(--jade)'},
   discipline:{label:'Discipline',group:'Soul',color:'var(--gold)'}, knowledge:{label:'Knowledge',group:'Mind',color:'var(--cyan)'},
@@ -2685,7 +2760,7 @@ const ACHIEVEMENT_DEFS = [
 // ─── HALL OF FAME DEFINITIONS ────────────────────────────────────────────────
 // tier: 'b'=Bronze 🥉, 's'=Silver 🥈, 'g'=Gold 🥇, 'p'=Platinum 🏆, 'l'=Legend ⚜️
 const HOF_DEFS = [
-  // ── GOALS ───────────ia�──────────────────────────────────────────────────────
+  // ── GOALS ───────────────────────────────────────────────────────────────────
   {id:'hof_goal1',   cat:'goals',   tier:'b', icon:'🥉', label:'Goal Pertama Selesai',   desc:'Menyelesaikan goal pertama',              check:s=>(s.character.goalsCompleted||0)>=1},
   {id:'hof_goal5',   cat:'goals',   tier:'s', icon:'🥈', label:'5 Goal Selesai',         desc:'Menyelesaikan 5 goal',                    check:s=>(s.character.goalsCompleted||0)>=5},
   {id:'hof_goal10',  cat:'goals',   tier:'g', icon:'🥇', label:'10 Goal Selesai',        desc:'Menyelesaikan 10 goal',                   check:s=>(s.character.goalsCompleted||0)>=10},
@@ -2866,6 +2941,7 @@ function DEFAULT_SETTINGS(){
     showLifePrinciple: true,
     showRefleksiHome: true, showRefleksiProfile: true,
     showMedalBar: true,
+    nameHoloStyle: 'none',
     bgTheme: 'void',
     navGroupOrder: ['home','quest','progres','finansial','profil'],
   };
@@ -2888,7 +2964,6 @@ const SECTION_DEFS = {
     { id:'habits',           label:'🔄 Habit Tracker' },
     { id:'spiritual',        label:'🌙 Ritual Spiritual & Kustom' },
     { id:'mood-energi',      label:'🎭 Mood & Energi Harian' },
-    { id:'daily-journal',    label:'📓 Jurnal Harian' },
   ],
   quests: [
     { id:'quest-list',       label:'⚡ Daftar Quest & Filter' },
@@ -3055,27 +3130,69 @@ function renderSectionMgrModal() {
     ['boss','💰 Finansial'], ['profile','👤 Profile'], ['hall','👑 Fame'],
     ['lifeenc','📖 Life Enc'], ['realmenc','🌌 Realm'],
   ];
-  const rows = sorted.map((d, idx) => {
-    const isMoved = !!d.movedTo;
-    const moveOpts = allTabs.filter(([t]) => t !== tab).map(([t, l]) => `<option value="${t}" ${d.movedTo === t ? 'selected' : ''}>${l}</option>`).join('');
-    return `
-    <div draggable="true"
-      ondragstart="secMgrDragStart('${tab}','${d.id}',event)"
-      ondragend="secMgrDragEnd(event)"
-      ondragover="secMgrDragOver(event)"
-      ondragleave="secMgrDragLeave(event)"
-      ondrop="secMgrDrop('${tab}','${d.id}',event)"
-      style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border);cursor:grab;transition:background 0.15s;">
-      <span style="font-size:16px;color:var(--muted);flex-shrink:0;cursor:grab;user-select:none;" title="Seret untuk reorder">⠿</span>
-      <button class="btn btn-sm" style="min-width:78px;flex-shrink:0;background:${isMoved ? 'rgba(155,107,255,0.12)' : d.visible ? 'rgba(52,211,153,0.13)' : 'rgba(255,71,104,0.10)'};color:${isMoved ? 'var(--arise)' : d.visible ? 'var(--jade)' : 'var(--crimson)'};border-color:${isMoved ? 'rgba(155,107,255,0.3)' : d.visible ? 'rgba(52,211,153,0.3)' : 'rgba(255,71,104,0.3)'};" onclick="toggleSectionVisible('${tab}','${d.id}')">${isMoved ? '↗ Dipindah' : d.visible ? '✓ Aktif' : '✗ Nonaktif'}</button>
-      <span style="flex:1;font-size:13px;color:${isMoved ? 'var(--arise)' : d.visible ? 'var(--bone)' : 'var(--muted)'};">${d.label}</span>
-      <select class="input" style="font-size:11px;padding:3px 6px;max-width:110px;flex-shrink:0;background:var(--surface);border-color:var(--border);color:var(--muted);" title="Pindah ke tab lain" onchange="moveSectionToTab('${tab}','${d.id}',this.value);this.blur()">
-        ${moveOpts}
-      </select>
-      <button class="btn btn-ghost btn-sm" style="padding:4px 10px;font-size:14px;" ${idx === 0 ? 'disabled' : ''} onclick="moveSectionOrder('${tab}','${d.id}',-1)">▲</button>
-      <button class="btn btn-ghost btn-sm" style="padding:4px 10px;font-size:14px;" ${idx === sorted.length - 1 ? 'disabled' : ''} onclick="moveSectionOrder('${tab}','${d.id}',1)">▼</button>
-    </div>`;
+  // Kumpulkan seksi tamu yang dipindah ke tab ini
+  const _guestDefs = [];
+  Object.entries(SECTION_DEFS).forEach(([ft, fdefs]) => {
+    if (ft === tab) return;
+    fdefs.forEach(def => {
+      const c = ((state.sectionConfig || {})[ft] || {})[def.id] || {};
+      if (c.movedTo === tab) _guestDefs.push({ ...def, type:'guest', fromTab: ft });
+    });
+  });
+  // Pastikan slot order tamu ada di sectionConfig tab tujuan
+  if (!state.sectionConfig[tab]) state.sectionConfig[tab] = {};
+  _guestDefs.forEach(def => {
+    if (!state.sectionConfig[tab][def.id]) state.sectionConfig[tab][def.id] = {};
+    if (state.sectionConfig[tab][def.id].order === undefined) {
+      const maxOrd = Math.max(-1, ...Object.values(state.sectionConfig[tab]).map(c => (c && c.order !== undefined) ? c.order : -1));
+      state.sectionConfig[tab][def.id].order = maxOrd + 1;
+    }
+  });
+  // Daftar native (belum dipindah) + tamu, diurutkan bersama
+  const _nativeDefs = sorted.filter(d => !d.movedTo).map(d => ({ ...d, type:'native' }));
+  const _allDefs = [..._nativeDefs, ..._guestDefs];
+  _allDefs.sort((a,b) => {
+    const oa = ((state.sectionConfig[tab] || {})[a.id] || {}).order;
+    const ob = ((state.sectionConfig[tab] || {})[b.id] || {}).order;
+    return (oa !== undefined ? oa : 99) - (ob !== undefined ? ob : 99);
+  });
+  const rows = _allDefs.map((d, idx) => {
+    if (d.type === 'guest') {
+      const ftLabel = _SMG_TAB_LABELS[d.fromTab] || d.fromTab;
+      const gMoveOpts = allTabs.filter(([t]) => t !== d.fromTab).map(([t, l]) => `<option value="${t}" ${t === tab ? 'selected' : ''}>${l || '— Tab Asli —'}</option>`).join('');
+      return `
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border);background:rgba(124,92,255,0.05);">
+        <span style="font-size:16px;color:var(--muted);flex-shrink:0;user-select:none;">⠿</span>
+        <span style="font-size:11px;color:var(--arise);flex-shrink:0;white-space:nowrap;font-weight:700;">↗ ${ftLabel}</span>
+        <span style="flex:1;font-size:13px;color:var(--arise);">${d.label}</span>
+        <select class="input" style="font-size:11px;padding:3px 6px;max-width:110px;flex-shrink:0;background:var(--surface);border-color:rgba(124,92,255,0.3);color:var(--muted);" title="Pindah ke tab lain" onchange="moveSectionToTab('${d.fromTab}','${d.id}',this.value);this.blur()">
+          ${gMoveOpts}
+        </select>
+        <button class="btn btn-ghost btn-sm" style="padding:4px 10px;font-size:14px;" ${idx === 0 ? 'disabled' : ''} onclick="moveUnifiedOrder('${tab}','${d.id}',-1)">▲</button>
+        <button class="btn btn-ghost btn-sm" style="padding:4px 10px;font-size:14px;" ${idx === _allDefs.length - 1 ? 'disabled' : ''} onclick="moveUnifiedOrder('${tab}','${d.id}',1)">▼</button>
+      </div>`;
+    } else {
+      const moveOpts = allTabs.filter(([t]) => t !== tab).map(([t, l]) => `<option value="${t}">${l}</option>`).join('');
+      return `
+      <div draggable="true"
+        ondragstart="secMgrDragStart('${tab}','${d.id}',event)"
+        ondragend="secMgrDragEnd(event)"
+        ondragover="secMgrDragOver(event)"
+        ondragleave="secMgrDragLeave(event)"
+        ondrop="secMgrDrop('${tab}','${d.id}',event)"
+        style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border);cursor:grab;transition:background 0.15s;">
+        <span style="font-size:16px;color:var(--muted);flex-shrink:0;cursor:grab;user-select:none;" title="Seret untuk reorder">⠿</span>
+        <button class="btn btn-sm" style="min-width:78px;flex-shrink:0;background:${d.visible ? 'rgba(52,211,153,0.13)' : 'rgba(255,71,104,0.10)'};color:${d.visible ? 'var(--jade)' : 'var(--crimson)'};border-color:${d.visible ? 'rgba(52,211,153,0.3)' : 'rgba(255,71,104,0.3)'};" onclick="toggleSectionVisible('${tab}','${d.id}')">${d.visible ? '✓ Aktif' : '✗ Nonaktif'}</button>
+        <span style="flex:1;font-size:13px;color:${d.visible ? 'var(--bone)' : 'var(--muted)'};">${d.label}</span>
+        <select class="input" style="font-size:11px;padding:3px 6px;max-width:110px;flex-shrink:0;background:var(--surface);border-color:var(--border);color:var(--muted);" title="Pindah ke tab lain" onchange="moveSectionToTab('${tab}','${d.id}',this.value);this.blur()">
+          <option value="">— Tab Asli —</option>${moveOpts}
+        </select>
+        <button class="btn btn-ghost btn-sm" style="padding:4px 10px;font-size:14px;" ${idx === 0 ? 'disabled' : ''} onclick="moveUnifiedOrder('${tab}','${d.id}',-1)">▲</button>
+        <button class="btn btn-ghost btn-sm" style="padding:4px 10px;font-size:14px;" ${idx === _allDefs.length - 1 ? 'disabled' : ''} onclick="moveUnifiedOrder('${tab}','${d.id}',1)">▼</button>
+      </div>`;
+    }
   }).join('');
+  const guestRows = '';
   const _navOrder = (state && state.settings && Array.isArray(state.settings.navGroupOrder))
     ? state.settings.navGroupOrder : ['home','quest','progres','finansial','profil'];
   const _navLabels = { home:'🏠 Home', quest:'⚔️ Quest', progres:'📊 Progres', finansial:'💰 Finansial', profil:'👤 Profil' };
@@ -3213,6 +3330,11 @@ function migrateState(s){
   if(!s.spiritual.sunnahBonusDate) s.spiritual.sunnahBonusDate = '';
   if(!s.customRituals) s.customRituals = [];
   if(!s.charHistory) s.charHistory = {level:[],hp:[],realm:[],streak:[]};
+  if(!Array.isArray(s.charHistory.level))  s.charHistory.level  = [];
+  if(!Array.isArray(s.charHistory.hp))     s.charHistory.hp     = [];
+  if(!Array.isArray(s.charHistory.realm))  s.charHistory.realm  = [];
+  if(!Array.isArray(s.charHistory.streak)) s.charHistory.streak = [];
+  if(!Array.isArray(s.meta.questOrder)) s.meta.questOrder = [];
   if(!s.refleksi) s.refleksi = {journals:[],questions:[]};
   if(!Array.isArray(s.refleksi.journals)) s.refleksi.journals = [];
   if(!Array.isArray(s.refleksi.questions)) s.refleksi.questions = [];
@@ -3261,7 +3383,8 @@ function deepMerge(def, loaded){
 }
 
 function loadState(){ try{ const saved = localStorage.getItem(STORAGE_KEY); if(saved) return JSON.parse(saved); } catch(e) { console.error(e); } return null; }
-function save(){ clearTimeout(saveTimer); saveTimer = setTimeout(()=>{ if(!state) return; try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) {} }, 350); }
+let _saveErrNotified = false;
+function save(){ clearTimeout(saveTimer); saveTimer = setTimeout(()=>{ if(!state) return; try{ if(!state.meta) state.meta = {}; state.meta.updatedAt = Date.now(); localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); _saveErrNotified = false; firebasePush(state); } catch(e) { console.error('[MYSISTEM] Gagal menyimpan data:', e); if(!_saveErrNotified){ _saveErrNotified = true; showToast('⚠️ Gagal menyimpan! Storage penuh atau mode private. Export data sekarang untuk menghindari kehilangan progres.', 'bad'); } } }, 350); }
 
 function addActivityLog(note, exp = 0) { const today = todayStr(); state.meta.activityLog = state.meta.activityLog || {}; state.meta.activityLog[today] = (state.meta.activityLog[today] || 0) + 1; if(note) { state.meta.activityNotes = state.meta.activityNotes || {}; state.meta.activityNotes[today] = state.meta.activityNotes[today] || []; state.meta.activityNotes[today].push({ text: note, exp, ts: Date.now() }); } }
 
@@ -3632,7 +3755,7 @@ function completeQuest(id){
   state.character.hp = Math.min(state.character.maxHp, state.character.hp + hpGainForQuest(q)); // Restore HP (skala kesulitan)
   logHpChange(state.character.hp - _prevHp631, `Selesai Quest: ${q.title}`);
   { if(!state.charHistory) state.charHistory={level:[],hp:[],realm:[],streak:[]}; const _hpD=todayStr(); if(!state.charHistory.hp.length||state.charHistory.hp[state.charHistory.hp.length-1].ts!==_hpD) state.charHistory.hp.push({ts:_hpD, val:state.character.hp}); }
-  if(state.settings.showFloatingExp) showFloatingExp(exp); SFX.success(); checkAchievements(); render(); save();
+  if(state.settings.showFloatingExp) showFloatingExp(exp); SFX.success(); showToast(`Selamat, kamu menyelesaikan quest: ${q.title}`, 'ach'); checkAchievements(); render(); save();
   gainBondExp(2);
   const _pendingCore = state.quests.filter(x=>x.isCore && x.status==='pending').length;
   if(_pendingCore === 0){
@@ -3654,7 +3777,7 @@ function failQuest(id){
   if(penalty > 0) gainExp(-penalty); 
   bumpStat('discipline', -3);
   
-  state.character.streak = Math.max(0, state.character.streak-1); state.character.realmEnergy = Math.max(0, state.character.realmEnergy-10);
+  state.character.realmEnergy = Math.max(0, state.character.realmEnergy-10);
   state.character.failedQuests = (state.character.failedQuests || 0) + 1;
   
   const hpLoss = hpLossForQuest(q);
@@ -3804,7 +3927,7 @@ function rollover(){
   // → Firebase data dengan _localSeq lebih tinggi selalu menang di _isNewer(), menimpa
   // streak=1 yang baru saja diset. Sekarang save() dipanggil sebelum return agar state
   // first-open langsung persist + _localSeq naik + Firebase dapat push yang benar.
-  if(!state.meta.lastActiveDate){ state.meta.lastActiveDate = today; state.meta.lastWeekKey = weekKey(new Date()); state.meta.lastMonthKey = monthKey(new Date()); state.character.streak = Math.max(state.character.streak||0, 1); state.character.longestStreak = Math.max(state.character.longestStreak||0, state.character.streak); save(); return; }
+  if(!state.meta.lastActiveDate){ state.meta.lastActiveDate = today; state.meta.lastWeekKey = weekKey(new Date()); state.meta.lastMonthKey = monthKey(new Date()); state.character.streak = Math.max(state.character.streak||0, 1); state.character.longestStreak = Math.max(state.character.longestStreak||0, state.character.streak); if(!state.charHistory) state.charHistory={level:[],hp:[],realm:[],streak:[]}; if(!state.charHistory.streak.some(s=>s.ts===today)) state.charHistory.streak.push({ts:today, val:state.character.streak}); if(!state.charHistory.realm||!state.charHistory.realm.length){ const _fr=state.realms&&state.realms[state.character.realmIndex||0]; if(_fr) state.charHistory.realm.push({ts:today, val:_fr.nameID}); } state.meta.activityLog=state.meta.activityLog||{}; if(!state.meta.activityLog[today]) state.meta.activityLog[today]=1; save(); return; }
   const activeShift = getTodayActiveShift(); if(activeShift !== 'libur' && activeShift !== 'custom') state.character.shift = activeShift;
   if(state.meta.lastActiveDate === today) return;
 
@@ -3899,6 +4022,7 @@ function rollover(){
   const wk = weekKey(new Date()); if(wk !== state.meta.lastWeekKey){ state.quests.filter(q=>q.type==='weekly').forEach(q=>q.status='pending'); state.meta.lastWeekKey = wk; }
   const mk = monthKey(new Date()); if(mk !== state.meta.lastMonthKey){ state.quests.filter(q=>q.type==='monthly').forEach(q=>q.status='pending'); state.meta.lastMonthKey = mk; }
   recordMomentumHistory();
+  state.meta.activityLog=state.meta.activityLog||{}; if(!state.meta.activityLog[today]) state.meta.activityLog[today]=1;
   state.meta.lastActiveDate = today; checkAchievements(); save();
 }
 
@@ -4035,14 +4159,29 @@ function toggleHabit(id, dateStr){
   const h = state.habits.find(x=>x.id===id); if(!h) return;
   if(!h.log) h.log = {}; const isDone = !!h.log[dateStr];
   if(isDone){
-    delete h.log[dateStr]; if(state.meta.activityLog && state.meta.activityLog[dateStr]) { state.meta.activityLog[dateStr] = Math.max(0, state.meta.activityLog[dateStr] - 1); }
-    gainExp(-50); bumpStat('discipline', -1); SFX.error();
+    // Terkunci: habit yang sudah dicentang tidak bisa dibatalkan lagi.
+    return;
   } else {
     h.log[dateStr] = true; addActivityLog(`Habit Complete: ${h.title}`);
     const streak = habitConsecutiveDays(h, dateStr);
     const exp = habitExpByStreak(streak);
     gainExp(exp); bumpStat('discipline', 1); showFloatingExp(exp); SFX.success();
   } render(); save();
+  checkAllHabitsDoneToday(dateStr);
+}
+function checkAllHabitsDoneToday(dateStr){
+  if(dateStr !== todayStr()) return;
+  const habits = state.habits || [];
+  if(habits.length > 0 && habits.every(h => h.log && h.log[dateStr])){
+    SFX.levelUp();
+    showToast('🎉 Semua Habit Hari Ini Selesai!', 'ach');
+    // Setelah efek selesai tampil, habit di-refresh (dikosongkan lagi) agar bisa
+    // dicentang ulang di hari yang sama — sesi berulang, bukan sekali per hari.
+    setTimeout(() => {
+      habits.forEach(h => { if(h.log && h.log[dateStr]) delete h.log[dateStr]; });
+      render(); save();
+    }, 1600);
+  }
 }
 function addHabit(){ const titleEl = document.getElementById('ah-title'); const title = titleEl.value.trim(); if(!title){ titleEl.focus(); return; } state.habits.push({ id:uid('h'), title, log:{}, createdAt:Date.now() }); titleEl.value=''; closeModal('modal-add-habit'); render(); save(); }
 function deleteHabit(id){ const h = state.habits.find(x=>x.id===id); if(!h) return; openConfirm('Hapus habit "'+escapeHtml(h.title)+'" beserta seluruh riwayatnya?', ()=>{ state.habits = state.habits.filter(x=>x.id!==id); render(); save(); }); }
@@ -4626,20 +4765,20 @@ function renderDailyJournal() {
     const pastEntries = allPast.slice(0, 3);
     const hasMore = allPast.length > 3;
     const dayNames = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
-    function fmtDate(d) {
+    function fmtDateJournal(d) {
         const dt = new Date(d + 'T00:00:00');
         return dayNames[dt.getDay()] + ', ' + d.slice(8) + '/' + d.slice(5,7);
     }
     const pastHtml = pastEntries.length ? pastEntries.map(([d, t]) =>
         `<div style="padding:10px 0; border-top:1px solid var(--border);">
-            <div style="font-size:10.5px; color:var(--muted); font-family:var(--font-system); font-weight:700; letter-spacing:0.5px; margin-bottom:4px;">${fmtDate(d)}</div>
+            <div style="font-size:10.5px; color:var(--muted); font-family:var(--font-system); font-weight:700; letter-spacing:0.5px; margin-bottom:4px;">${fmtDateJournal(d)}</div>
             <div style="font-size:12.5px; color:var(--bone); line-height:1.55; white-space:pre-wrap; max-height:60px; overflow:hidden;">${escapeHtml(t.trim())}</div>
         </div>`).join('') : '';
     return `
     <div class="section-title">📓 Jurnal Harian</div>
     <div class="card glass-panel">
         <div class="row-between small" style="margin-bottom:8px;">
-            <span style="color:var(--muted); font-weight:700; letter-spacing:0.5px; font-family:var(--font-system);">${fmtDate(today)}</span>
+            <span style="color:var(--muted); font-weight:700; letter-spacing:0.5px; font-family:var(--font-system);">${fmtDateJournal(today)}</span>
             <span id="journal-save-ind" style="font-size:10px; color:${todayText ? 'var(--jade)' : 'var(--muted-2)'}; font-family:var(--font-system);">${todayText ? '✓ Tersimpan' : 'Belum ada catatan'}</span>
         </div>
         <textarea
@@ -4658,14 +4797,14 @@ function renderDailyJournal() {
 function openJournalHistory() {
     const today = todayStr();
     const dayNames = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
-    function fmtDate(d) { const dt = new Date(d+'T00:00:00'); return dayNames[dt.getDay()]+', '+d.slice(8)+'/'+d.slice(5,7)+'/'+d.slice(0,4); }
+    function fmtDateHistory(d) { const dt = new Date(d+'T00:00:00'); return dayNames[dt.getDay()]+', '+d.slice(8)+'/'+d.slice(5,7)+'/'+d.slice(0,4); }
     const entries = Object.entries(state.dailyJournal||{}).filter(([,t])=>t&&t.trim()).sort((a,b)=>b[0].localeCompare(a[0]));
     const body = document.getElementById('journal-history-body');
     if(body) {
         body.innerHTML = entries.length ? entries.map(([d,t])=>`
         <div style="padding:14px 0; border-bottom:1px solid var(--border);">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                <span style="font-size:10.5px;color:var(--arise);font-family:var(--font-system);font-weight:700;letter-spacing:0.5px;">${fmtDate(d)}</span>
+                <span style="font-size:10.5px;color:var(--arise);font-family:var(--font-system);font-weight:700;letter-spacing:0.5px;">${fmtDateHistory(d)}</span>
                 ${d===today?'<span style="font-size:9px;background:rgba(124,92,255,0.2);color:var(--arise-bright);padding:1px 6px;border-radius:10px;font-family:var(--font-system);">HARI INI</span>':''}
             </div>
             <div style="font-size:13px;color:var(--bone);line-height:1.65;white-space:pre-wrap;">${escapeHtml(t.trim())}</div>
@@ -5132,7 +5271,7 @@ function renderRitualButton(item, isCustom = false) {
         return `<div class="spirit-btn">
             <div style="font-size:14px; margin-bottom:6px;">${item.icon} ${escapeHtml(item.label)}</div>
             <div style="display:flex; justify-content:space-between; gap:4px; margin-top:auto;">
-               <button class="btn btn-secondary btn-sm" style="flex:1; color:var(--jade); border-color:rgba(52,211,153,0.3);" onclick="logSpiritual(${jsParam.replace('${val}','true')})">b=�</button>
+               <button class="btn btn-secondary btn-sm" style="flex:1; color:var(--jade); border-color:rgba(52,211,153,0.3);" onclick="logSpiritual(${jsParam.replace('${val}','true')})">✓</button>
                <button class="btn btn-secondary btn-sm" style="flex:1; color:var(--crimson); border-color:rgba(255,71,104,0.3);" onclick="logSpiritual(${jsParam.replace('${val}','false')})">✕</button>
             </div>
             ${isCustom ? `<button class="icon-btn" style="position:absolute; top:2px; right:2px; padding:2px;" onclick="deleteCustomRitual('${item.id}')"><svg viewBox="0 0 24 24" width="12" height="12"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2"/></svg></button>`:''}
@@ -5356,11 +5495,13 @@ function questCardHTML(q, compact){
   else if(q.status==='failed'){ actions = `<button class="btn btn-ghost btn-sm" onclick="resetQuestStatus('${q.id}')">↺ Coba Lagi</button>`; } 
   else if(q.status==='postponed'){ actions = `<button class="btn btn-ghost btn-sm" onclick="resetQuestStatus('${q.id}')">↺ Aktifkan</button>`; }
   const editFn = q.type === 'heaven_trampling' ? `openEditHeavenQuestModal('${q.id}')` : `openEditQuest('${q.id}')`;
+  const _dragAttrs = compact ? '' : `draggable="true" data-qid="${q.id}" ondragstart="qDragStart('${q.id}',event)" ondragover="qDragOver('${q.id}',event)" ondrop="qDrop('${q.id}',event)" ondragend="qDragEnd(event)"`;
   return `
-  <div class="quest-card ${tmeta.cls} status-${q.status} ${q.type==='legendary'||q.type==='heaven_trampling'?'is-legendary':q.type==='mythic'?'is-mythic':''}">
+  <div class="quest-card ${tmeta.cls} status-${q.status} ${q.type==='legendary'||q.type==='heaven_trampling'?'is-legendary':q.type==='mythic'?'is-mythic':''}" ${_dragAttrs}>
     <div class="quest-title-row">
       <div class="quest-title">${escapeHtml(q.title)}${q.isCore?'<div class="quest-core-tag">CORE HABIT</div>':''}</div>
       <div>
+        ${compact ? '' : `<button class="icon-btn quest-drag-handle" title="Seret untuk reorder" style="cursor:grab;color:var(--muted);font-size:15px;padding:2px 4px;" onmousedown="qHandleDown()">☰</button>`}
         <button class="icon-btn" onclick="${editFn}" title="Edit"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
         <button class="icon-btn" onclick="deleteQuestConfirm('${q.id}')" title="Hapus"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
       </div>
@@ -5393,7 +5534,7 @@ function renderQuests(){
       : '';
     htSection = `<button class="btn btn-gold btn-block" style="margin:10px 0 4px;" onclick="openAddHeavenQuestModal()">+ Tambah Heaven Quest</button>${userHtHtml}`;
   }
-  const order = {pending:0, postponed:1, failed:2, done:3}; list.sort((a,b)=> (order[a.status]-order[b.status]) || (b.createdAt-a.createdAt));
+  const order = {pending:0, postponed:1, failed:2, done:3}; const _qo = state.meta.questOrder || []; list.sort((a,b)=>{ const sd=order[a.status]-order[b.status]; if(sd!==0) return sd; const ia=_qo.indexOf(a.id),ib=_qo.indexOf(b.id); if(ia===-1&&ib===-1) return b.createdAt-a.createdAt; if(ia===-1) return 1; if(ib===-1) return -1; return ia-ib; });
   const normalQuests = list.length===0 && filter==='heaven_trampling' ? '' : (list.length===0 ? `<div class="empty-state card"><span class="big">Tidak ada quest</span>Coba filter lain atau tambahkan quest baru.</div>` : list.map(q=>questCardHTML(q,false)).join(''));
   return `<div data-sec-tab="quests" data-sec-id="quest-list"><div class="quest-filters">${filters.map(([key,label])=>`<button class="chip ${filter===key?'active':''}" onclick="setQuestFilter('${key}')">${label}</button>`).join('')}</div><button class="btn btn-primary btn-block" style="margin-bottom:16px;" onclick="openAddQuestModal()">+ Tambah Quest</button>${htSection}${normalQuests}</div><div data-sec-tab="quests" data-sec-id="todos">${renderTodos()}</div>`;
 }
@@ -6188,7 +6329,7 @@ function renderProfile(){
 
   const _ri = Math.max(0, Math.min(16, Number(c.realmIndex) || 0));
   const _medalBar = renderHofMedalBar(6, 'hof-medal-row-profile');
-  const _pCard = `<div class="card glass-panel pac-${_ri}"><div class="row gap-10"><div class="pav-ring pav-${_ri}" style="width:48px;height:48px;border-radius:50%;background:${c.avatarColor || 'linear-gradient(135deg,var(--arise),var(--cyan))'};flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;color:#0a0a14;font-size:18px;">${(s.characterAvatar || '⚔️')}</div><div style="flex:1;min-width:0;"><div style="font-family:var(--font-display);font-weight:600;font-size:15px;">${escapeHtml(c.name)}</div><div class="small muted">${c.age||22} tahun · ${escapeHtml(c.job||'Pejuang')} · ${escapeHtml(c.equippedTitle)}</div>${_medalBar}${renderRefleksiProfileChip()}</div></div></div>`;
+  const _pCard = `<div class="card glass-panel pac-${_ri}"><div class="row gap-10"><div class="pav-ring pav-${_ri}" style="width:48px;height:48px;border-radius:50%;background:${c.avatarColor || 'linear-gradient(135deg,var(--arise),var(--cyan))'};flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-weight:700;color:#0a0a14;font-size:18px;">${(s.characterAvatar || '⚔️')}</div><div style="flex:1;min-width:0;"><div class="${s.nameHoloStyle && s.nameHoloStyle!=='none' ? 'name-holo-'+s.nameHoloStyle : ''}" style="font-family:var(--font-display);font-weight:600;font-size:15px;">${escapeHtml(c.name)}</div><div class="small muted">${c.age||22} tahun · ${escapeHtml(c.job||'Pejuang')} · ${escapeHtml(c.equippedTitle)}</div>${_medalBar}${renderRefleksiProfileChip()}</div></div></div>`;
   const _pActivity = `<div class="section-title">Riwayat Aktivitas & Performa</div><div class="card"><div class="row-between small"><span class="muted">Quest Berhasil</span><span style="color:var(--jade)">${c.totalQuests||0}</span></div><div class="row-between small mt-10"><span class="muted">Quest Gagal</span><span style="color:var(--crimson)">${c.failedQuests||0}</span></div><div class="row-between small mt-10" style="border-top:1px solid rgba(255,255,255,0.05); padding-top:10px;"><span class="muted">Goal Tercapai</span><span style="color:var(--cyan)">${c.goalsCompleted||0}</span></div><div class="row-between small mt-10"><span class="muted">Goal Gagal/Terlewat</span><span style="color:var(--crimson)">${c.failedGoals||0}</span></div><div class="row-between small mt-10" style="border-top:1px solid rgba(255,255,255,0.05); padding-top:10px;"><span class="muted">Target Finansial Tembus</span><span style="color:var(--gold)">${c.bossesDefeated||0}</span></div><div class="row-between small mt-10"><span class="muted">Project Terlewat</span><span style="color:var(--crimson)">${c.failedProjects||0}</span></div><div class="row-between small mt-10"><span class="muted">Streak Terpanjang</span><span>${c.longestStreak||0} hari</span></div></div>`;
   const _pTimeline = `<div class="section-title">📜 Timeline Kehidupan</div><div class="card" style="padding:14px 16px;">${renderLifeTimeline()}</div>`;
   const _pRealm = `<div class="section-title">Cultivation Realms Tracker</div><div class="card">${realmHtml}</div>`;
@@ -6734,7 +6875,7 @@ function renderSettingsModal(){
   const s = state.settings;
   return `
   <div class="modal-overlay" id="modal-settings"><div class="modal-sheet settings-modal"><div class="modal-handle"></div><h2 class="modal-title">⚙️ Pengaturan OS</h2>
-    <details class="settings-section" open><summary>🧑 Profil Karakter</summary><div class="settings-body"><div class="form-group"><label>Nama Karakter</label><input id="s-char-name" type="text" class="input" value="${escapeAttr(state.character.name)}"></div><div class="form-group"><label>Pekerjaan</label><input id="s-char-job" type="text" class="input" value="${escapeAttr(state.character.job)}"></div><div class="form-group"><label>Umur</label><input id="s-char-age" type="number" class="input" value="${state.character.age}"></div><div class="form-group"><label>Avatar (Emoji)</label><input id="s-char-avatar" type="text" class="input" value="${escapeAttr(s.characterAvatar)}" maxlength="4" style="width:5rem"></div><div class="form-group"><label>✒️ Prinsip Hidup (Motto Pribadi)</label><textarea id="s-char-life-principle" class="input" rows="3" style="resize:vertical;min-height:60px;" placeholder="Contoh: Disiplin mengalahkan motivasi.">${escapeHtml(state.character.lifePrinciple||'')}</textarea></div><button class="btn btn-secondary btn-block mt-10" onclick="saveSettingsProfile()">Simpan Profil</button></div></details>
+    <details class="settings-section" open><summary>🧑 Profil Karakter</summary><div class="settings-body"><div class="form-group"><label>Nama Karakter</label><input id="s-char-name" type="text" class="input" value="${escapeAttr(state.character.name)}"></div><div class="form-group"><label>Pekerjaan</label><input id="s-char-job" type="text" class="input" value="${escapeAttr(state.character.job)}"></div><div class="form-group"><label>Umur</label><input id="s-char-age" type="number" class="input" value="${state.character.age}"></div><div class="form-group"><label>Avatar (Emoji)</label><input id="s-char-avatar" type="text" class="input" value="${escapeAttr(s.characterAvatar)}" maxlength="4" style="width:5rem"></div><div class="form-group"><label>✒️ Prinsip Hidup (Motto Pribadi)</label><textarea id="s-char-life-principle" class="input" rows="3" style="resize:vertical;min-height:60px;" placeholder="Contoh: Disiplin mengalahkan motivasi.">${escapeHtml(state.character.lifePrinciple||'')}</textarea></div><div class="form-group"><label>✨ Warna Hologram Nama</label><div style="display:flex;gap:10px;align-items:center;margin-top:4px;"><div class="name-holo-swatch swatch-none ${(!s.nameHoloStyle||s.nameHoloStyle==='none')?'active':''}" title="Tidak ada" onclick="setNameHoloStyle('none')">✕</div><div class="name-holo-swatch swatch-gold ${s.nameHoloStyle==='gold'?'active':''}" title="Emas Gradasi Putih" onclick="setNameHoloStyle('gold')"></div><div class="name-holo-swatch swatch-rainbow ${s.nameHoloStyle==='rainbow'?'active':''}" title="Pelangi Gradasi" onclick="setNameHoloStyle('rainbow')"></div><div class="name-holo-swatch swatch-silver ${s.nameHoloStyle==='silver'?'active':''}" title="Silver Hologram" onclick="setNameHoloStyle('silver')"></div></div></div><button class="btn btn-secondary btn-block mt-10" onclick="saveSettingsProfile()">Simpan Profil</button></div></details>
     <details class="settings-section"><summary>👁️ Tampilan & UI</summary><div class="settings-body">
       <div class="toggle-row"><label>Tampilkan SIP</label><input type="checkbox" ${s.showSIP?'checked':''} onchange="setSetting('showSIP',this.checked)"></div>
       <div class="toggle-row"><label>Tampilkan To-Do Cepat</label><input type="checkbox" ${s.showToDo?'checked':''} onchange="setSetting('showToDo',this.checked)"></div>
@@ -6803,6 +6944,7 @@ function renderSettingsModal(){
 
 function setSetting(key, value){ if(!state.settings) state.settings = DEFAULT_SETTINGS(); state.settings[key] = value; save(); render(); const _sEl = document.getElementById('modal-settings'); const _isOpen = _sEl && _sEl.classList.contains('open'); document.getElementById('settings-slot').innerHTML = renderSettingsModal(); if(_isOpen) openModal('modal-settings'); }
 function saveSettingsProfile(){ state.character.name = document.getElementById('s-char-name').value.trim() || 'Jian'; state.character.job = document.getElementById('s-char-job').value.trim(); state.character.age = parseInt(document.getElementById('s-char-age').value) || 22; state.settings.characterAvatar = document.getElementById('s-char-avatar').value.trim() || '⚔️'; const lpEl = document.getElementById('s-char-life-principle'); if(lpEl) state.character.lifePrinciple = lpEl.value.trim(); save(); render(); showToast('Profil disimpan!', 'ach'); }
+function setNameHoloStyle(style){ state.settings.nameHoloStyle = style; save(); render(); const slot = document.getElementById('settings-slot'); if(slot){ slot.innerHTML = renderSettingsModal(); openModal('modal-settings'); } showToast('Warna hologram nama diperbarui', 'ach'); }
 function resetModule(module){ const map = { todos: () => state.todos = [], kanban: () => state.kanban = { cards:[] }, sedekah: () => state.sedekah = { entries:[], totalLifetime:0, dailyExpGained:0, lastExpDate:'' }, habits: () => state.habits = DEFAULT_STATE().habits, }; if(!map[module]) return; openConfirm(`Reset modul "${module}"? Data karakter aman.`, () => { map[module](); save(); render(); document.getElementById('settings-slot').innerHTML = renderSettingsModal(); openModal('modal-settings'); showToast('Modul direset', 'ach'); }); }
 
 function resetPartial(type){
@@ -6811,6 +6953,7 @@ function resetPartial(type){
   openConfirm(`Reset ${label}? Sistem lain tidak terpengaruh.`, () => {
     if(type === 'day'){
       state.meta.startDate = todayStr();
+      state.character.streak = 1;
       save(); render();
       document.getElementById('settings-slot').innerHTML = renderSettingsModal();
       openModal('modal-settings');
@@ -6864,9 +7007,9 @@ function exportCSV(){
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = 'keuangan-'+todayStr()+'.csv';
     document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-    toast('✅ CSV keuangan berhasil diunduh!');
+    showToast('✅ CSV keuangan berhasil diunduh!', 'ach');
 }
-function importData(ev){ const file = ev.target.files[0]; if(!file) return; const reader = new FileReader(); reader.onload = ()=>{ try{ const parsed = JSON.parse(reader.result); state = migrateState(deepMerge(DEFAULT_STATE(), parsed)); rollover(); recomputeLifeScore(); render(); save(); showToast('Data berhasil diimpor','ach'); }catch(e){ showToast('Gagal impor: file tidak valid','bad'); } }; reader.readAsText(file); ev.target.value=''; }
+function importData(ev){ const file = ev.target.files[0]; if(!file) return; const reader = new FileReader(); reader.onload = ()=>{ try{ const parsed = JSON.parse(reader.result); state = migrateState(deepMerge(DEFAULT_STATE(), parsed)); if(state.meta && state.meta.startDate){ const _impGap = state.meta.lastActiveDate ? diffDays(state.meta.lastActiveDate, todayStr()) : 999; if(_impGap <= 1){ const _correctStreak = diffDays(state.meta.startDate, todayStr()) + 1; state.character.streak = Math.max(state.character.streak||0, _correctStreak); state.character.longestStreak = Math.max(state.character.longestStreak||0, state.character.streak); } else { state.character.streak = 0; } const _itod=todayStr(); if(!state.charHistory) state.charHistory={level:[],hp:[],realm:[],streak:[]}; if(state.character.streak>0 && !state.charHistory.streak.some(s=>s.ts===_itod)) state.charHistory.streak.push({ts:_itod, val:state.character.streak}); if(!state.charHistory.realm||!state.charHistory.realm.length){ const _ir=(state.realms||[])[state.character.realmIndex||0]; if(_ir) state.charHistory.realm.push({ts:_itod, val:_ir.nameID}); } state.meta.activityLog=state.meta.activityLog||{}; if(!state.meta.activityLog[_itod]) state.meta.activityLog[_itod]=1; state.meta.lastActiveDate=_itod; } rollover(); recomputeLifeScore(); render(); save(); showToast('Data berhasil diimpor','ach'); }catch(e){ showToast('Gagal impor: file tidak valid','bad'); } }; reader.readAsText(file); ev.target.value=''; }
 function confirmResetData(){ openConfirm('Reset SEMUA progres? Karakter kembali ke Level 1.', ()=>{ state = DEFAULT_STATE(); localStorage.removeItem(STORAGE_KEY); rollover(); render(); save(); closeModal('modal-settings'); }); }
 
 function buildModals() {
@@ -7020,6 +7163,18 @@ function spawnSedekahRewardFX(x, y, expGained, nominal){
   SFX.sedekahBlessing();
 }
 function showToast(text, type){ const c = document.getElementById('toast-container'); const t = document.createElement('div'); t.className = 'toast'+(type?' '+type:''); t.textContent = text; c.appendChild(t); setTimeout(()=>t.remove(), 2700); }
+function showWelcomeToast(){
+  const c = document.getElementById('toast-container'); if(!c) return;
+  const name = (state.character && state.character.name) ? state.character.name : '';
+  const text = 'Selamat datang, Kultivator' + (name ? ' ' + name : '') + '!';
+  const t = document.createElement('div');
+  t.className = 'toast ach';
+  t.textContent = text;
+  t.style.animationDuration = '3s';
+  c.appendChild(t);
+  SFX.breakthrough();
+  setTimeout(()=>t.remove(), 3000);
+}
 function showLevelUp(level){ const el = document.getElementById('fx-levelup'); document.getElementById('fx-levelup-title').textContent = 'Lv. '+level; el.classList.add('active'); setTimeout(()=>el.classList.remove('active'), 1500); }
 function triggerBreakthrough(realmName){ const el = document.getElementById('fx-breakthrough'); document.getElementById('fx-breakthrough-title').textContent = realmName; el.classList.add('active'); setTimeout(()=>el.classList.remove('active'), 2600); }
 function triggerBossDefeat(name){ state.character.bossesDefeated = (state.character.bossesDefeated||0)+1; const el = document.getElementById('fx-boss'); document.getElementById('fx-boss-title').textContent = name; el.classList.add('active'); setTimeout(()=>el.classList.remove('active'), 2600); }
@@ -7063,6 +7218,39 @@ function resetSchedule(shift) {
         state.schedule[shift] = JSON.parse(JSON.stringify(defaults[shift] || []));
         render(); save();
     });
+}
+
+// ═══════════════════════════════════
+// FUNGSI QUEST DRAG & DROP
+// ═══════════════════════════════════
+let _qDragId = null, _qDragAllowed = false;
+function qHandleDown(){ _qDragAllowed = true; }
+function qDragStart(id, e){
+  if(!_qDragAllowed){ e.preventDefault(); return; }
+  _qDragAllowed = false;
+  _qDragId = id; e.dataTransfer.effectAllowed='move';
+  setTimeout(()=>{ const el=document.querySelector('[data-qid="'+id+'"]'); if(el) el.style.opacity='0.4'; },0);
+}
+function qDragEnd(e){
+  _qDragId = null;
+  document.querySelectorAll('.quest-card').forEach(c=>{ c.style.opacity=''; c.classList.remove('quest-drag-over'); });
+}
+function qDragOver(id, e){
+  if(!_qDragId || _qDragId===id) return;
+  e.preventDefault(); e.dataTransfer.dropEffect='move';
+  document.querySelectorAll('.quest-card').forEach(c=>c.classList.remove('quest-drag-over'));
+  const el=document.querySelector('[data-qid="'+id+'"]'); if(el) el.classList.add('quest-drag-over');
+}
+function qDrop(id, e){
+  e.preventDefault();
+  if(!_qDragId || _qDragId===id) return;
+  const allIds = state.quests.filter(q=>q.type!=='heaven_trampling').map(q=>q.id);
+  const qo = (state.meta.questOrder||[]).filter(i=>allIds.includes(i));
+  allIds.forEach(i=>{ if(!qo.includes(i)) qo.push(i); });
+  const fi=qo.indexOf(_qDragId), ti=qo.indexOf(id);
+  if(fi===-1||ti===-1) return;
+  qo.splice(fi,1); qo.splice(ti,0,_qDragId);
+  state.meta.questOrder=qo; save(); render();
 }
 
 // ═══════════════════════════════════
@@ -7194,10 +7382,25 @@ function deleteCardFromModal() {
 }
 
 function init(){
-  let loaded = loadState(); 
+  // Load dari localStorage dulu — app langsung siap, tidak nunggu Firebase.
+  let loaded = loadState();
   state = loaded ? migrateState(deepMerge(DEFAULT_STATE(), loaded)) : DEFAULT_STATE();
-  rollover(); recomputeLifeScore(); recordMomentumHistory(); buildModals(); spiritCompanionGreet(); render(); 
-  
+  rollover(); recomputeLifeScore(); recordMomentumHistory(); buildModals(); spiritCompanionGreet(); render();
+  showWelcomeToast();
+
+  // Firebase sync di background — kalau cloud lebih baru, refresh UI otomatis.
+  firebaseResolveOnLoad(loaded).then(resolved => {
+    if(!resolved) return;
+    const localTs  = (loaded && loaded.meta && loaded.meta.updatedAt) || 0;
+    const cloudTs  = (resolved.meta && resolved.meta.updatedAt) || 0;
+    if(cloudTs > localTs){
+      state = migrateState(deepMerge(DEFAULT_STATE(), resolved));
+      rollover(); recomputeLifeScore(); recordMomentumHistory(); render();
+      showToast('☁️ Data tersinkron dari cloud!', 'good');
+      save();
+    }
+  }).catch(()=>{});
+
   // Auto-refresh interval (Midnight reset trigger)
   setInterval(() => {
       updateTimeBlockUI();
@@ -7207,7 +7410,7 @@ function init(){
           render();
           save();
       }
-  }, 30000); 
+  }, 30000);
 }
 window.onload = function() { init(); };
 
@@ -7246,16 +7449,63 @@ function openSecMgrForTab(tab) {
 // Move a section from its native tab to another tab (cross-tab move)
 function moveSectionToTab(fromTab, id, toTab) {
   _ensureSecCfg(fromTab, id);
+  const prevMovedTo = state.sectionConfig[fromTab][id].movedTo;
   if (!toTab) {
-    // Restore to original tab
+    // Restore: bersihkan slot tamu di tab tujuan sebelumnya
+    if (prevMovedTo && state.sectionConfig[prevMovedTo]) {
+      delete state.sectionConfig[prevMovedTo][id];
+    }
     delete state.sectionConfig[fromTab][id].movedTo;
     state.sectionConfig[fromTab][id].visible = true;
   } else {
+    // Pindah: bersihkan slot lama jika ganti tujuan
+    if (prevMovedTo && prevMovedTo !== toTab && state.sectionConfig[prevMovedTo]) {
+      delete state.sectionConfig[prevMovedTo][id];
+    }
     state.sectionConfig[fromTab][id].movedTo = toTab;
     state.sectionConfig[fromTab][id].visible = false;
+    // Inisialisasi slot order tamu di tab tujuan
+    _ensureSecCfg(toTab, id);
+    if (state.sectionConfig[toTab][id].order === undefined) {
+      const maxOrd = Math.max(-1, ...Object.values(state.sectionConfig[toTab]).map(c => (c && c.order !== undefined) ? c.order : -1));
+      state.sectionConfig[toTab][id].order = maxOrd + 1;
+    }
   }
+  save(); render(); _refreshSecMgr();
+}
+
+// Atur urutan unified (native + tamu) dalam satu tab
+function moveUnifiedOrder(tab, id, dir) {
+  if (!state.sectionConfig) state.sectionConfig = {};
+  if (!state.sectionConfig[tab]) state.sectionConfig[tab] = {};
+  const defs = SECTION_DEFS[tab] || [];
+  // Kumpulkan semua ID aktif di tab ini (native yg belum dipindah + tamu yg dipindah ke sini)
+  const activeIds = defs.filter(d => {
+    const c = (state.sectionConfig[tab] || {})[d.id] || {};
+    return !c.movedTo;
+  }).map(d => d.id);
+  Object.entries(SECTION_DEFS).forEach(([ft, fdefs]) => {
+    if (ft === tab) return;
+    fdefs.forEach(def => {
+      const c = ((state.sectionConfig || {})[ft] || {})[def.id] || {};
+      if (c.movedTo === tab) activeIds.push(def.id);
+    });
+  });
+  // Pastikan semua punya order di sectionConfig[tab]
+  activeIds.forEach((eid, i) => {
+    if (!state.sectionConfig[tab][eid]) state.sectionConfig[tab][eid] = {};
+    if (state.sectionConfig[tab][eid].order === undefined) state.sectionConfig[tab][eid].order = i * 10;
+  });
+  // Urutkan
+  activeIds.sort((a, b) => state.sectionConfig[tab][a].order - state.sectionConfig[tab][b].order);
+  const idx = activeIds.indexOf(id);
+  const swapIdx = idx + dir;
+  if (idx === -1 || swapIdx < 0 || swapIdx >= activeIds.length) return;
+  const tmp = state.sectionConfig[tab][activeIds[idx]].order;
+  state.sectionConfig[tab][activeIds[idx]].order = state.sectionConfig[tab][activeIds[swapIdx]].order;
+  state.sectionConfig[tab][activeIds[swapIdx]].order = tmp;
   save();
-  render();
+  if (state.ui.tab === tab) render();
   _refreshSecMgr();
 }
 
@@ -7282,7 +7532,14 @@ function injectMovedSections(currentTab) {
         const tempHtml = fn();
         const wrapper = document.createElement('div');
         wrapper.innerHTML = tempHtml;
-        const el = wrapper.querySelector('[data-sec-tab="' + fromTab + '"][data-sec-id="' + id + '"]');
+        let el = wrapper.querySelector('[data-sec-tab="' + fromTab + '"][data-sec-id="' + id + '"]');
+        if (!el && wrapper.innerHTML.trim()) {
+          // Fallback: tab single-section tidak punya wrapper data-sec-tab, bungkus seluruh kontennya
+          el = document.createElement('div');
+          el.setAttribute('data-sec-tab', fromTab);
+          el.setAttribute('data-sec-id', id);
+          el.innerHTML = wrapper.innerHTML;
+        }
         if (el) {
           el.setAttribute('data-sec-tab', currentTab);
           el.setAttribute('data-sec-id', id);
@@ -7672,6 +7929,9 @@ function getHeatmapDayScore(dateStr) {
   (state.habits || []).forEach(h => { if (h.log && h.log[dateStr]) score += 1; });
   (state.goalHistory || []).forEach(g => { if (g.completedAt === dateStr) score += 3; });
   (state.financeLog || []).forEach(e => { if (e.date === dateStr && e.type === 'in') score += 2; });
+  // Hitung hari login: lastActiveDate (hari ini) atau ada entri streak di charHistory
+  if (state.meta.lastActiveDate === dateStr) score = Math.max(score, 2);
+  else if (((state.charHistory||{}).streak||[]).some(s => s.ts === dateStr)) score = Math.max(score, 2);
   return score;
 }
 
@@ -8159,270 +8419,5 @@ function resetNavGroupOrder() {
 })();
 </script>
 
-<!-- ── FIREBASE REALTIME DATABASE INTEGRATION ── -->
-<script>
-(function() {
-  var firebaseConfig = {
-    databaseURL: "https://sistemkultivasi-default-rtdb.asia-southeast1.firebasedatabase.app/"
-  };
-  firebase.initializeApp(firebaseConfig);
-
-  var db      = firebase.database();
-  var dataRef = db.ref('mysistem/' + STORAGE_KEY);
-
-  // ID unik per page-load — dipakai untuk deteksi echo dari save sendiri.
-  // Setiap buka tab/reload menghasilkan ID baru; device lain pasti beda ID.
-  var _pageId = Math.random().toString(36).slice(2) + Date.now().toString(36);
-
-  var _fbWriting     = false;
-  var _pendingFbData = null; // update dari device lain yang masuk saat _fbWriting aktif
-
-  // Lanjutkan seq dari localStorage agar tidak kirim seq kecil setelah reload
-  var _localSeq = (function() {
-    try { var s = localStorage.getItem(STORAGE_KEY); if (s) { var p = JSON.parse(s); return p._localSeq || 0; } } catch(e) {}
-    return 0;
-  })();
-
-  // ── Perbandingan versi: seq + timestamp sebagai tiebreaker ───────────────
-  // candidate lebih baru dari ref jika seq-nya lebih tinggi,
-  // atau seq sama tapi timestamp lebih baru (mengatasi equal-seq conflict).
-  function _isNewer(candidate, ref) {
-    var cSeq = candidate._localSeq || 0, rSeq = ref._localSeq || 0;
-    if (cSeq > rSeq) return true;
-    if (cSeq === rSeq && (candidate._updatedAt || 0) > (ref._updatedAt || 0)) return true;
-    return false;
-  }
-
-  // ── Terapkan data Firebase ke state lokal ───────────────────────────────
-  function _applyFbData(fbData) {
-    try {
-      // Snapshot lokal sebelum merge — dipakai oleh Bug #1 & Bug #4 guard.
-      // Jika Firebase membawa data stale (kemarin), guard merestore section
-      // yang sudah di-mutasi rollover hari ini dari snapshot ini.
-      var _prevDate    = state && state.meta      ? state.meta.lastActiveDate    : null;
-      var _prevStreak  = state && state.character ? (state.character.streak || 0) : 0; // Bug #1 guard masih butuh ini
-      var _prevSnap    = null;
-      if (state) { try { _prevSnap = JSON.parse(JSON.stringify(state)); } catch(_se) {} }
-
-      var merged = migrateState(deepMerge(DEFAULT_STATE(), fbData));
-
-      // ── BUG #1 GUARD ──────────────────────────────────────────────────────────
-      // Masalah: init() → rollover() → streak=1 (first-open) → _localSeq=1
-      //          lalu Firebase sync datang dengan _localSeq lebih tinggi tapi streak=0
-      //          (sisa sesi sebelumnya yang belum di-rollover). Firebase "menang" di
-      //          _isNewer(), dan karena lastActiveDate=today, rollover() di dalam
-      //          _applyFbData langsung exit-early → streak tetap 0.
-      //
-      // Fix: jika lokal sudah rollover hari ini (lastActiveDate=today, streak≥1)
-      //      tapi Firebase membawa streak=0 untuk hari yang sama → tolak override itu.
-      //      Kita TIDAK menolak Firebase jika Firebase punya streak>0 (biar Firebase
-      //      menang untuk kasus cross-device yang valid).
-      var _today = (typeof todayStr === 'function') ? todayStr()
-                   : new Date().toLocaleDateString('en-CA');
-      var _streakCorrected = false;
-      if (_prevDate === _today && merged.meta && merged.meta.lastActiveDate === _today) {
-        var _fbStreak = merged.character ? (merged.character.streak || 0) : 0;
-        if (_prevStreak > 0 && _fbStreak === 0) {
-          // Firebase punya streak=0 untuk hari yang sama — ini pasti data basi/stale,
-          // bukan reset yang disengaja (tidak ada fitur reset streak di app ini).
-          merged.character.streak        = _prevStreak;
-          merged.character.longestStreak = Math.max(merged.character.longestStreak || 0, _prevStreak);
-          _streakCorrected = true;
-        }
-      }
-
-      _localSeq = merged._localSeq || 0;
-      state = merged;
-
-      // ── BUG #4 FIX: cegah double-rollover ketika lokal sudah rollover hari ini ─
-      // Skenario: init() → rollover() hari ini (streak naik, HP penalty dikenakan) →
-      // Firebase datang dengan data kemarin (_localSeq lebih tinggi dari device lain) →
-      // _applyFbData timpa state → state.lastActiveDate = kemarin → rollover() jalan
-      // lagi → HP penalty + EXP penalty dikenakan DUA KALI, streak juga naik dobel.
-      //
-      // Fix: jika lokal sudah rollover hari ini (_prevDate === today) tapi Firebase
-      // membawa data dari hari sebelumnya (state.meta.lastActiveDate !== today), kita
-      // pre-process state sebelum rollover() dipanggil:
-      //   1. Reset daily quests ke pending (sama dengan yang rollover() lakukan — idempotent)
-      //   2. Reset daily counter & sip
-      //   3. Set lastActiveDate = today → rollover() akan exit-early di guard baris 3809
-      //      tanpa menerapkan HP/EXP penalty dan streak increment lagi
-      //   4. Pertahankan streak dari lokal (yang sudah di-rollover dengan benar)
-      var _needsDoubleRolloverGuard = (
-        _prevDate === _today &&
-        state.meta && state.meta.lastActiveDate !== _today
-      );
-      if (_needsDoubleRolloverGuard && _prevSnap) {
-        // Firebase membawa data KEMARIN (stale) — lokal sudah post-rollover hari ini.
-        // Rollover() sudah: naikkan/reset streak, potong HP/EXP, mark goal/project
-        // overdue, reset daily quests, update charHistory, dll.
-        // Daripada merestore field satu per satu (rawan miss), kita restore seluruh
-        // section yang di-mutasi rollover langsung dari snapshot lokal:
-        var _rolledSections = [
-          'character',           // hp, exp, level, streak, failedQuests, failStreak, …
-          'charHistory',         // riwayat streak/level/hp yang baru ditambahkan rollover
-          'goals',               // goal overdue sudah di-mark failed oleh rollover
-          'kanban',              // project overdue sudah di-mark failed oleh rollover
-          'quests',              // daily quests sudah di-reset ke pending
-          'sip',                 // sip pagi/siang sudah di-reset
-          'spiritual',           // dailyLog[today] sudah diinisialisasi
-          'meta',                // lastActiveDate=today, completedTodayCount=0, week/monthKey
-          'momentum',            // recordMomentumHistory() di akhir rollover; key diinisialisasi migrateState(), bukan DEFAULT_STATE()
-          'achievementsUnlocked' // checkAchievements() dipanggil di akhir rollover
-        ];
-        _rolledSections.forEach(function(k) {
-          if (_prevSnap[k] !== undefined) state[k] = _prevSnap[k];
-        });
-        // Dengan meta.lastActiveDate = today (dari snapshot), rollover() akan
-        // exit-early di guard baris 3809 — tidak ada double penalty.
-        _streakCorrected = true; // push kembali ke Firebase dengan state yang benar
-      }
-
-      // ── BUG #2 FIX ────────────────────────────────────────────────────────────
-      // localStorage.setItem dipindah ke SETELAH rollover() selesai, bukan sebelumnya.
-      // Dulu: save dulu → rollover() ubah streak/lastActiveDate/quest/HP → perubahan
-      //       hilang (tidak tersimpan di localStorage, reload berikutnya re-apply stale).
-      // Sekarang: rollover() jalan dulu → baru simpan state final ke localStorage.
-      // rollover() path normal sudah memanggil save() sendiri (debounced 350ms +
-      // Firebase push) — persist sinkron di sini sekadar menjamin data langsung ada
-      // di localStorage sebelum save() async selesai.
-      rollover(); recomputeLifeScore(); render();
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(_e) {}
-
-      // Jika streak dikoreksi (Bug #1/#4 guard) push kembali ke Firebase
-      // agar device lain ikut sinkron dengan state yang sudah benar.
-      if (_streakCorrected && typeof save === 'function') save();
-    } catch(e) {}
-  }
-
-  // ── Rekonsiliasi pasca-write ─────────────────────────────────────────────
-  // Setelah setiap write selesai: terapkan buffered update ATAU baca ulang
-  // Firebase sekali untuk menangkap update yang terlewat selama window write.
-  function _postWriteReconcile() {
-    _fbWriting = false;
-    if (_pendingFbData && state && _isNewer(_pendingFbData, state)) {
-      var toApply = _pendingFbData;
-      _pendingFbData = null;
-      _applyFbData(toApply);
-      if (typeof showToast === 'function') showToast('🔄 Data disinkronkan dari device lain', 'info');
-    } else {
-      _pendingFbData = null;
-      // Baca ulang Firebase untuk tangkap equal-seq atau update yang tertahan
-      dataRef.once('value', function(snap) {
-        var latest = snap.val();
-        if (latest && latest._pageId !== _pageId && state && _isNewer(latest, state)) {
-          _applyFbData(latest);
-          if (typeof showToast === 'function') showToast('🔄 Data disinkronkan dari device lain', 'info');
-        }
-      });
-    }
-  }
-
-  // ── Patch save(): kirim ke Firebase via transaction ─────────────────────
-  // Transaction menjamin:
-  //   • device offline/stale tidak bisa timpa data yang lebih baru di Firebase
-  //   • equal-seq: tiebreak via _updatedAt (timestamp)
-  //   • _pendingFbData TIDAK direset di sini — dipertahankan hingga setelah write
-  var _origSave = window.save;
-  window.save = function() {
-    // Sync seq dari localStorage: fix parallel-tab conflict
-    try {
-      var _ls = localStorage.getItem(STORAGE_KEY);
-      if (_ls) { var _lsp = JSON.parse(_ls); if ((_lsp._localSeq || 0) > _localSeq) _localSeq = _lsp._localSeq; }
-    } catch(e) {}
-
-    _localSeq++;
-    if (state) state._localSeq = _localSeq;
-    _fbWriting = true;
-    // Sengaja TIDAK reset _pendingFbData — mungkin sudah ada update dari device lain
-    _origSave();
-
-    clearTimeout(window._fbSaveTimer);
-    window._fbSaveTimer = setTimeout(function() {
-      if (!state) { _fbWriting = false; return; }
-      try {
-        var payload       = JSON.parse(JSON.stringify(state));
-        payload._localSeq  = _localSeq;
-        payload._updatedAt = Date.now();
-        payload._pageId    = _pageId;
-
-        // Transaction: commit hanya jika payload lebih baru dari Firebase
-        dataRef.transaction(function(current) {
-          if (current && !_isNewer(payload, current)) {
-            return undefined; // abort — Firebase sudah lebih baru atau sama
-          }
-          return payload;
-        }, function(err, committed, snapshot) {
-          if (committed) {
-            // Write sukses — rekonsiliasi setelah jeda singkat
-            setTimeout(_postWriteReconcile, 800);
-          } else {
-            // Firebase tolak write — periksa alasannya
-            _fbWriting    = false;
-            _pendingFbData = null;
-            var fbData = snapshot ? snapshot.val() : null;
-            var fbSeq  = fbData ? (fbData._localSeq || 0) : 0;
-
-            if (fbData && fbSeq > _localSeq) {
-              // Firebase punya seq lebih tinggi (device lain lebih maju) — terapkan
-              if (_isNewer(fbData, state || {})) {
-                _applyFbData(fbData);
-                if (typeof showToast === 'function') showToast('🔄 Data disinkronkan dari device lain', 'info');
-              }
-            } else if (fbSeq === _localSeq) {
-              // Equal-seq conflict (clock skew tiebreak kalah) —
-              // JANGAN timpa state lokal; retry save dengan seq+1 agar menang.
-              // Ini menjaga editan lokal pengguna tetap aman.
-              setTimeout(function() { if (state && typeof save === 'function') save(); }, 600);
-            }
-            // fbSeq < _localSeq: tidak mungkin terjadi jika kita pakai transaction
-          }
-        }, false /* applyLocally:false — cegah double apply */);
-
-      } catch(e) { _fbWriting = false; }
-    }, 1200);
-  };
-
-  // ── Real-time listener: load pertama + sync antar device ────────────────
-  var _initialLoadDone = false;
-
-  dataRef.on('value', function(snapshot) {
-    var fbData = snapshot.val();
-
-    // ── LOAD PERTAMA ──────────────────────────────────────────────────────
-    if (!_initialLoadDone) {
-      _initialLoadDone = true;
-      if (!fbData) return;
-      var localData  = localStorage.getItem(STORAGE_KEY);
-      var localState = null;
-      if (localData) { try { localState = JSON.parse(localData); } catch(e) {} }
-      // Terapkan Firebase jika tidak ada data lokal atau Firebase lebih baru
-      if (!localState || _isNewer(fbData, localState)) { _applyFbData(fbData); }
-      return;
-    }
-
-    // ── REAL-TIME UPDATE dari device/tab lain ─────────────────────────────
-    if (!fbData) return;
-
-    // Abaikan echo write kita sendiri (pageId sama = dari page ini, seq sama = masih update lama)
-    if (fbData._pageId === _pageId && (fbData._localSeq || 0) === _localSeq) return;
-
-    if (_fbWriting) {
-      // Sedang menulis — buffer jika lebih baru, terapkan setelah write selesai
-      if (!state || _isNewer(fbData, state)) _pendingFbData = fbData;
-      return;
-    }
-
-    if (!state || _isNewer(fbData, state)) {
-      _applyFbData(fbData);
-      if (typeof showToast === 'function') showToast('🔄 Data disinkronkan dari device lain', 'info');
-    }
-
-  }, function(err) {
-    console.warn('[Firebase] Sync error:', err.message);
-  });
-
-})();
-</script>
 </body>
 </html>
