@@ -2654,7 +2654,7 @@ function heavenTramplingNameStyle(bridges){
   `.replace(/\n\s+/g,' ').trim();
 }
 
-// ═══════════════════════════════════
+// ═════════ta�═════════════════════════
 // PATCH 3 & 4 — Soul Cultivation Rank (berdasarkan Spiritual Level) + efek warna
 // per rank. Efek visual memakai teknik yang sama dengan sistem holo-text/rarity
 // title yang sudah ada (gradient text-clip + animasi holoFlow), selaras dengan
@@ -3324,7 +3324,7 @@ function DEFAULT_STATE(){
   return {
     meta:{ lastActiveDate:null, lastWeekKey:null, lastMonthKey:null, completedTodayCount:0, levelCurve:1, startDate: todayStr(), activityLog: {}, activityNotes: {}, dailyExpEarned:0, dailyExpLog:{} },
     ui:{ tab:'home', questFilter:'all' },
-    character:{ name:'Jian Haikal', age:22, job:'Pejuang', shift:'pagi', avatarColor: 'linear-gradient(135deg,var(--arise),var(--cyan))', level:1, exp:0, hp: 100, maxHp: 100, realmIndex:0, realmEnergy:0, lifeScore:0, streak:0, longestStreak:0, failStreak:0, recoveryMode:false, lifetimeIncome:0, bossesDefeated:0, goalsCompleted:0, totalQuests:0, failedQuests:0, failedGoals:0, failedProjects:0, heavenBridges: 0, equippedTitle:'The Beginner', equippedMedal:'', titlesUnlocked:['The Beginner', 'Wealth Core Lord'], lifePrinciple:'Disiplin mengalahkan motivasi.', },
+    character:{ name:'Jian Haikal', age:22, job:'Pejuang', shift:'pagi', avatarColor: 'linear-gradient(135deg,var(--arise),var(--cyan))', level:1, exp:0, hp: 100, maxHp: 100, realmIndex:0, realmEnergy:0, lifeScore:0, streak:0, longestStreak:0, failStreak:0, recoveryMode:false, lifetimeIncome:0, bossesDefeated:0, goalsCompleted:0, totalQuests:0, failedQuests:0, failedGoals:0, failedProjects:0, heavenBridges: 0, equippedTitle:'The Beginner', equippedMedal:'', titlesUnlocked:['The Beginner', 'Wealth Core Lord'], lifePrinciple:'Disiplin mengalahkan motivasi.', lifePrincipleHistory:[], },
     _realmMigratedV2:false,
     stats:{ strength:0,health:0,discipline:0,knowledge:0,communication:0,finance:0,focus:0,spirituality:0,leadership:0,confidence:0,consistency:0 },
     spiritual:{ level:1, exp:0, dailyLog:{} }, 
@@ -3358,6 +3358,7 @@ function migrateState(s){
   if(typeof s.character.htQiDeviation !== 'boolean') s.character.htQiDeviation = false;
   if(!s.character.htQuestCompletedToday) s.character.htQuestCompletedToday = {};
   if(typeof s.character.lifePrinciple !== 'string') s.character.lifePrinciple = 'Disiplin mengalahkan motivasi.';
+  if(!Array.isArray(s.character.lifePrincipleHistory)) s.character.lifePrincipleHistory = [];
   if(typeof s.settings.showLifePrinciple !== 'boolean') s.settings.showLifePrinciple = true;
   if(typeof s.settings.showMedalBar !== 'boolean') s.settings.showMedalBar = true;
   if(typeof s.settings.bgTheme !== 'string') s.settings.bgTheme = 'void';
@@ -4253,7 +4254,7 @@ function addFinanceTransaction(){
       state.financeLog.unshift({date: todayStr(), amount, note, cat, type: 'out'}); 
   }
 
-  if(state.financeLog.length>30) state.financeLog.length = 30;
+  // Riwayat transaksi disimpan seluruhnya (tidak dipotong otomatis lagi)
   
   closeModal('modal-log-income'); 
   document.getElementById('bi-amount').value=''; document.getElementById('bi-note').value=''; 
@@ -4487,8 +4488,8 @@ function getCurrentTimeBlockInfo() {
 function renderLifePrincipleCard() {
     if(!state.settings?.showLifePrinciple) return '';
     const principle = (state.character?.lifePrinciple || '').trim();
-    if(!principle) return `<div class="card glass-panel life-principle-card"><div class="life-principle-wrap"><div class="life-principle-line"></div><div class="life-principle-text life-principle-empty">Belum ada Prinsip Hidup. Ketuk untuk menulis.</div></div><button class="life-principle-edit-btn" onclick="openModal('modal-settings')" title="Edit Prinsip Hidup">✏️</button></div>`;
-    return `<div class="card glass-panel life-principle-card"><div class="life-principle-wrap"><div class="life-principle-line"></div><div class="life-principle-text">"${escapeHtml(principle)}"</div></div><button class="life-principle-edit-btn" onclick="openModal('modal-settings')" title="Edit Prinsip Hidup">✏️</button></div>`;
+    if(!principle) return `<div class="card glass-panel life-principle-card"><div class="life-principle-wrap"><div class="life-principle-line"></div><div class="life-principle-text life-principle-empty">Belum ada Prinsip Hidup. Ketuk untuk menulis.</div></div><button class="life-principle-edit-btn" onclick="setTab('refleksi')" title="Edit Prinsip Hidup">✏️</button></div>`;
+    return `<div class="card glass-panel life-principle-card"><div class="life-principle-wrap"><div class="life-principle-line"></div><div class="life-principle-text" style="white-space:pre-wrap;">"${escapeHtml(principle)}"</div></div><button class="life-principle-edit-btn" onclick="setTab('refleksi')" title="Edit Prinsip Hidup">✏️</button></div>`;
 }
 function renderRefleksiHomeCard() {
   if(!state.settings?.showRefleksiHome) return '';
@@ -4500,8 +4501,12 @@ function renderRefleksiHomeCard() {
   const isQuestion = !!pinnedQ && !pinnedJ;
   const label = isQuestion ? `❓ ${escapeHtml(item.q)}` : '📔 Refleksi Diri';
   const text = isQuestion ? item.answer : item.content;
+  const _isLong = text && text.length > 160;
+  const _preview = escapeHtml((text||'').slice(0,160)) + (_isLong ? '…' : '');
+  const _full = escapeHtml(text||'').replace(/\n/g,'<br>');
+  const _moreBtn = _isLong ? `<button class="btn btn-ghost btn-sm" id="rhc-more-btn" style="margin-top:6px;font-size:10px;padding:2px 10px;" onclick="var p=document.getElementById('rhc-preview');var f=document.getElementById('rhc-full');var expanded=f.style.display==='block';f.style.display=expanded?'none':'block';p.style.display=expanded?'block':'none';this.textContent=expanded?'🔍 Lihat Selengkapnya':'🔼 Sederhanakan';">🔍 Lihat Selengkapnya</button>` : '';
   return `<div class="card glass-panel refleksi-home-card"><div class="life-principle-wrap"><div class="life-principle-line"></div><div style="font-size:9.5px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(200,168,75,0.7);margin-bottom:6px;">✦ Refleksi Diri</div>${isQuestion?`<div style="font-size:10px;font-style:italic;color:rgba(200,168,75,0.6);margin-bottom:6px;">${label}</div>`:''}
-  <div class="refleksi-home-quote">"${escapeHtml((text||'').slice(0,160))}${text&&text.length>160?'…':''}"</div><div style="margin-top:8px;font-size:9.5px;color:rgba(200,168,75,0.5);">📅 ${item.date||''}</div></div><button class="life-principle-edit-btn" onclick="setTab('refleksi')" title="Buka Refleksi Diri">✏️</button></div>`;
+  <div class="refleksi-home-quote" id="rhc-preview">"${_preview}"</div>${_isLong?`<div class="refleksi-home-quote" id="rhc-full" style="display:none;white-space:pre-wrap;">"${_full}"</div>`:''}${_moreBtn}<div style="margin-top:8px;font-size:9.5px;color:rgba(200,168,75,0.5);">📅 ${item.date||''}</div></div><button class="life-principle-edit-btn" onclick="setTab('refleksi')" title="Buka Refleksi Diri">✏️</button></div>`;
 }
 
 function renderTimeBlockCard() {
@@ -5728,7 +5733,7 @@ function renderBoss(){
 
     const _catColors = {'Gaji/Upah':'rgba(45,212,244,0.15)','Freelance':'rgba(124,92,255,0.15)','Bisnis':'rgba(240,185,59,0.15)','Investasi':'rgba(52,211,153,0.15)','Makan':'rgba(255,138,61,0.15)','Transport':'rgba(100,150,255,0.15)','Tagihan':'rgba(200,100,255,0.15)','Belanja':'rgba(255,180,80,0.15)','Hiburan':'rgba(255,100,150,0.15)','Kesehatan':'rgba(80,220,150,0.15)','Pendidikan':'rgba(80,180,255,0.15)','Lainnya':'rgba(150,150,180,0.15)'};
     const _catTextColors = {'Gaji/Upah':'var(--cyan)','Freelance':'var(--arise-bright)','Bisnis':'var(--gold-soft)','Investasi':'var(--jade)','Makan':'var(--orange)','Transport':'#8aaeff','Tagihan':'#d080ff','Belanja':'#ffcc60','Hiburan':'#ff80a0','Kesehatan':'#50dc96','Pendidikan':'#60c8ff','Lainnya':'var(--muted)'};
-    const logHtml = (state.financeLog||[]).length ? (state.financeLog||[]).slice(0,10).map(l=>{
+    function _logItemHtml(l){
         const isOut = l.type === 'out';
         const isSedekah = isOut && l.note && l.note.startsWith('Sedekah:');
         const catBg = l.cat ? (_catColors[l.cat]||'rgba(150,150,180,0.15)') : '';
@@ -5736,7 +5741,11 @@ function renderBoss(){
         const catChip = l.cat ? `<span style="font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:6px;background:${catBg};color:${catCol};font-family:var(--font-system);letter-spacing:0.3px;white-space:nowrap;">${escapeHtml(l.cat)}</span> ` : '';
         const amtColor = isSedekah ? 'var(--gold)' : isOut ? 'var(--crimson)' : 'var(--jade)';
         return `<div class="log-item"><span class="muted" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">${catChip}${l.date}${l.note?' · '+escapeHtml(l.note):''}</span><span class="log-amount" style="color:${amtColor}">${isOut?'-':'+'}${formatRupiah(l.amount)}</span></div>`;
-    }).join('') : `<div class="small muted" style="text-align:center;padding:10px 0;">Belum ada catatan transaksi. Mulai mencatat!</div>`;
+    }
+    const _allLog = state.financeLog||[];
+    const _logRecent = _allLog.slice(0,10);
+    const _logRest = _allLog.slice(10);
+    const logHtml = _allLog.length ? `<div>${_logRecent.map(_logItemHtml).join('')}</div>${_logRest.length?`<div id="fin-log-all" style="display:none;">${_logRest.map(_logItemHtml).join('')}</div><button class="btn btn-ghost btn-block" id="fin-log-more-btn" style="font-size:11px;margin-top:6px;" onclick="toggleMoreLess('fin-log-all', this, 'Lihat Semua ${_allLog.length} Riwayat Transaksi →', 'Sederhanakan ↑')">Lihat Semua ${_allLog.length} Riwayat Transaksi →</button>`:''}` : `<div class="small muted" style="text-align:center;padding:10px 0;">Belum ada catatan transaksi. Mulai mencatat!</div>`;
     
     const pengeluaran = getTotalExpense();
     const saldo = getSaldo();
@@ -6153,7 +6162,7 @@ function deleteRefleksiJournal(jId){
 function pinJournalHome(jId){
   if(!state.refleksi) return;
   state.refleksi.journals.forEach(j=>{ j.pinnedHome = j.id===jId ? !j.pinnedHome : false; });
-  save(); render(); showToast(state.refleksi.journals.find(j=>j.id===jId)?.pinnedHome ? '📌 Dipajang di Home!':'📌 Dilepas dari Home','ach');
+  save(); render(); showToast(state.refleksi.journals.find(j=>j.id===jId)?.pinnedHome ? '✅ Dipakai di Home!':'↩️ Dilepas dari Home','ach');
 }
 function addRefleksiQuestion(){
   const el = document.getElementById('rf-new-question'); if(!el) return;
@@ -6190,7 +6199,7 @@ function pinQuestionProfile(qId){
   const q = state.refleksi.questions.find(x=>x.id===qId); if(!q) return;
   if(!q.answer){ showToast('Jawab pertanyaan dulu sebelum dipajang.','bad'); return; }
   state.refleksi.questions.forEach(x=>{ x.pinnedProfile = x.id===qId ? !x.pinnedProfile : false; });
-  save(); render(); showToast(state.refleksi.questions.find(x=>x.id===qId)?.pinnedProfile ? '⚜️ Dipajang di Profil!':'⚜️ Dilepas dari Profil','ach');
+  save(); render(); showToast(state.refleksi.questions.find(x=>x.id===qId)?.pinnedProfile ? '✅ Dipakai di Profil!':'↩️ Dilepas dari Profil','ach');
 }
 function renderRefleksiProfileChip(){
   if(!state.settings?.showRefleksiProfile) return '';
@@ -6216,6 +6225,13 @@ function openRefleksiFullModal(){
 
 // Lookup sementara untuk konten "Lihat Penuh" — diisi saat render, dibaca saat klik
 var _lihatPenuhLookup = [];
+function toggleMoreLess(id, btn, moreLabel, lessLabel){
+  const e = document.getElementById(id);
+  if(!e) return;
+  const expanded = e.style.display === 'block';
+  e.style.display = expanded ? 'none' : 'block';
+  btn.textContent = expanded ? moreLabel : lessLabel;
+}
 function openLihatPenuhModal(idx){
   const entry = _lihatPenuhLookup[idx];
   if(!entry) return;
@@ -6231,8 +6247,9 @@ function renderRefleksi(){
   const journals = (rf.journals||[]).slice().reverse();
   const questions = rf.questions||[];
 
-  // Reset lookup tiap render
-  _lihatPenuhLookup = [];
+  // Catatan: _lihatPenuhLookup TIDAK direset di sini lagi — array terus bertambah
+  // supaya index yang sudah tercetak di tombol lama tidak pernah berubah artinya
+  // (mencegah tombol "Lihat Penuh" menampilkan data yang salah/data lain).
 
   // Journal history HTML
   function jEntryHtml(j, idx){
@@ -6247,7 +6264,7 @@ function renderRefleksi(){
       <div class="row-between small" style="margin-bottom:5px;align-items:flex-start;">
         <div><div style="color:rgba(200,168,75,0.85);font-weight:800;font-size:10px;letter-spacing:0.5px;">📅 ${j.date}</div><div style="font-size:9px;color:var(--muted-2);">${j.ts||''}</div></div>
         <div style="display:flex;gap:5px;flex-shrink:0;">
-          <button class="btn btn-sm btn-xs ${j.pinnedHome?'btn-primary':'btn-ghost'}" onclick="pinJournalHome('${j.id}')" style="font-size:10px;padding:3px 8px;">${j.pinnedHome?'📌 Dipajang':'📌 Pajang'}</button>
+          <button class="btn btn-sm btn-xs ${j.pinnedHome?'btn-primary':'btn-ghost'}" onclick="pinJournalHome('${j.id}')" style="font-size:10px;padding:3px 8px;">${j.pinnedHome?'✅ Dipakai':'✅ Pakai'}</button>
           <button class="btn btn-sm btn-xs btn-ghost" onclick="deleteRefleksiJournal('${j.id}')" style="font-size:11px;padding:3px 7px;">🗑</button>
         </div>
       </div>
@@ -6255,11 +6272,42 @@ function renderRefleksi(){
       ${lihatBtn}
     </div>`;
   }
+  // Life Principle history HTML
+  const lpHist = (state.character.lifePrincipleHistory||[]);
+  function lpEntryHtml(h){
+    const preview = h.text.length > 120 ? h.text.slice(0,120)+'…' : h.text;
+    const needsFull = h.text.length > 120;
+    let lihatBtn = '';
+    if(needsFull){
+      const lIdx = _lihatPenuhLookup.push({judul:'✒️ Prinsip · '+(h.date||''), konten:h.text||'', tanggal:h.ts||''}) - 1;
+      lihatBtn = `<button class="btn btn-ghost btn-sm" onclick="openLihatPenuhModal(${lIdx})" style="margin-top:5px;font-size:10px;padding:2px 10px;">🔍 Lihat Penuh</button>`;
+    }
+    return `<div class="refleksi-history-item">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;">
+        <div style="font-size:9.5px;color:rgba(200,168,75,0.6);font-weight:700;">📅 ${h.date||''} · ${h.ts||''}</div>
+        <div style="display:flex;gap:5px;flex-shrink:0;">
+          <button class="btn btn-sm btn-xs btn-ghost" onclick="useLifePrincipleHistory('${h.id}')" style="font-size:10px;padding:3px 8px;">✅ Pakai</button>
+          <button class="btn btn-sm btn-xs btn-ghost" onclick="deleteLifePrincipleHistory('${h.id}')" style="font-size:11px;padding:3px 7px;">🗑</button>
+        </div>
+      </div>
+      <div style="font-size:12px;line-height:1.65;color:var(--bone);white-space:pre-wrap;word-break:break-word;opacity:0.8;">${escapeHtml(preview)}</div>
+      ${lihatBtn}
+    </div>`;
+  }
+  const lpFirst3 = lpHist.slice(0,3);
+  const lpRest = lpHist.slice(3);
+  const lpHistHtml = lpHist.length===0 ? '' : `<div style="margin-top:12px;border-top:1px solid rgba(200,168,75,0.15);padding-top:10px;">
+    <div style="font-size:10px;font-weight:800;color:rgba(200,168,75,0.7);letter-spacing:0.5px;margin-bottom:8px;">📜 RIWAYAT PRINSIP <span style="font-weight:500;color:var(--muted);">(${lpHist.length} entri)</span></div>
+    <div>${lpFirst3.map(lpEntryHtml).join('')}</div>
+    ${lpRest.length?`<div id="rf-lp-all" style="display:none;">${lpRest.map(lpEntryHtml).join('')}</div>
+    <button class="btn btn-ghost btn-block" id="rf-lp-more-btn" style="font-size:11px;margin-top:6px;" onclick="toggleMoreLess('rf-lp-all', this, 'Lihat Semua ${lpHist.length} Riwayat Prinsip →', 'Sederhanakan ↑')">Lihat Semua ${lpHist.length} Riwayat Prinsip →</button>`:''}
+  </div>`;
+
   const jRecent = journals.slice(0,3).map((j,i)=>jEntryHtml(j,i)).join('');
   const jRest = journals.length>3 ? journals.slice(3).map((j,i)=>jEntryHtml(j,i+3)).join('') : '';
   const jHistHtml = journals.length===0
     ? `<div class="small muted" style="text-align:center;padding:14px 0;">Belum ada jurnal. Tulis dan simpan jurnalmu pertama di atas.</div>`
-    : `<div>${jRecent}</div>${jRest?`<div id="rf-j-all" style="display:none;">${jRest}</div><button class="btn btn-ghost btn-block" id="rf-j-more-btn" onclick="document.getElementById('rf-j-all').style.display='block';this.style.display='none';">Lihat Semua ${journals.length} Jurnal →</button>`:''}`;
+    : `<div>${jRecent}</div>${jRest?`<div id="rf-j-all" style="display:none;">${jRest}</div><button class="btn btn-ghost btn-block" id="rf-j-more-btn" onclick="toggleMoreLess('rf-j-all', this, 'Lihat Semua ${journals.length} Jurnal →', 'Sederhanakan ↑')">Lihat Semua ${journals.length} Jurnal →</button>`:''}`;
 
   // Questions HTML — dengan riwayat jawaban
   function qAnswerHistoryHtml(q){
@@ -6294,7 +6342,7 @@ function renderRefleksi(){
       <div style="font-size:10px;font-weight:800;color:rgba(200,168,75,0.7);letter-spacing:0.5px;margin-bottom:8px;">📜 RIWAYAT JAWABAN <span style="font-weight:500;color:var(--muted);">(${hist.length} entri)</span></div>
       <div>${first3.map(h=>histEntryHtml(h)).join('')}</div>
       ${rest.length?`<div id="${histId}" style="display:none;">${rest.map(h=>histEntryHtml(h)).join('')}</div>
-      <button class="btn btn-ghost btn-block" id="${btnId}" style="font-size:11px;margin-top:6px;" onclick="var e=document.getElementById('${histId}');var b=document.getElementById('${btnId}');e.style.display='block';b.style.display='none';">Lihat Semua ${rest.length} Riwayat Lainnya →</button>`:''}
+      <button class="btn btn-ghost btn-block" id="${btnId}" style="font-size:11px;margin-top:6px;" onclick="toggleMoreLess('${histId}', this, 'Lihat Semua ${rest.length} Riwayat Lainnya →', 'Sederhanakan ↑')">Lihat Semua ${rest.length} Riwayat Lainnya →</button>`:''}
     </div>`;
   }
 
@@ -6304,7 +6352,7 @@ function renderRefleksi(){
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px;">
           <div style="font-family:var(--font-display);font-weight:800;font-size:12.5px;color:rgba(200,168,75,0.9);line-height:1.5;flex:1;">${escapeHtml(q.q)}</div>
           <div style="display:flex;gap:5px;flex-shrink:0;">
-            <button class="btn btn-sm btn-xs ${q.pinnedProfile?'btn-primary':'btn-ghost'}" onclick="pinQuestionProfile('${q.id}')" title="${q.pinnedProfile?'Dilepas dari Profil':'Pajang di Profil'}" style="font-size:10px;padding:3px 8px;">${q.pinnedProfile?'⚜️ Profil':'⚜️'}</button>
+            <button class="btn btn-sm btn-xs ${q.pinnedProfile?'btn-primary':'btn-ghost'}" onclick="pinQuestionProfile('${q.id}')" title="${q.pinnedProfile?'Lepas dari Profil':'Pakai di Profil'}" style="font-size:10px;padding:3px 8px;">${q.pinnedProfile?'✅ Dipakai':'✅ Pakai'}</button>
             <button class="btn btn-sm btn-xs btn-ghost" onclick="deleteRefleksiQuestion('${q.id}')" style="font-size:11px;padding:3px 7px;">🗑</button>
           </div>
         </div>
@@ -6320,6 +6368,19 @@ function renderRefleksi(){
   return `<div>
     <div class="refleksi-section-title" style="margin-top:4px;">✦ REFLEKSI DIRI ✦</div>
     <div class="small muted" style="text-align:center;margin-bottom:20px;line-height:1.6;font-family:var(--font-body);">Ruang mengenal dirimu lebih dalam.<br>Jurnal & pertanyaanmu membentuk kebijaksanaan sejati.</div>
+
+    <div data-sec-tab="refleksi" data-sec-id="refleksi-principle">
+      <div class="card glass-panel refleksi-journal-card" style="margin-bottom:14px;">
+        <div style="font-family:var(--font-display);font-weight:800;font-size:13px;color:rgba(200,168,75,0.9);margin-bottom:6px;">✒️ Prinsip & Nilai Hidup</div>
+        <div class="small muted" style="margin-bottom:12px;">Motto pribadi yang memandu langkahmu.</div>
+        <textarea id="rf-life-principle" class="input" rows="6" placeholder="Contoh: Disiplin mengalahkan motivasi." style="resize:vertical;min-height:110px;font-family:var(--font-body);line-height:1.7;font-size:13px;">${escapeHtml(state.character.lifePrinciple||'')}</textarea>
+        <div class="row-between" style="margin-top:10px;gap:8px;">
+          <button class="btn btn-secondary" style="flex:1;font-family:var(--font-display);font-weight:700;letter-spacing:0.5px;" onclick="saveLifePrinciple()">💾 Simpan Prinsip</button>
+          <button class="btn btn-ghost" style="flex:1;font-size:12px;" onclick="setSetting('showLifePrinciple', !state.settings.showLifePrinciple)">${state.settings?.showLifePrinciple?'🔓 Sembunyikan dari Home':'📌 Tampilkan di Home'}</button>
+        </div>
+        ${lpHistHtml}
+      </div>
+    </div>
 
     <div data-sec-tab="refleksi" data-sec-id="refleksi-journal">
       <div class="card glass-panel refleksi-journal-card" style="margin-bottom:14px;">
@@ -6922,7 +6983,7 @@ function renderSettingsModal(){
   const s = state.settings;
   return `
   <div class="modal-overlay" id="modal-settings"><div class="modal-sheet settings-modal"><div class="modal-handle"></div><h2 class="modal-title">⚙️ Pengaturan OS</h2>
-    <details class="settings-section" open><summary>🧑 Profil Karakter</summary><div class="settings-body"><div class="form-group"><label>Nama Karakter</label><input id="s-char-name" type="text" class="input" value="${escapeAttr(state.character.name)}"></div><div class="form-group"><label>Pekerjaan</label><input id="s-char-job" type="text" class="input" value="${escapeAttr(state.character.job)}"></div><div class="form-group"><label>Umur</label><input id="s-char-age" type="number" class="input" value="${state.character.age}"></div><div class="form-group"><label>Avatar (Emoji)</label><input id="s-char-avatar" type="text" class="input" value="${escapeAttr(s.characterAvatar)}" maxlength="4" style="width:5rem"></div><div class="form-group"><label>✒️ Prinsip Hidup (Motto Pribadi)</label><textarea id="s-char-life-principle" class="input" rows="3" style="resize:vertical;min-height:60px;" placeholder="Contoh: Disiplin mengalahkan motivasi.">${escapeHtml(state.character.lifePrinciple||'')}</textarea></div><div class="form-group"><label>✨ Warna Hologram Nama</label><div style="display:flex;gap:10px;align-items:center;margin-top:4px;"><div class="name-holo-swatch swatch-none ${(!s.nameHoloStyle||s.nameHoloStyle==='none')?'active':''}" title="Tidak ada" onclick="setNameHoloStyle('none')">✕</div><div class="name-holo-swatch swatch-gold ${s.nameHoloStyle==='gold'?'active':''}" title="Emas Gradasi Putih" onclick="setNameHoloStyle('gold')"></div><div class="name-holo-swatch swatch-rainbow ${s.nameHoloStyle==='rainbow'?'active':''}" title="Pelangi Gradasi" onclick="setNameHoloStyle('rainbow')"></div><div class="name-holo-swatch swatch-silver ${s.nameHoloStyle==='silver'?'active':''}" title="Silver Hologram" onclick="setNameHoloStyle('silver')"></div></div></div><button class="btn btn-secondary btn-block mt-10" onclick="saveSettingsProfile()">Simpan Profil</button></div></details>
+    <details class="settings-section" open><summary>🧑 Profil Karakter</summary><div class="settings-body"><div class="form-group"><label>Nama Karakter</label><input id="s-char-name" type="text" class="input" value="${escapeAttr(state.character.name)}"></div><div class="form-group"><label>Pekerjaan</label><input id="s-char-job" type="text" class="input" value="${escapeAttr(state.character.job)}"></div><div class="form-group"><label>Umur</label><input id="s-char-age" type="number" class="input" value="${state.character.age}"></div><div class="form-group"><label>Avatar (Emoji)</label><input id="s-char-avatar" type="text" class="input" value="${escapeAttr(s.characterAvatar)}" maxlength="4" style="width:5rem"></div><div class="small muted" style="margin:2px 0 6px;">✒️ Prinsip Hidup kini diedit dari tab Quest → Refleksi.</div><div class="form-group"><label>✨ Warna Hologram Nama</label><div style="display:flex;gap:10px;align-items:center;margin-top:4px;"><div class="name-holo-swatch swatch-none ${(!s.nameHoloStyle||s.nameHoloStyle==='none')?'active':''}" title="Tidak ada" onclick="setNameHoloStyle('none')">✕</div><div class="name-holo-swatch swatch-gold ${s.nameHoloStyle==='gold'?'active':''}" title="Emas Gradasi Putih" onclick="setNameHoloStyle('gold')"></div><div class="name-holo-swatch swatch-rainbow ${s.nameHoloStyle==='rainbow'?'active':''}" title="Pelangi Gradasi" onclick="setNameHoloStyle('rainbow')"></div><div class="name-holo-swatch swatch-silver ${s.nameHoloStyle==='silver'?'active':''}" title="Silver Hologram" onclick="setNameHoloStyle('silver')"></div></div></div><button class="btn btn-secondary btn-block mt-10" onclick="saveSettingsProfile()">Simpan Profil</button></div></details>
     <details class="settings-section"><summary>👁️ Tampilan & UI</summary><div class="settings-body">
       <div class="toggle-row"><label>Tampilkan SIP</label><input type="checkbox" ${s.showSIP?'checked':''} onchange="setSetting('showSIP',this.checked)"></div>
       <div class="toggle-row"><label>Tampilkan To-Do Cepat</label><input type="checkbox" ${s.showToDo?'checked':''} onchange="setSetting('showToDo',this.checked)"></div>
@@ -6931,7 +6992,6 @@ function renderSettingsModal(){
       <div class="toggle-row"><label>Matriks Eisenhower (To-Do)</label><input type="checkbox" ${s.showEisenhowerMatrix?'checked':''} onchange="setSetting('showEisenhowerMatrix',this.checked)"></div>
       <div class="toggle-row"><label>Tampilkan 3 Aturan Anti-Gagal</label><input type="checkbox" ${s.show3Rules?'checked':''} onchange="setSetting('show3Rules',this.checked)"></div>
       <div class="toggle-row"><label>🧮 Kalkulator Kebutuhan EXP</label><input type="checkbox" ${s.showExpCalculator?'checked':''} onchange="setSetting('showExpCalculator',this.checked)"></div>
-      <div class="toggle-row"><label>✒️ Tampilkan Prinsip Hidup</label><input type="checkbox" ${s.showLifePrinciple?'checked':''} onchange="setSetting('showLifePrinciple',this.checked)"></div>
       <div class="toggle-row"><label>👑 Tampilkan Medal Hall of Fame</label><input type="checkbox" ${s.showMedalBar?'checked':''} onchange="setSetting('showMedalBar',this.checked)"></div>
       <div class="toggle-row" style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px;"><label style="background:linear-gradient(90deg,#a07830,#ffe680,#c8a84b);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;font-weight:800;">✦ Tampilkan Kutipan Refleksi di Home</label><input type="checkbox" ${s.showRefleksiHome?'checked':''} onchange="setSetting('showRefleksiHome',this.checked)"></div>
       <div class="toggle-row"><label style="background:linear-gradient(90deg,#a07830,#ffe680,#c8a84b);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;font-weight:800;">✦ Tampilkan Kutipan Refleksi di Profil</label><input type="checkbox" ${s.showRefleksiProfile?'checked':''} onchange="setSetting('showRefleksiProfile',this.checked)"></div>
@@ -6953,7 +7013,6 @@ function renderSettingsModal(){
     <details class="settings-section"><summary>⚔️ EXP & Gameplay</summary><div class="settings-body"><label style="display:block;font-size:11.5px;color:var(--muted);margin-bottom:5px;font-weight:600;">Multiplier EXP</label><div class="btn-group">${[0.5,1.0,1.5,2.0].map(m => `<button class="btn btn-secondary ${s.expMultiplier===m?'active':''}" onclick="setSetting('expMultiplier',${m})">${m}x</button>`).join('')}</div><div class="toggle-row"><label>Efek Suara (SFX)</label><input type="checkbox" ${s.soundEnabled?'checked':''} onchange="setSetting('soundEnabled',this.checked)"></div><div class="toggle-row"><label>Floating EXP Animasi</label><input type="checkbox" ${s.showFloatingExp?'checked':''} onchange="setSetting('showFloatingExp',this.checked)"></div><div class="toggle-row"><label>Combo Bonus</label><input type="checkbox" ${s.comboBonus?'checked':''} onchange="setSetting('comboBonus',this.checked)"></div><div class="toggle-row"><label>Streak Bonus</label><input type="checkbox" ${s.streakBonus?'checked':''} onchange="setSetting('streakBonus',this.checked)"></div><div class="toggle-row"><label>Custom EXP Quest (input bebas)</label><input type="checkbox" ${s.customExpEnabled!==false?'checked':''} onchange="setSetting('customExpEnabled',this.checked)"></div><div class="toggle-row"><label>Batas EXP Harian</label><input type="checkbox" ${s.dailyExpCapEnabled===true?'checked':''} onchange="setSetting('dailyExpCapEnabled',this.checked)"></div></div></details>
     <details class="settings-section"><summary>💾 Manajemen Data & Reset</summary><div class="settings-body">
       <div class="settings-btn-row"><button class="btn btn-primary" onclick="exportData()" style="flex:1;">📤 Export JSON</button><label class="btn btn-secondary" style="flex:1; cursor:pointer; text-align:center;">📥 Import JSON<input type="file" accept=".json" style="display:none;" onchange="importData(event)"></label></div>
-      <div class="settings-btn-row" style="margin-top:8px;"><button class="btn btn-secondary" onclick="exportCSV()" style="flex:1;">📊 Export Keuangan (CSV)</button></div>
       <div class="settings-divider">Reset Terkontrol (Pilih Manual)</div>
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;line-height:1.5;">Setiap reset hanya mempengaruhi bagian yang dipilih. Sistem lain tetap aman.</div>
       <div style="display:flex;flex-direction:column;gap:8px;">
@@ -6990,6 +7049,34 @@ function renderSettingsModal(){
 }
 
 function setSetting(key, value){ if(!state.settings) state.settings = DEFAULT_SETTINGS(); state.settings[key] = value; save(); render(); const _sEl = document.getElementById('modal-settings'); const _isOpen = _sEl && _sEl.classList.contains('open'); document.getElementById('settings-slot').innerHTML = renderSettingsModal(); if(_isOpen) openModal('modal-settings'); }
+function saveLifePrinciple(){
+  const el = document.getElementById('rf-life-principle'); if(!el) return;
+  const newText = el.value.trim(); if(!newText){ showToast('Tulis dulu prinsip hidupmu.','bad'); return; }
+  const c = state.character;
+  if(!Array.isArray(c.lifePrincipleHistory)) c.lifePrincipleHistory = [];
+  const old = (c.lifePrinciple||'').trim();
+  if(old && old !== newText){
+    const now = new Date();
+    c.lifePrincipleHistory.unshift({id:uid('lp'), text:old, date: now.toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric'}), ts: now.toLocaleString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})});
+    if(c.lifePrincipleHistory.length > 200) c.lifePrincipleHistory.length = 200;
+  }
+  c.lifePrinciple = newText;
+  save(); render(); showToast('Prinsip Hidup disimpan!', 'ach');
+}
+function useLifePrincipleHistory(lpId){
+  const c = state.character; if(!Array.isArray(c.lifePrincipleHistory)) return;
+  const entry = c.lifePrincipleHistory.find(h=>h.id===lpId); if(!entry) return;
+  const current = (c.lifePrinciple||'').trim();
+  c.lifePrincipleHistory = c.lifePrincipleHistory.filter(h=>h.id!==lpId);
+  if(current) c.lifePrincipleHistory.unshift({id:uid('lp'), text:current, date: entry.date, ts: entry.ts});
+  c.lifePrinciple = entry.text;
+  save(); render(); showToast('✅ Prinsip lama dipakai kembali!','ach');
+}
+function deleteLifePrincipleHistory(lpId){
+  const c = state.character; if(!Array.isArray(c.lifePrincipleHistory)) return;
+  c.lifePrincipleHistory = c.lifePrincipleHistory.filter(h=>h.id!==lpId);
+  save(); render();
+}
 function saveSettingsProfile(){ state.character.name = document.getElementById('s-char-name').value.trim() || 'Jian'; state.character.job = document.getElementById('s-char-job').value.trim(); state.character.age = parseInt(document.getElementById('s-char-age').value) || 22; state.settings.characterAvatar = document.getElementById('s-char-avatar').value.trim() || '⚔️'; const lpEl = document.getElementById('s-char-life-principle'); if(lpEl) state.character.lifePrinciple = lpEl.value.trim(); save(); render(); showToast('Profil disimpan!', 'ach'); }
 function setNameHoloStyle(style){ state.settings.nameHoloStyle = style; save(); render(); const slot = document.getElementById('settings-slot'); if(slot){ slot.innerHTML = renderSettingsModal(); openModal('modal-settings'); } showToast('Warna hologram nama diperbarui', 'ach'); }
 function resetModule(module){ const map = { todos: () => state.todos = [], kanban: () => state.kanban = { cards:[] }, sedekah: () => state.sedekah = { entries:[], totalLifetime:0, dailyExpGained:0, lastExpDate:'' }, habits: () => state.habits = DEFAULT_STATE().habits, }; if(!map[module]) return; openConfirm(`Reset modul "${module}"? Data karakter aman.`, () => { map[module](); save(); render(); document.getElementById('settings-slot').innerHTML = renderSettingsModal(); openModal('modal-settings'); showToast('Modul direset', 'ach'); }); }
@@ -7041,21 +7128,6 @@ function resetPartial(type){
   });
 }
 function exportData(){ const blob = new Blob([JSON.stringify(state,null,2)], {type:'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'mysistem-'+todayStr()+'.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); }
-function exportCSV(){
-    const rows = [['Tanggal','Tipe','Jumlah','Kategori','Catatan']];
-    (state.financeLog||[]).forEach(e=>{
-        rows.push([e.date, e.type==='income'?'Pemasukan':'Pengeluaran', e.amount, e.cat||'', e.note||'']);
-    });
-    (state.sedekah?.log||[]).forEach(e=>{
-        rows.push([e.date||'', 'Sedekah', e.amount||0, 'Sedekah', e.note||'']);
-    });
-    const csv = rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\r\n');
-    const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = 'keuangan-'+todayStr()+'.csv';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-    showToast('✅ CSV keuangan berhasil diunduh!', 'ach');
-}
 function importData(ev){ const file = ev.target.files[0]; if(!file) return; const reader = new FileReader(); reader.onload = ()=>{ try{ const parsed = JSON.parse(reader.result); state = migrateState(deepMerge(DEFAULT_STATE(), parsed)); if(state.meta && state.meta.startDate){ const _impGap = state.meta.lastActiveDate ? diffDays(state.meta.lastActiveDate, todayStr()) : 999; if(_impGap <= 1){ const _correctStreak = diffDays(state.meta.startDate, todayStr()) + 1; state.character.streak = Math.max(state.character.streak||0, _correctStreak); state.character.longestStreak = Math.max(state.character.longestStreak||0, state.character.streak); } else { state.character.streak = 0; } const _itod=todayStr(); if(!state.charHistory) state.charHistory={level:[],hp:[],realm:[],streak:[]}; if(state.character.streak>0 && !state.charHistory.streak.some(s=>s.ts===_itod)) state.charHistory.streak.push({ts:_itod, val:state.character.streak}); if(!state.charHistory.realm||!state.charHistory.realm.length){ const _ir=(state.realms||[])[state.character.realmIndex||0]; if(_ir) state.charHistory.realm.push({ts:_itod, val:_ir.nameID}); } state.meta.activityLog=state.meta.activityLog||{}; if(!state.meta.activityLog[_itod]) state.meta.activityLog[_itod]=1; state.meta.lastActiveDate=_itod; } rollover(); recomputeLifeScore(); render(); save(); showToast('Data berhasil diimpor','ach'); }catch(e){ showToast('Gagal impor: file tidak valid','bad'); } }; reader.readAsText(file); ev.target.value=''; }
 function confirmResetData(){ openConfirm('Reset SEMUA progres? Karakter kembali ke Level 1.', ()=>{ state = DEFAULT_STATE(); localStorage.removeItem(STORAGE_KEY); rollover(); render(); save(); closeModal('modal-settings'); }); }
 
