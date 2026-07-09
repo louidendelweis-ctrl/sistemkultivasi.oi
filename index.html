@@ -2307,31 +2307,20 @@ function toggleSpiritCompanion(){
 
 const STORAGE_KEY = 'jian-ascension-state-vfinal-updated';
 
-// ═══ FIREBASE REALTIME DATABASE (cloud backup & sync) ═══
-// Link database ditanam di sini — data otomatis disimpan & ditarik dari sini
-// via REST API (tanpa perlu library Firebase SDK).
-const FIREBASE_DB_URL = 'https://database-d9332-default-rtdb.asia-southeast1.firebasedatabase.app';
-const FIREBASE_DATA_PATH = 'mysistem-jian-ascension'; // node tempat data disimpan di Firebase
-let _fbSyncTimer = null;
-let _fbSyncing = false;
+// ═══ FIREBASE REALTIME DATABASE — real-time sync antar device ═══
+// Menggunakan REST API + SSE (Server-Sent Events) bawaan Firebase.
+// Tidak perlu library/SDK tambahan.
+const FIREBASE_DB_URL  = 'https://database-d9332-default-rtdb.asia-southeast1.firebasedatabase.app';
+const FIREBASE_DATA_PATH = 'mysistem-jian-ascension';
+let _fbSyncTimer   = null;
+let _fbSyncing     = false;
 let _fbErrNotified = false;
+let _fbLastPushedTs = 0;   // cap timestamp terakhir yang kita push, biar tidak echo
+let _fbEventSource  = null; // referensi SSE connection
 
 function _fbUrl(){ return `${FIREBASE_DB_URL}/${FIREBASE_DATA_PATH}.json`; }
 
-// Ambil data terbaru dari Firebase. Return null kalau gagal/kosong.
-async function firebasePull(){
-  try{
-    const res = await fetch(_fbUrl(), { cache: 'no-store' });
-    if(!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-    return data || null;
-  } catch(e){
-    console.error('[FIREBASE] Gagal mengambil data:', e);
-    return null;
-  }
-}
-
-// Kirim state saat ini ke Firebase (debounced, dipanggil dari save()).
+// ── PUSH: kirim state ke Firebase (debounced 800ms) ──
 function firebasePush(snapshot){
   clearTimeout(_fbSyncTimer);
   _fbSyncTimer = setTimeout(async () => {
@@ -2339,32 +2328,90 @@ function firebasePush(snapshot){
     _fbSyncing = true;
     try{
       const res = await fetch(_fbUrl(), {
-        method: 'PUT',
+        method : 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(snapshot),
+        body   : JSON.stringify(snapshot),
       });
       if(!res.ok) throw new Error('HTTP ' + res.status);
-      _fbErrNotified = false;
+      _fbLastPushedTs = (snapshot.meta && snapshot.meta.updatedAt) || 0;
+      _fbErrNotified  = false;
     } catch(e){
-      console.error('[FIREBASE] Gagal sinkron ke cloud:', e);
+      console.error('[FIREBASE] Gagal push:', e);
       if(!_fbErrNotified){
         _fbErrNotified = true;
-        showToast('⚠️ Gagal sinkron ke cloud. Progres tetap tersimpan di perangkat ini.', 'bad');
+        showToast('⚠️ Gagal sinkron ke cloud. Data tetap tersimpan di perangkat ini.', 'bad');
       }
-    } finally {
-      _fbSyncing = false;
-    }
+    } finally { _fbSyncing = false; }
   }, 800);
 }
 
-// Bandingkan data lokal vs cloud, pakai yang paling baru (berdasarkan meta.updatedAt).
+// ── PULL: ambil snapshot sekali (untuk load awal) ──
+async function firebasePull(){
+  try{
+    const res = await fetch(_fbUrl(), { cache: 'no-store' });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    return (await res.json()) || null;
+  } catch(e){ console.error('[FIREBASE] Gagal pull:', e); return null; }
+}
+
+// ── RESOLVE ON LOAD: bandingkan lokal vs cloud, pakai yang paling baru ──
 async function firebaseResolveOnLoad(localState){
   const cloud = await firebasePull();
-  if(!cloud) return localState;
+  if(!cloud)      return localState;
   if(!localState) return cloud;
   const localTs = (localState.meta && localState.meta.updatedAt) || 0;
-  const cloudTs = (cloud.meta && cloud.meta.updatedAt) || 0;
+  const cloudTs = (cloud.meta     && cloud.meta.updatedAt)      || 0;
   return cloudTs > localTs ? cloud : localState;
+}
+
+// ── REAL-TIME LISTENER: SSE Firebase → update UI otomatis dari device lain ──
+function firebaseStartRealTimeSync(){
+  if(_fbEventSource) _fbEventSource.close();
+
+  // Firebase SSE endpoint — streaming perubahan secara real-time
+  _fbEventSource = new EventSource(_fbUrl().replace('.json', '.json'));
+
+  _fbEventSource.addEventListener('put', function(e){
+    try{
+      const payload = JSON.parse(e.data);
+      const incoming = payload && payload.data;
+      if(!incoming || !incoming.meta) return;
+
+      const incomingTs = incoming.meta.updatedAt || 0;
+      const currentTs  = (state && state.meta && state.meta.updatedAt) || 0;
+
+      // Abaikan kalau ini echo dari push kita sendiri
+      if(incomingTs === _fbLastPushedTs) return;
+      // Abaikan kalau data yang masuk lebih lama dari state sekarang
+      if(incomingTs <= currentTs) return;
+
+      // Data dari device lain lebih baru → terapkan & render ulang
+      state = migrateState(deepMerge(DEFAULT_STATE(), incoming));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      rollover(); recomputeLifeScore(); render();
+      showToast('🔄 Disinkron dari perangkat lain', 'good');
+    } catch(err){ console.error('[FIREBASE SSE] Error parse event:', err); }
+  });
+
+  _fbEventSource.addEventListener('patch', function(e){
+    // patch event — perlakukan sama seperti put (full re-fetch lebih aman)
+    firebasePull().then(cloud => {
+      if(!cloud || !cloud.meta) return;
+      const incomingTs = cloud.meta.updatedAt || 0;
+      const currentTs  = (state && state.meta && state.meta.updatedAt) || 0;
+      if(incomingTs === _fbLastPushedTs) return;
+      if(incomingTs <= currentTs) return;
+      state = migrateState(deepMerge(DEFAULT_STATE(), cloud));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      rollover(); recomputeLifeScore(); render();
+      showToast('🔄 Disinkron dari perangkat lain', 'good');
+    }).catch(()=>{});
+  });
+
+  _fbEventSource.onerror = function(){
+    console.warn('[FIREBASE SSE] Koneksi terputus, mencoba reconnect...');
+    // EventSource otomatis reconnect — tidak perlu tindakan manual
+  };
 }
 
 const STAT_META = {
@@ -7399,7 +7446,9 @@ function init(){
       showToast('☁️ Data tersinkron dari cloud!', 'good');
       save();
     }
-  }).catch(()=>{});
+    // Mulai real-time listener setelah load awal selesai
+    firebaseStartRealTimeSync();
+  }).catch(()=>{ firebaseStartRealTimeSync(); }); // tetap mulai listener meski pull gagal
 
   // Auto-refresh interval (Midnight reset trigger)
   setInterval(() => {
