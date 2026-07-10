@@ -3353,6 +3353,17 @@ function DEFAULT_STATE(){
   };
 }
 
+// Pastikan state.charHistory selalu punya bentuk {level:[],hp:[],realm:[],streak:[]} yang valid.
+// Dipakai di banyak tempat (level up, HP berubah, realm naik, streak, import data) agar tidak
+// mengulang inisialisasi manual di tiap titik — cukup panggil ensureCharHistory(state) lalu pakai.
+function ensureCharHistory(s){
+  if(!s.charHistory) s.charHistory = {level:[],hp:[],realm:[],streak:[]};
+  if(!Array.isArray(s.charHistory.level))  s.charHistory.level  = [];
+  if(!Array.isArray(s.charHistory.hp))     s.charHistory.hp     = [];
+  if(!Array.isArray(s.charHistory.realm))  s.charHistory.realm  = [];
+  if(!Array.isArray(s.charHistory.streak)) s.charHistory.streak = [];
+  return s.charHistory;
+}
 function migrateState(s){
   if(!Array.isArray(s.goals)) s.goals = []; if(!Array.isArray(s.habits)) s.habits = []; if(!s.meta.activityLog) s.meta.activityLog = {}; if(!s.meta.activityNotes) s.meta.activityNotes = {}; if(!Array.isArray(s.goalHistory)) s.goalHistory = []; if(!Array.isArray(s.lifeTimeline)) s.lifeTimeline = []; if(!Array.isArray(s.lifeMomentum)) s.lifeMomentum = [];
   if(typeof s.meta.dailyExpEarned !== 'number') s.meta.dailyExpEarned = 0; if(!s.meta.dailyExpLog) s.meta.dailyExpLog = {}; if(!s.sip) s.sip = DEFAULT_STATE().sip;
@@ -3384,11 +3395,7 @@ function migrateState(s){
   if(!s.spiritual.dailyLog) s.spiritual.dailyLog = {};
   if(!s.spiritual.sunnahBonusDate) s.spiritual.sunnahBonusDate = '';
   if(!s.customRituals) s.customRituals = [];
-  if(!s.charHistory) s.charHistory = {level:[],hp:[],realm:[],streak:[]};
-  if(!Array.isArray(s.charHistory.level))  s.charHistory.level  = [];
-  if(!Array.isArray(s.charHistory.hp))     s.charHistory.hp     = [];
-  if(!Array.isArray(s.charHistory.realm))  s.charHistory.realm  = [];
-  if(!Array.isArray(s.charHistory.streak)) s.charHistory.streak = [];
+  ensureCharHistory(s);
   if(!Array.isArray(s.meta.questOrder)) s.meta.questOrder = [];
   if(!s.refleksi) s.refleksi = {journals:[],questions:[]};
   if(!Array.isArray(s.refleksi.journals)) s.refleksi.journals = [];
@@ -3651,64 +3658,69 @@ function captureLifeMomentumSnapshot(){
 }
 
 function gainExp(amount){
-  const c = state.character; const mult = state.settings.expMultiplier || 1.0; amount = Math.round(amount * mult);
-  if(amount > 0 && state.spiritual?.sunnahBonusDate === todayStr()) amount = Math.round(amount * 1.1);
-  if (amount > 0) {
-      if (state.settings.dailyExpCapEnabled === true && state.meta.dailyExpEarned >= state.settings.dailyExpCap) { showToast('Batas EXP harian (' + state.settings.dailyExpCap + ') telah tercapai!', 'muted'); return; }
-      const allowedExp = state.settings.dailyExpCapEnabled === true ? Math.min(amount, state.settings.dailyExpCap - state.meta.dailyExpEarned) : amount;
-      state.meta.dailyExpEarned += allowedExp; c.exp += allowedExp;
-      (state.meta.dailyExpLog=state.meta.dailyExpLog||{})[todayStr()] = ((state.meta.dailyExpLog||{})[todayStr()]||0) + allowedExp;
-  } else {
-      const oldLevel = c.level;
-      c.exp += amount;
-      if (c.exp < 0) {
-          let remainingNeg = Math.abs(c.exp); c.exp = 0;
-          while(remainingNeg > 0 && c.level > 1) {
-              if (oldLevel - c.level >= 3) break; // MAX DROP 3 LEVELS
-              c.level -= 1;
-              const expN = expNeeded(c.level);
-              if(remainingNeg > expN) { remainingNeg -= expN; }
-              else { c.exp = expN - remainingNeg; remainingNeg = 0; }
-          }
-          showToast(`LEVEL DOWN! Kini Lv.${c.level}`, 'bad'); SFX.error();
+  try {
+    const c = state.character; const mult = state.settings.expMultiplier || 1.0; amount = Math.round(amount * mult);
+    if(amount > 0 && state.spiritual?.sunnahBonusDate === todayStr()) amount = Math.round(amount * 1.1);
+    if (amount > 0) {
+        if (state.settings.dailyExpCapEnabled === true && state.meta.dailyExpEarned >= state.settings.dailyExpCap) { showToast('Batas EXP harian (' + state.settings.dailyExpCap + ') telah tercapai!', 'muted'); return; }
+        const allowedExp = state.settings.dailyExpCapEnabled === true ? Math.min(amount, state.settings.dailyExpCap - state.meta.dailyExpEarned) : amount;
+        state.meta.dailyExpEarned += allowedExp; c.exp += allowedExp;
+        (state.meta.dailyExpLog=state.meta.dailyExpLog||{})[todayStr()] = ((state.meta.dailyExpLog||{})[todayStr()]||0) + allowedExp;
+    } else {
+        const oldLevel = c.level;
+        c.exp += amount;
+        if (c.exp < 0) {
+            let remainingNeg = Math.abs(c.exp); c.exp = 0;
+            while(remainingNeg > 0 && c.level > 1) {
+                if (oldLevel - c.level >= 3) break; // MAX DROP 3 LEVELS
+                c.level -= 1;
+                const expN = expNeeded(c.level);
+                if(remainingNeg > expN) { remainingNeg -= expN; }
+                else { c.exp = expN - remainingNeg; remainingNeg = 0; }
+            }
+            showToast(`LEVEL DOWN! Kini Lv.${c.level}`, 'bad'); SFX.error();
+        }
+    }
+    const prevRealmIdx = c.realmIndex;
+    const prevBridges = c.heavenBridges || 0;
+    const prevLevel = c.level;
+    let leveled=false;
+    // Level bisa naik tanpa batas — tidak ada cap di sini
+    while(c.exp >= expNeeded(c.level)){ c.exp -= expNeeded(c.level); c.level += 1; leveled=true; }
+    // Sinkronkan realm (dan heavenBridges di HT) setiap kali c.level berubah
+    syncRealmWithLevel(state);
+    if(leveled){
+      SFX.levelUp(); showLevelUp(c.level);
+      ensureCharHistory(state);
+      const _chTs = new Date().toLocaleString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+      state.charHistory.level.push({ts:_chTs, val:c.level});
+      // Jika realm naik (masuk HT pertama kali), tampilkan animasi breakthrough
+      if(c.realmIndex > prevRealmIdx){
+        const newRealm = state.realms[c.realmIndex];
+        if(newRealm){ SFX.breakthrough(); triggerBreakthrough(newRealm.nameID); addTimelineEvent('realm', 'Naik ke Realm: ' + newRealm.nameID, '⛰️'); gainBondExp(50); spiritSay(getSpiritBreakthroughLine(newRealm.nameID), true); ensureCharHistory(state); state.charHistory.realm.push({ts:_chTs||todayStr(), val:newRealm.nameID}); }
       }
-  }
-  const prevRealmIdx = c.realmIndex;
-  const prevBridges = c.heavenBridges || 0;
-  const prevLevel = c.level;
-  let leveled=false;
-  // Level bisa naik tanpa batas — tidak ada cap di sini
-  while(c.exp >= expNeeded(c.level)){ c.exp -= expNeeded(c.level); c.level += 1; leveled=true; }
-  // Sinkronkan realm (dan heavenBridges di HT) setiap kali c.level berubah
-  syncRealmWithLevel(state);
-  if(leveled){
-    SFX.levelUp(); showLevelUp(c.level);
-    if(!state.charHistory) state.charHistory={level:[],hp:[],realm:[],streak:[]};
-    const _chTs = new Date().toLocaleString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
-    state.charHistory.level.push({ts:_chTs, val:c.level});
-    // Jika realm naik (masuk HT pertama kali), tampilkan animasi breakthrough
-    if(c.realmIndex > prevRealmIdx){
-      const newRealm = state.realms[c.realmIndex];
-      if(newRealm){ SFX.breakthrough(); triggerBreakthrough(newRealm.nameID); addTimelineEvent('realm', 'Naik ke Realm: ' + newRealm.nameID, '⛰️'); gainBondExp(50); spiritSay(getSpiritBreakthroughLine(newRealm.nameID), true); if(!state.charHistory) state.charHistory={level:[],hp:[],realm:[],streak:[]}; state.charHistory.realm.push({ts:_chTs||todayStr(), val:newRealm.nameID}); }
-    }
-    // Jika sudah di HT dan bridge naik (tiap 100 level), tampilkan notifikasi
-    if(isHeavenTrampling() && c.heavenBridges > prevBridges){
-      SFX.breakthrough();
-      addActivityLog(`Jembatan Surga ke-${c.heavenBridges} ditembus!`);
-      showToast(`🌉 Jembatan ${c.heavenBridges} Ditembus!`, 'ach');
-      addTimelineEvent('heaven', `Jembatan Surga ke-${c.heavenBridges} Ditembus`, '🌉');
-      if(c.heavenBridges === 9){
-        addActivityLog('🌟 TA TIAN SEMPURNA');
-        showTrophy('TA TIAN SEMPURNA', 'Penguasa Kehampaan', '🌌');
+      // Jika sudah di HT dan bridge naik (tiap 100 level), tampilkan notifikasi
+      if(isHeavenTrampling() && c.heavenBridges > prevBridges){
+        SFX.breakthrough();
+        addActivityLog(`Jembatan Surga ke-${c.heavenBridges} ditembus!`);
+        showToast(`🌉 Jembatan ${c.heavenBridges} Ditembus!`, 'ach');
+        addTimelineEvent('heaven', `Jembatan Surga ke-${c.heavenBridges} Ditembus`, '🌉');
+        if(c.heavenBridges === 9){
+          addActivityLog('🌟 TA TIAN SEMPURNA');
+          showTrophy('TA TIAN SEMPURNA', 'Penguasa Kehampaan', '🌌');
+        }
+      }
+      // Level milestones — check every level crossed, not just final (handles multi-level jumps)
+      const _MILESTONES = new Set([5,10,15,25,35,45,50,60,70,100,150,200,300,500,700,1000]);
+      for(let _lv = prevLevel + 1; _lv <= c.level; _lv++){
+        if(_MILESTONES.has(_lv)) addTimelineEvent('level', 'Mencapai Level ' + _lv, '⭐');
       }
     }
-    // Level milestones — check every level crossed, not just final (handles multi-level jumps)
-    const _MILESTONES = new Set([5,10,15,25,35,45,50,60,70,100,150,200,300,500,700,1000]);
-    for(let _lv = prevLevel + 1; _lv <= c.level; _lv++){
-      if(_MILESTONES.has(_lv)) addTimelineEvent('level', 'Mencapai Level ' + _lv, '⭐');
-    }
+    recomputeLifeScore();
+  } catch(e) {
+    console.error('[MYSISTEM] Error di gainExp():', e);
+    try { showToast('⚠️ Terjadi kesalahan saat memproses EXP.', 'bad'); } catch(e2) {}
   }
-  recomputeLifeScore();
 }
 
 function bumpStat(key, amount){ if(!(key in state.stats)) return; state.stats[key] = Math.max(0, (state.stats[key]||0) + amount); recomputeLifeScore(); }
@@ -3838,59 +3850,69 @@ function getRemainingCompletions(q){ if(!q.dailyLimit) return '∞'; const today
 function afterQuestComplete(q){ q.completionsToday = (q.completionsToday || 0) + 1; q.lastCompletedDate = todayStr(); }
 
 function completeQuest(id){
-  const q = state.quests.find(x=>x.id===id); if(!q || q.status==='done') return;
-  if(!canCompleteQuestToday(q)) { showToast('Batas harian quest ini habis.', 'bad'); SFX.error(); return; }
-  const exp = rewardFor(q); q.status='done'; q.lastCompletedAt = Date.now();
-  state.meta.completedTodayCount = (state.meta.completedTodayCount||0)+1; state.character.totalQuests = (state.character.totalQuests||0)+1;
-  afterQuestComplete(q); addActivityLog(`Quest Selesai: ${q.title}`); state.questSuccessLog = state.questSuccessLog || {}; state.questSuccessLog[todayStr()] = (state.questSuccessLog[todayStr()]||0)+1; gainExp(exp); addRealmEnergy(Math.round(exp*0.5));
-  const _prevHp631 = state.character.hp;
-  state.character.hp = Math.min(state.character.maxHp, state.character.hp + hpGainForQuest(q)); // Restore HP (skala kesulitan)
-  logHpChange(state.character.hp - _prevHp631, `Selesai Quest: ${q.title}`);
-  { if(!state.charHistory) state.charHistory={level:[],hp:[],realm:[],streak:[]}; const _hpD=todayStr(); if(!state.charHistory.hp.length||state.charHistory.hp[state.charHistory.hp.length-1].ts!==_hpD) state.charHistory.hp.push({ts:_hpD, val:state.character.hp}); }
-  if(state.settings.showFloatingExp) showFloatingExp(exp); SFX.success(); showToast(`Selamat, kamu menyelesaikan quest: ${q.title}`, 'ach'); checkAchievements(); render(); save();
-  gainBondExp(2);
-  const _pendingCore = state.quests.filter(x=>x.isCore && x.status==='pending').length;
-  if(_pendingCore === 0){
-    const _allDailyDone = state.quests.filter(x=>x.type==='daily').every(x=>x.status!=='pending');
-    if(_allDailyDone) spiritSay(SPIRIT_QUEST_ALL_DONE_LINES[Math.floor(Math.random()*SPIRIT_QUEST_ALL_DONE_LINES.length)], true);
+  try {
+    const q = state.quests.find(x=>x.id===id); if(!q || q.status==='done') return;
+    if(!canCompleteQuestToday(q)) { showToast('Batas harian quest ini habis.', 'bad'); SFX.error(); return; }
+    const exp = rewardFor(q); q.status='done'; q.lastCompletedAt = Date.now();
+    state.meta.completedTodayCount = (state.meta.completedTodayCount||0)+1; state.character.totalQuests = (state.character.totalQuests||0)+1;
+    afterQuestComplete(q); addActivityLog(`Quest Selesai: ${q.title}`); state.questSuccessLog = state.questSuccessLog || {}; state.questSuccessLog[todayStr()] = (state.questSuccessLog[todayStr()]||0)+1; gainExp(exp); addRealmEnergy(Math.round(exp*0.5));
+    const _prevHp631 = state.character.hp;
+    state.character.hp = Math.min(state.character.maxHp, state.character.hp + hpGainForQuest(q)); // Restore HP (skala kesulitan)
+    logHpChange(state.character.hp - _prevHp631, `Selesai Quest: ${q.title}`);
+    { ensureCharHistory(state); const _hpD=todayStr(); if(!state.charHistory.hp.length||state.charHistory.hp[state.charHistory.hp.length-1].ts!==_hpD) state.charHistory.hp.push({ts:_hpD, val:state.character.hp}); }
+    if(state.settings.showFloatingExp) showFloatingExp(exp); SFX.success(); showToast(`Selamat, kamu menyelesaikan quest: ${q.title}`, 'ach'); checkAchievements(); render(); save();
+    gainBondExp(2);
+    const _pendingCore = state.quests.filter(x=>x.isCore && x.status==='pending').length;
+    if(_pendingCore === 0){
+      const _allDailyDone = state.quests.filter(x=>x.type==='daily').every(x=>x.status!=='pending');
+      if(_allDailyDone) spiritSay(SPIRIT_QUEST_ALL_DONE_LINES[Math.floor(Math.random()*SPIRIT_QUEST_ALL_DONE_LINES.length)], true);
+    }
+    updateSpiritCompanionUI();
+  } catch(e) {
+    console.error('[MYSISTEM] Error di completeQuest():', e);
+    try { showToast('⚠️ Gagal menyelesaikan quest karena error. Coba lagi.', 'bad'); } catch(e2) {}
   }
-  updateSpiritCompanionUI();
 }
 
 function failQuest(id){
-  const q = state.quests.find(x=>x.id===id); if(!q) return; 
-  let penalty = 0;
-  if (state.character.level > 20) {
-      penalty = Math.max(50, Math.round(rewardFor(q) * 1.5 * (state.character.level / 10))); 
+  try {
+    const q = state.quests.find(x=>x.id===id); if(!q) return;
+    let penalty = 0;
+    if (state.character.level > 20) {
+        penalty = Math.max(50, Math.round(rewardFor(q) * 1.5 * (state.character.level / 10)));
+    }
+
+    q.status='failed';
+    state.questFailLog = state.questFailLog || {}; state.questFailLog[todayStr()] = (state.questFailLog[todayStr()]||0)+1;
+    if(penalty > 0) gainExp(-penalty);
+    bumpStat('discipline', -3);
+
+    state.character.realmEnergy = Math.max(0, state.character.realmEnergy-10);
+    state.character.failedQuests = (state.character.failedQuests || 0) + 1;
+
+    const hpLoss = hpLossForQuest(q);
+    state.character.hp -= hpLoss;
+    logHpChange(-hpLoss, `Gagal Quest: ${q.title}`);
+    if (state.character.hp <= 0) {
+        state.character.hp = 0;
+        if(isHeavenTrampling()){
+            // HT specific: HP=0 triggers Qi Deviation (-3 LV, massive EXP loss)
+            applyHtQiDeviation();
+            showToast(`☠️ QI DEVIATION! HP Habis di Heaven Trampling — Level -3, EXP terkuras!`, 'bad');
+        } else {
+            const hpZeroPenalty = getHpZeroExpPenalty();
+            gainExp(-hpZeroPenalty);
+            showToast(`Energi Anda Habis. Selesaikan Quest untuk Memulihkan HP. (-${hpZeroPenalty} EXP)`, 'bad');
+        }
+    } else {
+        if(penalty > 0) showToast(`Quest Gagal! HP -${hpLoss} & EXP -${penalty}`,'bad');
+        else showToast(`Quest Gagal! HP -${hpLoss}`,'bad');
+    }
+    SFX.error(); render(); save();
+  } catch(e) {
+    console.error('[MYSISTEM] Error di failQuest():', e);
+    try { showToast('⚠️ Terjadi kesalahan saat menggagalkan quest.', 'bad'); } catch(e2) {}
   }
-  
-  q.status='failed';
-  state.questFailLog = state.questFailLog || {}; state.questFailLog[todayStr()] = (state.questFailLog[todayStr()]||0)+1;
-  if(penalty > 0) gainExp(-penalty); 
-  bumpStat('discipline', -3);
-  
-  state.character.realmEnergy = Math.max(0, state.character.realmEnergy-10);
-  state.character.failedQuests = (state.character.failedQuests || 0) + 1;
-  
-  const hpLoss = hpLossForQuest(q);
-  state.character.hp -= hpLoss;
-  logHpChange(-hpLoss, `Gagal Quest: ${q.title}`);
-  if (state.character.hp <= 0) {
-      state.character.hp = 0;
-      if(isHeavenTrampling()){
-          // HT specific: HP=0 triggers Qi Deviation (-3 LV, massive EXP loss)
-          applyHtQiDeviation();
-          showToast(`☠️ QI DEVIATION! HP Habis di Heaven Trampling — Level -3, EXP terkuras!`, 'bad');
-      } else {
-          const hpZeroPenalty = getHpZeroExpPenalty();
-          gainExp(-hpZeroPenalty);
-          showToast(`Energi Anda Habis. Selesaikan Quest untuk Memulihkan HP. (-${hpZeroPenalty} EXP)`, 'bad');
-      }
-  } else {
-      if(penalty > 0) showToast(`Quest Gagal! HP -${hpLoss} & EXP -${penalty}`,'bad'); 
-      else showToast(`Quest Gagal! HP -${hpLoss}`,'bad'); 
-  }
-  SFX.error(); render(); save();
 }
 
 function postponeQuest(id){ const q = state.quests.find(x=>x.id===id); if(!q) return; q.status='postponed'; render(); save(); }
@@ -4019,7 +4041,7 @@ function rollover(){
   // → Firebase data dengan _localSeq lebih tinggi selalu menang di _isNewer(), menimpa
   // streak=1 yang baru saja diset. Sekarang save() dipanggil sebelum return agar state
   // first-open langsung persist + _localSeq naik + Firebase dapat push yang benar.
-  if(!state.meta.lastActiveDate){ state.meta.lastActiveDate = today; state.meta.lastWeekKey = weekKey(new Date()); state.meta.lastMonthKey = monthKey(new Date()); state.character.streak = Math.max(state.character.streak||0, 1); state.character.longestStreak = Math.max(state.character.longestStreak||0, state.character.streak); if(!state.charHistory) state.charHistory={level:[],hp:[],realm:[],streak:[]}; if(!state.charHistory.streak.some(s=>s.ts===today)) state.charHistory.streak.push({ts:today, val:state.character.streak}); if(!state.charHistory.realm||!state.charHistory.realm.length){ const _fr=state.realms&&state.realms[state.character.realmIndex||0]; if(_fr) state.charHistory.realm.push({ts:today, val:_fr.nameID}); } state.meta.activityLog=state.meta.activityLog||{}; if(!state.meta.activityLog[today]) state.meta.activityLog[today]=1; save(); return; }
+  if(!state.meta.lastActiveDate){ state.meta.lastActiveDate = today; state.meta.lastWeekKey = weekKey(new Date()); state.meta.lastMonthKey = monthKey(new Date()); state.character.streak = Math.max(state.character.streak||0, 1); state.character.longestStreak = Math.max(state.character.longestStreak||0, state.character.streak); ensureCharHistory(state); if(!state.charHistory.streak.some(s=>s.ts===today)) state.charHistory.streak.push({ts:today, val:state.character.streak}); if(!state.charHistory.realm||!state.charHistory.realm.length){ const _fr=state.realms&&state.realms[state.character.realmIndex||0]; if(_fr) state.charHistory.realm.push({ts:today, val:_fr.nameID}); } state.meta.activityLog=state.meta.activityLog||{}; if(!state.meta.activityLog[today]) state.meta.activityLog[today]=1; save(); return; }
   const activeShift = getTodayActiveShift(); if(activeShift !== 'libur' && activeShift !== 'custom') state.character.shift = activeShift;
   if(state.meta.lastActiveDate === today) return;
 
@@ -4102,7 +4124,7 @@ function rollover(){
   if(gap===1){ state.character.streak += 1; state.character.failStreak = 0; } 
   else { state.character.streak = 0; state.character.failStreak += gap; }
   state.character.longestStreak = Math.max(state.character.longestStreak, state.character.streak);
-  if(state.character.streak > 0){ if(!state.charHistory) state.charHistory={level:[],hp:[],realm:[],streak:[]}; const _stD=todayStr(); if(!state.charHistory.streak.length||state.charHistory.streak[state.charHistory.streak.length-1].ts!==_stD) state.charHistory.streak.push({ts:_stD, val:state.character.streak}); }
+  if(state.character.streak > 0){ ensureCharHistory(state); const _stD=todayStr(); if(!state.charHistory.streak.length||state.charHistory.streak[state.charHistory.streak.length-1].ts!==_stD) state.charHistory.streak.push({ts:_stD, val:state.character.streak}); }
 
   (state.quests || []).forEach(q => { if(q.type==='daily'){ q.status='pending'; q.completionsToday = 0; } });
   state.meta.completedTodayCount = 0; state.meta.dailyExpEarned = 0;
@@ -5257,21 +5279,26 @@ function applyRealmFX(){
 }
 
 function render(){
-  if(!state) return; 
-  const streakApi = state.character.streak > 0 ? ` 🔥${state.character.streak}` : '';
-  document.getElementById('day-counter').textContent = 'DAY '+getGameDay() + streakApi;
-  
-  renderRecoveryBanner(); renderHpZeroBanner(); renderNav(); renderBottomNav(); updateMoodChip();
-  const main = document.getElementById('main'); const tab = state.ui && state.ui.tab ? state.ui.tab : 'home';
-  if(_rvRaf){ cancelAnimationFrame(_rvRaf); _rvRaf = null; } // cancel old FX before re-render
-  if(tab==='home') main.innerHTML = renderHome(); else if(tab==='quests') main.innerHTML = renderQuests(); else if(tab==='goals') main.innerHTML = renderGoals(); else if(tab==='stats') main.innerHTML = renderStats(); else if(tab==='boss') main.innerHTML = renderBoss(); else if(tab==='ritual') main.innerHTML = renderRitual(); else if(tab==='profile') main.innerHTML = renderProfile(); else if(tab==='project') main.innerHTML = renderProjectKanban(); else if(tab==='enlight') main.innerHTML = renderStatisticsTable(); else if(tab==='realmenc') main.innerHTML = renderRealmEncyclopedia(); else if(tab==='lifeenc') main.innerHTML = renderLifeEncyclopedia(); else if(tab==='hall') main.innerHTML = renderHallOfFame(); else if(tab==='caracter') main.innerHTML = renderCharacterMomentumTab(); else if(tab==='refleksi') main.innerHTML = renderRefleksi();
-  if(tab==='project') setTimeout(initProjectCharts, 60);
-  else if(tab==='goals') setTimeout(initGoalCharts, 60);
-  else if(tab==='stats') setTimeout(initStatsChart, 60);
-  if(tab==='home') applyRealmFX();
-  applySectionOrder(tab);
-  injectMovedSections(tab);
-  updateSpiritCompanionUI();
+  if(!state) return;
+  try {
+    const streakApi = state.character.streak > 0 ? ` 🔥${state.character.streak}` : '';
+    document.getElementById('day-counter').textContent = 'DAY '+getGameDay() + streakApi;
+
+    renderRecoveryBanner(); renderHpZeroBanner(); renderNav(); renderBottomNav(); updateMoodChip();
+    const main = document.getElementById('main'); const tab = state.ui && state.ui.tab ? state.ui.tab : 'home';
+    if(_rvRaf){ cancelAnimationFrame(_rvRaf); _rvRaf = null; } // cancel old FX before re-render
+    if(tab==='home') main.innerHTML = renderHome(); else if(tab==='quests') main.innerHTML = renderQuests(); else if(tab==='goals') main.innerHTML = renderGoals(); else if(tab==='stats') main.innerHTML = renderStats(); else if(tab==='boss') main.innerHTML = renderBoss(); else if(tab==='ritual') main.innerHTML = renderRitual(); else if(tab==='profile') main.innerHTML = renderProfile(); else if(tab==='project') main.innerHTML = renderProjectKanban(); else if(tab==='enlight') main.innerHTML = renderStatisticsTable(); else if(tab==='realmenc') main.innerHTML = renderRealmEncyclopedia(); else if(tab==='lifeenc') main.innerHTML = renderLifeEncyclopedia(); else if(tab==='hall') main.innerHTML = renderHallOfFame(); else if(tab==='caracter') main.innerHTML = renderCharacterMomentumTab(); else if(tab==='refleksi') main.innerHTML = renderRefleksi();
+    if(tab==='project') setTimeout(initProjectCharts, 60);
+    else if(tab==='goals') setTimeout(initGoalCharts, 60);
+    else if(tab==='stats') setTimeout(initStatsChart, 60);
+    if(tab==='home') applyRealmFX();
+    applySectionOrder(tab);
+    injectMovedSections(tab);
+    updateSpiritCompanionUI();
+  } catch(e) {
+    console.error('[MYSISTEM] Error di render():', e);
+    try { showToast('⚠️ Terjadi kesalahan saat menampilkan halaman. Data kamu aman.', 'bad'); } catch(e2) {}
+  }
 }
 
 function renderNav(){ if(!state || !state.ui) return; document.querySelectorAll('.nav-btn').forEach(btn=>{ const isActive = btn.dataset.tab===state.ui.tab; btn.classList.toggle('active', isActive); if(isActive) { const nav = document.getElementById('bottom-nav'); nav.scrollTo({ left: btn.offsetLeft - (nav.clientWidth/2) + (btn.clientWidth/2), behavior: 'smooth' }); } }); }
@@ -5511,7 +5538,7 @@ function renderHome(){
     </div>
     <div class="hp-bar-wrap" style="margin-top:10px;">
       <div class="row-between small" style="margin-bottom:5px;"><span class="muted" style="font-weight:700; color:var(--crimson);">Vitality (HP)</span><span class="muted" style="color:var(--crimson); display:flex; align-items:center; gap:6px;">${c.hp}/${c.maxHp}<button onclick="openModal('modal-hp-log'); renderHpLogModal();" style="background:none; border:1px solid rgba(255,71,104,0.4); color:var(--crimson); border-radius:6px; font-size:9px; padding:2px 6px; cursor:pointer;">Riwayat</button></span></div>
-      <div class="stat-track" style="background:rgba(255,71,104,0.1);"><div class="stat-fill" style="width:${(c.hp/c.maxHp)*100}%; background:linear-gradient(90deg, #8a1c1c, var(--crimson)); box-shadow: 0 0 8px rgba(255,71,104,0.5);"></div></div>
+      <div class="stat-track" style="background:rgba(255,71,104,0.1);"><div class="stat-fill" style="width:${(c.hp/Math.max(1,c.maxHp))*100}%; background:linear-gradient(90deg, #8a1c1c, var(--crimson)); box-shadow: 0 0 8px rgba(255,71,104,0.5);"></div></div>
     </div>
 
     <div class="life-score-row">
@@ -5750,7 +5777,7 @@ function deleteCustomStat(key){ const cs = state.customStats.find(s=>s.key===key
 
 function renderBoss(){
     const targetsHtml = (state.targets || []).map(t => {
-        const pct = Math.min(100, ((t.maxHp - t.currentHp) / t.maxHp) * 100).toFixed(1); 
+        const pct = Math.min(100, ((t.maxHp - t.currentHp) / Math.max(1, t.maxHp)) * 100).toFixed(1); 
         const defeated = t.currentHp <= 0;
         let deadlineHtml = '';
         if(t.deadline && !defeated) {
@@ -7137,7 +7164,7 @@ function resetPartial(type){
   });
 }
 function exportData(){ const blob = new Blob([JSON.stringify(state,null,2)], {type:'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'mysistem-'+todayStr()+'.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); }
-function importData(ev){ const file = ev.target.files[0]; if(!file) return; const reader = new FileReader(); reader.onload = ()=>{ try{ const parsed = JSON.parse(reader.result); state = migrateState(deepMerge(DEFAULT_STATE(), parsed)); if(state.meta && state.meta.startDate){ const _impGap = state.meta.lastActiveDate ? diffDays(state.meta.lastActiveDate, todayStr()) : 999; if(_impGap <= 1){ const _correctStreak = diffDays(state.meta.startDate, todayStr()) + 1; state.character.streak = Math.max(state.character.streak||0, _correctStreak); state.character.longestStreak = Math.max(state.character.longestStreak||0, state.character.streak); } else { state.character.streak = 0; } const _itod=todayStr(); if(!state.charHistory) state.charHistory={level:[],hp:[],realm:[],streak:[]}; if(state.character.streak>0 && !state.charHistory.streak.some(s=>s.ts===_itod)) state.charHistory.streak.push({ts:_itod, val:state.character.streak}); if(!state.charHistory.realm||!state.charHistory.realm.length){ const _ir=(state.realms||[])[state.character.realmIndex||0]; if(_ir) state.charHistory.realm.push({ts:_itod, val:_ir.nameID}); } state.meta.activityLog=state.meta.activityLog||{}; if(!state.meta.activityLog[_itod]) state.meta.activityLog[_itod]=1; state.meta.lastActiveDate=_itod; } rollover(); recomputeLifeScore(); render(); save(); showToast('Data berhasil diimpor','ach'); }catch(e){ showToast('Gagal impor: file tidak valid','bad'); } }; reader.readAsText(file); ev.target.value=''; }
+function importData(ev){ const file = ev.target.files[0]; if(!file) return; const reader = new FileReader(); reader.onload = ()=>{ try{ const parsed = JSON.parse(reader.result); state = migrateState(deepMerge(DEFAULT_STATE(), parsed)); if(state.meta && state.meta.startDate){ const _impGap = state.meta.lastActiveDate ? diffDays(state.meta.lastActiveDate, todayStr()) : 999; if(_impGap <= 1){ const _correctStreak = diffDays(state.meta.startDate, todayStr()) + 1; state.character.streak = Math.max(state.character.streak||0, _correctStreak); state.character.longestStreak = Math.max(state.character.longestStreak||0, state.character.streak); } else { state.character.streak = 0; } const _itod=todayStr(); ensureCharHistory(state); if(state.character.streak>0 && !state.charHistory.streak.some(s=>s.ts===_itod)) state.charHistory.streak.push({ts:_itod, val:state.character.streak}); if(!state.charHistory.realm||!state.charHistory.realm.length){ const _ir=(state.realms||[])[state.character.realmIndex||0]; if(_ir) state.charHistory.realm.push({ts:_itod, val:_ir.nameID}); } state.meta.activityLog=state.meta.activityLog||{}; if(!state.meta.activityLog[_itod]) state.meta.activityLog[_itod]=1; state.meta.lastActiveDate=_itod; } rollover(); recomputeLifeScore(); render(); save(); showToast('Data berhasil diimpor','ach'); }catch(e){ showToast('Gagal impor: file tidak valid','bad'); } }; reader.readAsText(file); ev.target.value=''; }
 function confirmResetData(){ openConfirm('Reset SEMUA progres? Karakter kembali ke Level 1.', ()=>{ state = DEFAULT_STATE(); localStorage.removeItem(STORAGE_KEY); rollover(); render(); save(); closeModal('modal-settings'); }); }
 
 function buildModals() {
