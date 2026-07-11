@@ -201,6 +201,12 @@ a{color:var(--cyan);}
   border-radius:10px;padding:8px 10px;letter-spacing:0.3px;
 }
 .hp-zero-banner small{display:block;font-weight:400;color:#ffe3cf;margin-top:2px;font-size:11px;}
+.hp-low-warning{margin-top:8px;padding:8px 12px;border-radius:10px;background:rgba(240,185,59,0.12);border:1px solid rgba(240,185,59,0.4);color:#f0b93b;font-size:11.5px;font-weight:700;text-align:center;}
+.consequence-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;}
+.consequence-box{max-width:420px;width:100%;background:#2a0505;border:2px solid #ff4768;border-radius:14px;padding:22px 20px;text-align:center;animation:consequenceBlink 1s infinite;box-shadow:0 0 30px rgba(255,71,104,0.6);}
+@keyframes consequenceBlink{0%{box-shadow:0 0 12px rgba(255,71,104,0.4);border-color:#ff4768;}50%{box-shadow:0 0 34px rgba(255,71,104,0.9);border-color:#ffb3c0;}100%{box-shadow:0 0 12px rgba(255,71,104,0.4);border-color:#ff4768;}}
+.consequence-box h3{color:#ff4768;font-family:var(--font-display);font-size:16px;margin-bottom:10px;letter-spacing:0.5px;}
+.consequence-box p{color:#ffe3e3;font-size:13.5px;line-height:1.5;margin-bottom:16px;white-space:pre-wrap;}
 
 .tab-content{flex:1;padding:16px 16px 110px;animation:tabIn 0.28s ease;}
 @keyframes tabIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
@@ -1620,6 +1626,7 @@ a{color:var(--cyan);}
     <div id="recovery-banner-slot"></div>
     <div id="hp-zero-banner-slot"></div>
   </header>
+  <div id="consequence-slot"></div>
 
   <div id="sub-nav"></div>
 
@@ -2438,6 +2445,40 @@ const HP_LOSS_BY_DIFFICULTY = {easy:5, normal:10, hard:15, epic:20};
 function hpGainForQuest(q){ return HP_GAIN_BY_DIFFICULTY[q && q.difficulty] ?? HP_GAIN_BY_DIFFICULTY.normal; }
 function hpLossForQuest(q){ return HP_LOSS_BY_DIFFICULTY[q && q.difficulty] ?? HP_LOSS_BY_DIFFICULTY.normal; }
 
+// ═══ Sistem Mana (tameng/shield sebelum HP kena dampak gagal quest) ═══
+// Mana didapat saat quest/ritual/jurnal/goal berhasil, dan jadi penyerap utama saat quest gagal.
+// Selama Mana masih ada, HP cuma berkurang sedikit (maks 3). Begitu Mana habis, HP baru kena signifikan.
+const MANA_GAIN_BY_DIFFICULTY       = {easy:10, normal:15, hard:20, epic:25};
+const MANA_DRAIN_BY_DIFFICULTY      = {easy:10, normal:15, hard:20, epic:25};
+const HP_LOSS_WITH_MANA_BY_DIFFICULTY = {easy:0,  normal:1,  hard:3,  epic:3};
+const HP_LOSS_NO_MANA_BY_DIFFICULTY   = {easy:10, normal:18, hard:24, epic:30};
+function manaGainForQuest(q){ return MANA_GAIN_BY_DIFFICULTY[q && q.difficulty] ?? MANA_GAIN_BY_DIFFICULTY.normal; }
+function manaDrainForQuest(q){ return MANA_DRAIN_BY_DIFFICULTY[q && q.difficulty] ?? MANA_DRAIN_BY_DIFFICULTY.normal; }
+function hpLossWithManaForQuest(q){ return HP_LOSS_WITH_MANA_BY_DIFFICULTY[q && q.difficulty] ?? HP_LOSS_WITH_MANA_BY_DIFFICULTY.normal; }
+function hpLossNoManaForQuest(q){ return HP_LOSS_NO_MANA_BY_DIFFICULTY[q && q.difficulty] ?? HP_LOSS_NO_MANA_BY_DIFFICULTY.normal; }
+// Nambah Mana + catat, dikunci di batas 0..maxMana.
+function gainMana(amount, reason){
+  if(!state || !state.character || !amount) return;
+  if(typeof state.character.mana !== 'number') state.character.mana = 200;
+  if(typeof state.character.maxMana !== 'number') state.character.maxMana = 200;
+  state.character.mana = Math.max(0, Math.min(state.character.maxMana, state.character.mana + amount));
+}
+// Cek pemicu peringatan konsekuensi kustom: HP dan Mana dua-duanya benar-benar habis.
+function checkConsequenceTrigger(){
+  if(!state || !state.character) return;
+  if(state.character.hp <= 0 && state.character.mana <= 0){
+    state.character.consequencePending = true;
+  }
+}
+function acceptConsequence(){
+  if(!state || !state.character) return;
+  state.character.consequencePending = false;
+  gainMana(10, 'Terima konsekuensi');
+  state.character.hp = Math.min(state.character.maxHp, state.character.hp + 20);
+  logHpChange(20, 'Terima konsekuensi (jeda & napas)');
+  save(); render();
+}
+
 // ═══ Riwayat perubahan HP (biar user bisa lihat kapan & kenapa HP berkurang/bertambah) ═══
 function logHpChange(delta, reason){
   if(!state || !delta) return;
@@ -2992,6 +3033,7 @@ function DEFAULT_SETTINGS(){
     nameHoloStyle: 'none',
     bgTheme: 'void',
     navGroupOrder: ['home','quest','progres','finansial','profil'],
+    consequenceText: 'Kamu gagal dan energi (HP & Mana) benar-benar habis. Terima konsekuensinya: Push up 100x dan jangan makan 1 hari. Jangan bohongi diri sendiri.',
   };
 }
 
@@ -3327,7 +3369,7 @@ function DEFAULT_STATE(){
   return {
     meta:{ lastActiveDate:null, lastWeekKey:null, lastMonthKey:null, completedTodayCount:0, levelCurve:1, startDate: todayStr(), activityLog: {}, activityNotes: {}, dailyExpEarned:0, dailyExpLog:{} },
     ui:{ tab:'home', questFilter:'all' },
-    character:{ name:'Jian Haikal', age:22, job:'Pejuang', shift:'pagi', avatarColor: 'linear-gradient(135deg,var(--arise),var(--cyan))', level:1, exp:0, hp: 100, maxHp: 100, realmIndex:0, realmEnergy:0, lifeScore:0, streak:0, longestStreak:0, failStreak:0, recoveryMode:false, lifetimeIncome:0, bossesDefeated:0, goalsCompleted:0, totalQuests:0, failedQuests:0, failedGoals:0, failedProjects:0, heavenBridges: 0, equippedTitle:'The Beginner', equippedMedal:'', titlesUnlocked:['The Beginner', 'Wealth Core Lord'], lifePrinciple:'Disiplin mengalahkan motivasi.', lifePrincipleHistory:[], },
+    character:{ name:'Jian Haikal', age:22, job:'Pejuang', shift:'pagi', avatarColor: 'linear-gradient(135deg,var(--arise),var(--cyan))', level:1, exp:0, hp: 100, maxHp: 100, mana: 200, maxMana: 200, consequencePending:false, realmIndex:0, realmEnergy:0, lifeScore:0, streak:0, longestStreak:0, failStreak:0, recoveryMode:false, lifetimeIncome:0, bossesDefeated:0, goalsCompleted:0, totalQuests:0, failedQuests:0, failedGoals:0, failedProjects:0, heavenBridges: 0, equippedTitle:'The Beginner', equippedMedal:'', titlesUnlocked:['The Beginner', 'Wealth Core Lord'], lifePrinciple:'Disiplin mengalahkan motivasi.', lifePrincipleHistory:[], },
     _realmMigratedV2:false,
     stats:{ strength:0,health:0,discipline:0,knowledge:0,communication:0,finance:0,focus:0,spirituality:0,leadership:0,confidence:0,consistency:0 },
     spiritual:{ level:1, exp:0, dailyLog:{} }, 
@@ -3337,6 +3379,9 @@ function DEFAULT_STATE(){
     targets: [{ id: uid('t'), name:`Target Finansial Perdana`, maxHp:10000000, currentHp:10000000, deadline: '' }], 
     financeLog: [], 
     goals:[], habits:[], goalHistory:[], lifeTimeline:[], lifeMomentum:[],
+    // Arsip permanen "Sejarah Riwayat" (tab Profil) — entri tiap kategori yang sudah lewat 30 hari
+    // dipindahkan ke sini dari riwayat aktifnya masing-masing, tersimpan selamanya, tidak pernah dihapus.
+    historyArchive: { finansial:[], momentum:[], goal:[], sedekah:[], jurnal:[], refleksi:[], timeline:[] },
     sip: { pagi: { status: 'pending', checkedCount:0 }, siang: { status: 'pending', progress: 0, checkedCount:0 }, config: { pagi: ['Bangun tepat waktu', 'Minum air', 'Target Hari Ini'], siang: ['Progress Quest Utama', 'Fokus'] } },
     schedule: JSON.parse(JSON.stringify(DEFAULT_SCHEDULE)), settings: DEFAULT_SETTINGS(), customStats:[], achievementsUnlocked:[],
     kanban: { cards: [] }, todos: [], completedTargets: [], sedekah: { entries:[], totalLifetime:0, dailyExpGained:0, lastExpDate:'' },
@@ -3364,6 +3409,114 @@ function ensureCharHistory(s){
   if(!Array.isArray(s.charHistory.streak)) s.charHistory.streak = [];
   return s.charHistory;
 }
+// Pastikan state.historyArchive selalu punya bentuk {finansial:[], momentum:[], goal:[], sedekah:[], jurnal:[], refleksi:[], timeline:[]}
+// yang valid. Dipakai saat migrasi data lama & oleh fungsi pemindah arsip harian, sama seperti pola ensureCharHistory.
+function ensureHistoryArchive(s){
+  if(!s.historyArchive) s.historyArchive = {};
+  ['finansial','momentum','goal','sedekah','jurnal','refleksi','timeline'].forEach(k=>{
+    if(!Array.isArray(s.historyArchive[k])) s.historyArchive[k] = [];
+  });
+  return s.historyArchive;
+}
+// Pindahkan entri yang usianya sudah lewat 30 hari dari riwayat aktif ke historyArchive
+// (permanen, tidak pernah dihapus). Dipanggil sekali saat load (migrasi data lama) dan
+// setiap hari saat rollover (pemindah otomatis harian). Semua kategori riwayat pakai
+// aturan 30 hari yang sama.
+// Entri baru (sejak update ini) sudah disalin ke historyArchive SAAT DIBUAT (realtime) via
+// _riwayatArchivePush/_riwayatArchiveUpsert di bawah, dan langsung diberi tanda _archived:true.
+// Jadi sweepHistoryArchive() sekarang punya 2 tugas beda tergantung tandanya:
+//  - Entri lama TANPA tanda _archived (dibuat sebelum update ini) → masih perlu disalin dulu
+//    ke archive (migrasi data lama), baru dibuang dari halaman aktif.
+//  - Entri BARU yang sudah bertanda _archived (sudah punya salinan permanen sejak dibuat)
+//    → tinggal dibuang dari halaman aktif, TANPA disalin ulang (supaya tidak dobel di archive).
+function sweepHistoryArchive(s){
+  if(!s) return;
+  ensureHistoryArchive(s);
+  const today = todayStr();
+  const isOld = (dateStr) => !!dateStr && diffDays(dateStr, today) > 30;
+  // Refleksi (jurnal & jawaban) menyimpan "date" dalam format Indonesia ("11 Juli 2026"),
+  // bukan YYYY-MM-DD — jadi umurnya dihitung dari _ts (epoch ms), bukan dari string date.
+  const isOldByTs = (ts) => typeof ts === 'number' && (Date.now() - ts) > 30*86400000;
+
+  // Finansial
+  if(Array.isArray(s.financeLog)){
+    const stay=[], old=[];
+    s.financeLog.forEach(e => (isOld(e.date) ? old : stay).push(e));
+    if(old.length){ const fresh = old.filter(e=>!e._archived); if(fresh.length) s.historyArchive.finansial.push(...fresh); s.financeLog = stay; }
+  }
+  // Momentum
+  if(Array.isArray(s.lifeMomentum)){
+    const stay=[], old=[];
+    s.lifeMomentum.forEach(e => (isOld(e.date) ? old : stay).push(e));
+    if(old.length){ const fresh = old.filter(e=>!e._archived); if(fresh.length) s.historyArchive.momentum.push(...fresh); s.lifeMomentum = stay; }
+  }
+  // Goal (riwayat goal selesai)
+  if(Array.isArray(s.goalHistory)){
+    const stay=[], old=[];
+    s.goalHistory.forEach(e => (isOld(e.completedAt) ? old : stay).push(e));
+    if(old.length){ const fresh = old.filter(e=>!e._archived); if(fresh.length) s.historyArchive.goal.push(...fresh); s.goalHistory = stay; }
+  }
+  // Sedekah
+  if(s.sedekah && Array.isArray(s.sedekah.entries)){
+    const stay=[], old=[];
+    s.sedekah.entries.forEach(e => (isOld(e.date) ? old : stay).push(e));
+    if(old.length){ const fresh = old.filter(e=>!e._archived); if(fresh.length) s.historyArchive.sedekah.push(...fresh); s.sedekah.entries = stay; }
+  }
+  // Jurnal Harian (object: {tanggal: teks}) — sudah di-upsert realtime ke archive saat ditulis,
+  // jadi di sini tinggal dibuang dari halaman aktif tanpa perlu disalin ulang.
+  if(s.dailyJournal){
+    Object.keys(s.dailyJournal).forEach(d => {
+      if(isOld(d)){
+        const already = state.historyArchive.jurnal.some(e=>e.date===d);
+        if(!already) s.historyArchive.jurnal.push({ date: d, content: s.dailyJournal[d] });
+        delete s.dailyJournal[d];
+      }
+    });
+  }
+  // Refleksi — jurnal refleksi (umur dihitung dari _ts, lihat catatan isOldByTs di atas)
+  if(s.refleksi && Array.isArray(s.refleksi.journals)){
+    const stay=[], old=[];
+    s.refleksi.journals.forEach(e => (isOldByTs(e._ts) ? old : stay).push(e));
+    if(old.length){ const fresh = old.filter(e=>!e._archived); if(fresh.length) s.historyArchive.refleksi.push(...fresh.map(e=>({...e, _sourceType:'journal'}))); s.refleksi.journals = stay; }
+  }
+  // Refleksi — jawaban pertanyaan (disimpan per-jawaban, bukan seluruh pertanyaan)
+  if(s.refleksi && Array.isArray(s.refleksi.questions)){
+    s.refleksi.questions.forEach(q => {
+      if(!Array.isArray(q.answers)) return;
+      const stay=[], old=[];
+      q.answers.forEach(a => (isOldByTs(a._ts) ? old : stay).push(a));
+      if(old.length){
+        old.filter(a=>!a._archived).forEach(a => s.historyArchive.refleksi.push({...a, _sourceType:'answer', questionId:q.id, questionText:q.q||''}));
+        q.answers = stay;
+      }
+    });
+  }
+  // Timeline Kehidupan
+  if(Array.isArray(s.lifeTimeline)){
+    const stay=[], old=[];
+    s.lifeTimeline.forEach(e => (isOld(e.date) ? old : stay).push(e));
+    if(old.length){ const fresh = old.filter(e=>!e._archived); if(fresh.length) s.historyArchive.timeline.push(...fresh); s.lifeTimeline = stay; }
+  }
+}
+// Salin entri baru ke Sejarah Riwayat SAAT DIBUAT (realtime). Dipanggil dari titik-titik
+// pembuatan entri (transaksi, sedekah, goal selesai, timeline, jurnal, refleksi, momentum).
+function _riwayatArchivePush(cat, entry){
+  if(!state) return;
+  ensureHistoryArchive(state);
+  entry._archived = true; // tandai supaya sweepHistoryArchive tidak menyalin ulang nanti
+  state.historyArchive[cat].push({...entry});
+}
+// Sama seperti di atas, tapi untuk kategori yang isinya "1 entri per tanggal" (Jurnal Harian,
+// Momentum) — kalau tanggal yang sama sudah ada di archive, update isinya, bukan tambah baris baru.
+function _riwayatArchiveUpsert(cat, dateField, entry){
+  if(!state) return;
+  ensureHistoryArchive(state);
+  entry._archived = true;
+  const arr = state.historyArchive[cat];
+  const existing = arr.find(e => e[dateField] === entry[dateField]);
+  if(existing) Object.assign(existing, entry);
+  else arr.push({...entry});
+}
 function migrateState(s){
   if(!Array.isArray(s.goals)) s.goals = []; if(!Array.isArray(s.habits)) s.habits = []; if(!s.meta.activityLog) s.meta.activityLog = {}; if(!s.meta.activityNotes) s.meta.activityNotes = {}; if(!Array.isArray(s.goalHistory)) s.goalHistory = []; if(!Array.isArray(s.lifeTimeline)) s.lifeTimeline = []; if(!Array.isArray(s.lifeMomentum)) s.lifeMomentum = [];
   if(typeof s.meta.dailyExpEarned !== 'number') s.meta.dailyExpEarned = 0; if(!s.meta.dailyExpLog) s.meta.dailyExpLog = {}; if(!s.sip) s.sip = DEFAULT_STATE().sip;
@@ -3388,6 +3541,10 @@ function migrateState(s){
   if(!Array.isArray(s.spiritCompanion.commentedHof)) s.spiritCompanion.commentedHof = [];
   if(typeof s.character.equippedMedal !== 'string') s.character.equippedMedal = '';
   if(typeof s.character.hp !== 'number') { s.character.hp = 100; s.character.maxHp = 100; }
+  if(typeof s.character.mana !== 'number') s.character.mana = 200;
+  if(typeof s.character.maxMana !== 'number') s.character.maxMana = 200;
+  if(typeof s.character.consequencePending !== 'boolean') s.character.consequencePending = false;
+  if(typeof s.settings.consequenceText !== 'string') s.settings.consequenceText = DEFAULT_SETTINGS().consequenceText;
   if(!s.kanban) s.kanban = { cards: [] };
   if(!Array.isArray(s.kanban.blueprint)) s.kanban.blueprint = [];
   if(!Array.isArray(s.todos)) s.todos = []; if(!s.sedekah) s.sedekah = { entries:[], totalLifetime:0, dailyExpGained:0, lastExpDate:'' };
@@ -3396,6 +3553,8 @@ function migrateState(s){
   if(!s.spiritual.sunnahBonusDate) s.spiritual.sunnahBonusDate = '';
   if(!s.customRituals) s.customRituals = [];
   ensureCharHistory(s);
+  ensureHistoryArchive(s);
+  sweepHistoryArchive(s); // migrasi sekali jalan: data lama (>30 hari) langsung diarsipkan
   if(!Array.isArray(s.meta.questOrder)) s.meta.questOrder = [];
   if(!s.refleksi) s.refleksi = {journals:[],questions:[]};
   if(!Array.isArray(s.refleksi.journals)) s.refleksi.journals = [];
@@ -3654,7 +3813,10 @@ function captureLifeMomentumSnapshot(){
   const last = arr[arr.length-1];
   if(last && last.date === today){ last.level = c.level; last.streak = c.streak; last.lifeScore = c.lifeScore; }
   else { arr.push({ date: today, level: c.level, streak: c.streak, lifeScore: c.lifeScore }); }
-  if(arr.length > 400) arr.splice(0, arr.length - 400);
+  // Catatan: array tidak lagi dipotong di sini — riwayat aktif tetap 30 hari terakhir via
+  // sweepHistoryArchive() (dijalankan tiap rollover harian), entri lebih lama diarsipkan permanen.
+  // Disalin realtime ke Sejarah Riwayat juga (upsert per tanggal, supaya tidak dobel tiap snapshot hari ini).
+  _riwayatArchiveUpsert('momentum', 'date', { date: today, level: c.level, streak: c.streak, lifeScore: c.lifeScore });
 }
 
 function gainExp(amount){
@@ -3859,6 +4021,7 @@ function completeQuest(id){
     const _prevHp631 = state.character.hp;
     state.character.hp = Math.min(state.character.maxHp, state.character.hp + hpGainForQuest(q)); // Restore HP (skala kesulitan)
     logHpChange(state.character.hp - _prevHp631, `Selesai Quest: ${q.title}`);
+    gainMana(manaGainForQuest(q), `Selesai Quest: ${q.title}`);
     { ensureCharHistory(state); const _hpD=todayStr(); if(!state.charHistory.hp.length||state.charHistory.hp[state.charHistory.hp.length-1].ts!==_hpD) state.charHistory.hp.push({ts:_hpD, val:state.character.hp}); }
     if(state.settings.showFloatingExp) showFloatingExp(exp); SFX.success(); showToast(`Selamat, kamu menyelesaikan quest: ${q.title}`, 'ach'); checkAchievements(); render(); save();
     gainBondExp(2);
@@ -3890,11 +4053,24 @@ function failQuest(id){
     state.character.realmEnergy = Math.max(0, state.character.realmEnergy-10);
     state.character.failedQuests = (state.character.failedQuests || 0) + 1;
 
-    const hpLoss = hpLossForQuest(q);
-    state.character.hp -= hpLoss;
-    logHpChange(-hpLoss, `Gagal Quest: ${q.title}`);
+    // Mana bertindak sebagai tameng: selama masih ada, HP cuma kena sedikit (maks 3).
+    // Begitu Mana habis, HP baru kena dampak signifikan.
+    if(typeof state.character.mana !== 'number') state.character.mana = 200;
+    let hpLoss; let manaDrained = 0; let manaWasUsed = false;
+    if(state.character.mana > 0){
+      const manaDrain = manaDrainForQuest(q);
+      const manaBeforeDrain = state.character.mana;
+      state.character.mana = Math.max(0, state.character.mana - manaDrain);
+      manaDrained = manaBeforeDrain - state.character.mana;
+      hpLoss = hpLossWithManaForQuest(q);
+      manaWasUsed = true;
+    } else {
+      hpLoss = hpLossNoManaForQuest(q);
+    }
+    state.character.hp = Math.max(0, state.character.hp - hpLoss);
+    if(hpLoss > 0) logHpChange(-hpLoss, `Gagal Quest: ${q.title}`);
+    checkConsequenceTrigger();
     if (state.character.hp <= 0) {
-        state.character.hp = 0;
         if(isHeavenTrampling()){
             // HT specific: HP=0 triggers Qi Deviation (-3 LV, massive EXP loss)
             applyHtQiDeviation();
@@ -3904,6 +4080,10 @@ function failQuest(id){
             gainExp(-hpZeroPenalty);
             showToast(`Energi Anda Habis. Selesaikan Quest untuk Memulihkan HP. (-${hpZeroPenalty} EXP)`, 'bad');
         }
+    } else if(manaWasUsed) {
+        const hpPart = hpLoss > 0 ? `, HP -${hpLoss}` : '';
+        const expPart = penalty > 0 ? `, EXP -${penalty}` : '';
+        showToast(`🛡️ Tameng Mana! Mana -${manaDrained}${hpPart}${expPart}`,'bad');
     } else {
         if(penalty > 0) showToast(`Quest Gagal! HP -${hpLoss} & EXP -${penalty}`,'bad');
         else showToast(`Quest Gagal! HP -${hpLoss}`,'bad');
@@ -4066,6 +4246,8 @@ function rollover(){
   const activeShift = getTodayActiveShift(); if(activeShift !== 'libur' && activeShift !== 'custom') state.character.shift = activeShift;
   if(state.meta.lastActiveDate === today) return;
 
+  sweepHistoryArchive(state); // pemindah arsip otomatis harian — entri >30 hari pindah ke Sejarah Riwayat
+
   const gap = Math.max(1, diffDays(state.meta.lastActiveDate, today));
   const dailyQuests = state.quests.filter(q=>q.type==='daily'); const coreQuests = dailyQuests.filter(q=>q.isCore);
   const checklist = coreQuests.length ? coreQuests : dailyQuests; const allDone = checklist.length>0 && checklist.every(q=>q.status==='done');
@@ -4104,8 +4286,9 @@ function rollover(){
                   applyHtQiDeviation();
               }
           } else {
-              state.character.hp -= missedHpLoss;
+              state.character.hp = Math.max(0, state.character.hp - missedHpLoss);
               logHpChange(-missedHpLoss, `Quest terlewat saat reset harian (${missedCount} quest)`);
+              checkConsequenceTrigger();
               if (state.character.level > 20) {
                   const penalty = missedCount * 50 * Math.max(1, state.character.level / 10);
                   gainExp(-penalty);
@@ -4202,7 +4385,9 @@ function checkHallOfFame(){
 
 function addTimelineEvent(type, desc, icon){
   if(!Array.isArray(state.lifeTimeline)) state.lifeTimeline = [];
-  state.lifeTimeline.unshift({ id: uid('tl'), type, desc, icon: icon||'📌', date: todayStr(), ts: Date.now() });
+  const entry = { id: uid('tl'), type, desc, icon: icon||'📌', date: todayStr(), ts: Date.now() };
+  state.lifeTimeline.unshift(entry);
+  _riwayatArchivePush('timeline', entry);
 }
 function equipTitle(name){ 
     if(!state.character.titlesUnlocked.includes(name)) { showToast('Title ini belum di-unlock!', 'bad'); return; }
@@ -4242,6 +4427,7 @@ function logSpiritual(key, isSuccess, isCustom = false){
 
   if(isSuccess) {
       state.spiritual.exp += item.exp; bumpStat('spirituality',2);
+      gainMana(MANA_GAIN_BY_DIFFICULTY.normal, `Ritual: ${item.label}`);
       if(item.sunnah) state.spiritual.sunnahBonusDate = today;
       let leveled=false;
       while(state.spiritual.exp >= spiritualNeeded(state.spiritual.level)){ state.spiritual.exp -= spiritualNeeded(state.spiritual.level); state.spiritual.level += 1; leveled = true; }
@@ -4255,6 +4441,7 @@ function logSpiritual(key, isSuccess, isCustom = false){
         gainExp(-50);
         state.character.hp = Math.max(0, (state.character.hp||100) - 20);
         logHpChange(-20, `Gagal Ritual Wajib: ${item.label}`);
+        checkConsequenceTrigger();
         bumpStat('discipline', -1);
         showToast(`Gagal ${item.label}: -50 EXP, -20 HP, -10 Spiritual EXP`, 'bad');
       } else {
@@ -4334,11 +4521,13 @@ function addFinanceTransaction(){
       state.character.lifetimeIncome = (state.character.lifetimeIncome||0) + amount; 
       bumpStat('finance', Math.max(1, Math.round(amount/100000))); 
       addRealmEnergy(Math.round(amount/50000));
-      state.financeLog.unshift({date: todayStr(), amount, note, cat, type: 'in'}); 
+      const _finIn = {date: todayStr(), amount, note, cat, type: 'in'};
+      state.financeLog.unshift(_finIn); _riwayatArchivePush('finansial', _finIn);
       // Sinkronkan pemasukan ke Target Finansial yang aktif secara otomatis
       applyIncomeToTargets(amount);
   } else {
-      state.financeLog.unshift({date: todayStr(), amount, note, cat, type: 'out'}); 
+      const _finOut = {date: todayStr(), amount, note, cat, type: 'out'};
+      state.financeLog.unshift(_finOut); _riwayatArchivePush('finansial', _finOut);
   }
 
   // Riwayat transaksi disimpan seluruhnya (tidak dipotong otomatis lagi)
@@ -4527,13 +4716,16 @@ function submitGoalProgress(){
           const _ri = Math.max(0, state.character.realmIndex || 0);
           const _mult = 1 + _ri * 0.15;
           const rewardExp = Math.round(deadlineDays * 20 * _mult);
+          // Mana bonus tergantung durasi goal: pendek (<7 hari) +5, menengah (7-27 hari) +15, panjang (28+ hari, ~1 bulan) +50.
+          const goalManaGain = deadlineDays >= 28 ? 50 : deadlineDays >= 7 ? 15 : 5;
+          gainMana(goalManaGain, `Goal selesai: ${g.title}`);
           gainExp(rewardExp); addRealmEnergy(40); showToast(`Goal tercapai: ${g.title} (+${rewardExp} EXP)`,'ach'); SFX.levelUp(); checkAchievements();
           gainBondExp(15); spiritSay(SPIRIT_GOAL_DONE_LINES[Math.floor(Math.random()*SPIRIT_GOAL_DONE_LINES.length)], true);
           // Catat ke Timeline Kehidupan
           addTimelineEvent('goal', 'Goal "' + g.title + '" selesai', '🎯');
           // Simpan ke Riwayat Goal Permanen
           if(!Array.isArray(state.goalHistory)) state.goalHistory = [];
-          state.goalHistory.unshift({
+          const _goalDone = {
               id: g.id,
               title: g.title,
               notes: g.notes || '',
@@ -4545,7 +4737,9 @@ function submitGoalProgress(){
               status: 'done',
               target: g.target,
               unit: g.unit
-          });
+          };
+          state.goalHistory.unshift(_goalDone);
+          _riwayatArchivePush('goal', _goalDone);
       } 
   } else {
       g.status='active'; SFX.success();
@@ -4886,9 +5080,10 @@ function saveDailyJournal(value) {
     if(!state.dailyJournal) state.dailyJournal = {};
     const prev = state.dailyJournal[today] || '';
     state.dailyJournal[today] = value;
-    // Bersihkan entri lama (simpan 60 hari terakhir saja)
-    const keys = Object.keys(state.dailyJournal).sort();
-    if(keys.length > 60) keys.slice(0, keys.length - 60).forEach(k => delete state.dailyJournal[k]);
+    // Catatan: entri lama tidak lagi dihapus di sini — riwayat aktif tetap 30 hari terakhir via
+    // sweepHistoryArchive() (dijalankan tiap rollover harian), entri lebih lama diarsipkan permanen.
+    // Disalin realtime ke Sejarah Riwayat juga (upsert per tanggal, supaya tidak dobel saat diedit ulang hari ini).
+    _riwayatArchiveUpsert('jurnal', 'date', { date: today, content: value });
     clearTimeout(_journalSaveTimer);
     _journalSaveTimer = setTimeout(() => { save(); }, 800);
     // Update karakter indikator simpan
@@ -5057,6 +5252,18 @@ function changeCalMonth(offset) { calViewMonth += offset; if (calViewMonth > 11)
 
 function renderRecoveryBanner(){ const slot = document.getElementById('recovery-banner-slot'); if(!slot) return; slot.innerHTML=''; }
 function renderHpZeroBanner(){ const slot = document.getElementById('hp-zero-banner-slot'); if(!slot) return; if(state.character.hp <= 0){ slot.innerHTML = `<div class="hp-zero-banner">⚡ Energi Anda Habis. Selesaikan Quest untuk Memulihkan HP.<small>HP pulih bertahap setiap kali kamu menyelesaikan Quest.</small></div>`; } else slot.innerHTML=''; }
+// Popup merah berkedip: muncul ketika HP DAN Mana sama-sama benar-benar habis. Teks bisa dikustom di Pengaturan.
+function renderConsequencePopup(){
+  const slot = document.getElementById('consequence-slot'); if(!slot) return;
+  if(state.character && state.character.consequencePending){
+    const text = (state.settings && state.settings.consequenceText) || DEFAULT_SETTINGS().consequenceText;
+    slot.innerHTML = `<div class="consequence-overlay"><div class="consequence-box">
+      <h3>⚠️ HP &amp; MANA HABIS ⚠️</h3>
+      <p>${escapeHtml(text)}</p>
+      <button class="btn btn-danger btn-block" onclick="acceptConsequence()">Saya Terima Konsekuensinya</button>
+    </div></div>`;
+  } else { slot.innerHTML = ''; }
+}
 
 function renderHpLogModal(){
   const slot = document.getElementById('hp-log-list');
@@ -5153,12 +5360,17 @@ function addSedekah(evt){
   const nominal = parseInt(document.getElementById('sedekah-nominal').value, 10); if(!nominal || nominal <= 0) return;
   const today = todayStr(); if(state.sedekah.lastExpDate !== today){ state.sedekah.dailyExpGained = 0; state.sedekah.lastExpDate = today; }
   const expGained = Math.floor(nominal / 1000) * 10;
-  state.sedekah.entries.unshift({ id: Date.now().toString(), nominal, date: document.getElementById('sedekah-date').value || today, note: document.getElementById('sedekah-note').value.trim(), expGained, createdAt: new Date().toISOString() });
-  if(state.sedekah.entries.length > 20) state.sedekah.entries.length = 20; 
+  const _sedekahEntry = { id: Date.now().toString(), nominal, date: document.getElementById('sedekah-date').value || today, note: document.getElementById('sedekah-note').value.trim(), expGained, createdAt: new Date().toISOString() };
+  state.sedekah.entries.unshift(_sedekahEntry);
+  _riwayatArchivePush('sedekah', _sedekahEntry);
+  // Catatan: entri tidak lagi dipotong di sini — riwayat aktif tetap 30 hari terakhir via
+  // sweepHistoryArchive() (dijalankan tiap rollover harian), entri lebih lama diarsipkan permanen.
   state.sedekah.totalLifetime += nominal; state.sedekah.dailyExpGained += expGained;
   
   state.character.lifetimeIncome = Math.max(0, (state.character.lifetimeIncome||0) - nominal);
-  state.financeLog.unshift({date: today, amount: nominal, note: 'Sedekah: ' + document.getElementById('sedekah-note').value.trim(), type: 'out'});
+  const _sedekahFin = {date: today, amount: nominal, note: 'Sedekah: ' + document.getElementById('sedekah-note').value.trim(), type: 'out'};
+  state.financeLog.unshift(_sedekahFin);
+  _riwayatArchivePush('finansial', _sedekahFin);
 
   if(expGained > 0){
     state.spiritual.exp = (state.spiritual.exp || 0) + expGained;
@@ -5305,10 +5517,10 @@ function render(){
     const streakApi = state.character.streak > 0 ? ` 🔥${state.character.streak}` : '';
     document.getElementById('day-counter').textContent = 'DAY '+getGameDay() + streakApi;
 
-    renderRecoveryBanner(); renderHpZeroBanner(); renderNav(); renderBottomNav(); updateMoodChip();
+    renderRecoveryBanner(); renderHpZeroBanner(); renderConsequencePopup(); renderNav(); renderBottomNav(); updateMoodChip();
     const main = document.getElementById('main'); const tab = state.ui && state.ui.tab ? state.ui.tab : 'home';
     if(_rvRaf){ cancelAnimationFrame(_rvRaf); _rvRaf = null; } // cancel old FX before re-render
-    if(tab==='home') main.innerHTML = renderHome(); else if(tab==='quests') main.innerHTML = renderQuests(); else if(tab==='goals') main.innerHTML = renderGoals(); else if(tab==='stats') main.innerHTML = renderStats(); else if(tab==='boss') main.innerHTML = renderBoss(); else if(tab==='ritual') main.innerHTML = renderRitual(); else if(tab==='profile') main.innerHTML = renderProfile(); else if(tab==='project') main.innerHTML = renderProjectKanban(); else if(tab==='enlight') main.innerHTML = renderStatisticsTable(); else if(tab==='realmenc') main.innerHTML = renderRealmEncyclopedia(); else if(tab==='lifeenc') main.innerHTML = renderLifeEncyclopedia(); else if(tab==='hall') main.innerHTML = renderHallOfFame(); else if(tab==='caracter') main.innerHTML = renderCharacterMomentumTab(); else if(tab==='refleksi') main.innerHTML = renderRefleksi();
+    if(tab==='home') main.innerHTML = renderHome(); else if(tab==='quests') main.innerHTML = renderQuests(); else if(tab==='goals') main.innerHTML = renderGoals(); else if(tab==='stats') main.innerHTML = renderStats(); else if(tab==='boss') main.innerHTML = renderBoss(); else if(tab==='ritual') main.innerHTML = renderRitual(); else if(tab==='profile') main.innerHTML = renderProfile(); else if(tab==='project') main.innerHTML = renderProjectKanban(); else if(tab==='enlight') main.innerHTML = renderStatisticsTable(); else if(tab==='realmenc') main.innerHTML = renderRealmEncyclopedia(); else if(tab==='lifeenc') main.innerHTML = renderLifeEncyclopedia(); else if(tab==='hall') main.innerHTML = renderHallOfFame(); else if(tab==='caracter') main.innerHTML = renderCharacterMomentumTab(); else if(tab==='refleksi') main.innerHTML = renderRefleksi(); else if(tab==='riwayat') main.innerHTML = renderHistoryArchive();
     if(tab==='project') setTimeout(initProjectCharts, 60);
     else if(tab==='goals') setTimeout(initGoalCharts, 60);
     else if(tab==='stats') setTimeout(initStatsChart, 60);
@@ -5557,10 +5769,15 @@ function renderHome(){
       <div class="row-between small" style="margin-bottom:5px;"><span class="muted">Spiritual Lv.${state.spiritual.level} · <span style="${sr.style}">${sr.label}</span></span><span class="muted">${spiritFrac}%</span></div>
       <div class="spiritual-track"><div class="spiritual-fill" style="width:${spiritFrac}%"></div></div>
     </div>
+    <div class="mana-bar-wrap" style="margin-top:10px;">
+      <div class="row-between small" style="margin-bottom:5px;"><span class="muted" style="font-weight:700; color:#4fa8ff;">Mana (Tameng)</span><span class="muted" style="color:#4fa8ff;">${c.mana ?? 0}/${c.maxMana ?? 200}</span></div>
+      <div class="stat-track" style="background:rgba(30,58,138,0.18);"><div class="stat-fill" style="width:${((c.mana ?? 0)/Math.max(1,c.maxMana ?? 200))*100}%; background:linear-gradient(90deg, #0a2472, #1e6fd9); box-shadow: 0 0 8px rgba(30,110,217,0.6);"></div></div>
+    </div>
     <div class="hp-bar-wrap" style="margin-top:10px;">
       <div class="row-between small" style="margin-bottom:5px;"><span class="muted" style="font-weight:700; color:var(--crimson);">Vitality (HP)</span><span class="muted" style="color:var(--crimson); display:flex; align-items:center; gap:6px;">${c.hp}/${c.maxHp}<button onclick="openModal('modal-hp-log'); renderHpLogModal();" style="background:none; border:1px solid rgba(255,71,104,0.4); color:var(--crimson); border-radius:6px; font-size:9px; padding:2px 6px; cursor:pointer;">Riwayat</button></span></div>
       <div class="stat-track" style="background:rgba(255,71,104,0.1);"><div class="stat-fill" style="width:${(c.hp/Math.max(1,c.maxHp))*100}%; background:linear-gradient(90deg, #8a1c1c, var(--crimson)); box-shadow: 0 0 8px rgba(255,71,104,0.5);"></div></div>
     </div>
+    ${c.hp > 0 && c.hp < 30 ? `<div class="hp-low-warning">⚠️ HP di bawah 30! Selesaikan quest sekarang sebelum energi benar-benar habis.</div>` : ''}
 
     <div class="life-score-row">
       <div class="life-score-item"><div class="num" style="color:var(--gold-soft)">${c.lifeScore}</div><div class="lbl">Life Score</div></div>
@@ -5730,7 +5947,7 @@ function renderGoalHistory(){
   const items = history.map(h => {
     const createdDate = h.createdAt ? new Date(h.createdAt).toLocaleDateString('id-ID', {day:'2-digit', month:'short', year:'numeric'}) : '-';
     return `<div class="goal-history-item">
-      <div class="goal-history-badge">🏆</div>
+      <div class="goal-history-badge">},��</div>
       <div class="goal-history-body">
         <div class="goal-history-title">${escapeHtml(h.title)}</div>
         <div class="goal-history-meta">
@@ -6245,7 +6462,10 @@ function saveJournal(){
   if(!state.refleksi) state.refleksi={journals:[],questions:[]};
   const now = new Date(); const ts = now.toLocaleString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
   const date = now.toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric'});
-  state.refleksi.journals.push({id:uid('rf'), date, content, ts, pinnedHome:false, _ts:Date.now()});
+  const _rfJournal = {id:uid('rf'), date, content, ts, pinnedHome:false, _ts:Date.now()};
+  state.refleksi.journals.push(_rfJournal);
+  _riwayatArchivePush('refleksi', {..._rfJournal, _sourceType:'journal'});
+  gainMana(10, 'Menulis Jurnal');
   el.value=''; save(); render(); showToast('Jurnal tersimpan! ✦','ach');
 }
 function deleteRefleksiJournal(jId){
@@ -6274,7 +6494,9 @@ function saveRefleksiAnswer(qId){
   const ts = now.toLocaleString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
   const date = now.toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric'});
   if(!Array.isArray(q.answers)) q.answers = [];
-  q.answers.push({id:uid('ra'), text:answer, ts, date, pinnedProfile:false, _ts:now.getTime()});
+  const _rfAnswer = {id:uid('ra'), text:answer, ts, date, pinnedProfile:false, _ts:now.getTime()};
+  q.answers.push(_rfAnswer);
+  _riwayatArchivePush('refleksi', {..._rfAnswer, _sourceType:'answer', questionId:q.id, questionText:q.q||''});
   if(q.answers.length > 50) q.answers = q.answers.slice(-50);
   q.answer = ''; q.ts = ts;
   el.value='';
@@ -6470,6 +6692,184 @@ function renderRefleksi(){
   </div>`;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// SEJARAH RIWAYAT — sub-tab ke-5 di grup Profil. Arsip permanen semua riwayat
+// (Finansial, Momentum, Goal, Sedekah, Jurnal, Refleksi, Timeline) yang sudah lewat 30 hari.
+// Isinya diambil realtime dari state.historyArchive (diisi oleh sweepHistoryArchive()).
+// ═══════════════════════════════════════════════════════════════
+let _riwayatCat = 'finansial';
+let _riwayatExpanded = {};
+const RIWAYAT_CATS = [
+  {key:'finansial', icon:'💰', label:'Finansial'},
+  {key:'momentum',  icon:'📈', label:'Momentum'},
+  {key:'goal',      icon:'🏆', label:'Goal'},
+  {key:'sedekah',   icon:'🌟', label:'Sedekah'},
+  {key:'jurnal',    icon:'📓', label:'Jurnal'},
+  {key:'refleksi',  icon:'🪞', label:'Refleksi'},
+  {key:'timeline',  icon:'📆', label:'Timeline'},
+];
+const _RIWAYAT_MONTH_NAMES = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+
+function setRiwayatCat(cat){ _riwayatCat = cat; render(); }
+function toggleRiwayatMonth(key){ _riwayatExpanded[key] = !_riwayatExpanded[key]; render(); }
+// Toggle "Baca Selengkapnya" per-entri (khusus Jurnal & Refleksi, teksnya bisa panjang).
+// Independen per entri — buka satu entri tidak menutup/mengubah entri lain.
+let _riwayatExpandedText = {};
+const _RIWAYAT_TRUNC_LEN = 100;
+function toggleRiwayatText(key){ _riwayatExpandedText[key] = !_riwayatExpandedText[key]; render(); }
+function _riwayatTruncate(text){ text = text || ''; return text.length > _RIWAYAT_TRUNC_LEN ? text.slice(0, _RIWAYAT_TRUNC_LEN).trim()+'…' : text; }
+
+// Tanggal "kejadian" tiap entri berbeda field-nya per kategori — disatukan jadi 1 Date object di sini.
+function _riwayatEntryJsDate(cat, e){
+  try{
+    if(cat==='goal') return e.completedAt ? new Date(e.completedAt+'T00:00:00') : null;
+    if(cat==='refleksi') return e._ts ? new Date(e._ts) : null;
+    if(cat==='timeline') return e.ts ? new Date(e.ts) : (e.date ? new Date(e.date+'T00:00:00') : null);
+    return e.date ? new Date(e.date+'T00:00:00') : null; // finansial, momentum, sedekah, jurnal
+  }catch(err){ return null; }
+}
+function _riwayatFormatDateTime(cat, e){
+  const d = _riwayatEntryJsDate(cat, e);
+  if(!d || isNaN(d)) return e.date || '-';
+  const hasTime = (cat==='refleksi') || (cat==='timeline' && e.ts);
+  const tgl = d.getDate()+' '+_RIWAYAT_MONTH_NAMES[d.getMonth()]+' '+d.getFullYear();
+  if(!hasTime) return tgl;
+  const hh = String(d.getHours()).padStart(2,'0'), mm = String(d.getMinutes()).padStart(2,'0');
+  return tgl+', '+hh+':'+mm;
+}
+// Baris teks 1 entri mentah, beda format per kategori.
+function _riwayatEntryLine(cat, e){
+  const w = _riwayatFormatDateTime(cat, e);
+  if(cat==='finansial'){
+    const sign = e.type==='in' ? '+' : '-'; const color = e.type==='in' ? 'var(--jade)' : 'var(--crimson)';
+    return `<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+      <div><div style="font-size:12px;">${escapeHtml(e.note||e.cat||'-')}</div><div style="font-size:11px;color:var(--muted);">${w}</div></div>
+      <div style="color:${color};font-weight:700;white-space:nowrap;">${sign}Rp${Number(e.amount||0).toLocaleString('id-ID')}</div>
+    </div>`;
+  }
+  if(cat==='momentum'){
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:12px;">
+      <div style="color:var(--muted);font-size:11px;">${w}</div>
+      Level ${e.level ?? '-'} · Streak ${e.streak ?? 0} · Skor Hidup ${e.lifeScore ?? 0}
+    </div>`;
+  }
+  if(cat==='goal'){
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--border);">
+      <div style="font-size:12px;font-weight:700;">🎯 ${escapeHtml(e.title||'-')}</div>
+      <div style="font-size:11px;color:var(--muted);">${w} · +${e.rewardExp||0} EXP</div>
+    </div>`;
+  }
+  if(cat==='sedekah'){
+    return `<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+      <div><div style="font-size:12px;">${escapeHtml(e.note||'Sedekah')}</div><div style="font-size:11px;color:var(--muted);">${w}</div></div>
+      <div style="color:var(--jade);font-weight:700;white-space:nowrap;">Rp${Number(e.nominal||0).toLocaleString('id-ID')}</div>
+    </div>`;
+  }
+  if(cat==='jurnal'){
+    const full = e.content || '-';
+    const key = 'jurnal|'+(e.date||w);
+    const isOpen = !!_riwayatExpandedText[key];
+    const canTruncate = full.length > _RIWAYAT_TRUNC_LEN;
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--border);">
+      <div style="font-size:11px;color:var(--muted);">${w}</div>
+      <div style="font-size:12px;white-space:pre-wrap;">${escapeHtml(isOpen ? full : _riwayatTruncate(full))}</div>
+      ${canTruncate ? `<button class="btn btn-sm btn-secondary" style="margin-top:6px;" onclick="toggleRiwayatText('${key}')">${isOpen?'Sembunyikan':'Baca Selengkapnya'}</button>` : ''}
+    </div>`;
+  }
+  if(cat==='refleksi'){
+    const isAnswer = e._sourceType==='answer';
+    const full = e.text || e.content || '-';
+    const key = 'refleksi|'+(e.id || (e.questionId+'|'+e._ts) || w);
+    const isOpen = !!_riwayatExpandedText[key];
+    const canTruncate = full.length > _RIWAYAT_TRUNC_LEN;
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--border);">
+      <div style="font-size:11px;color:var(--muted);">${w} · ${isAnswer?'Jawaban Refleksi':'Jurnal Refleksi'}</div>
+      ${isAnswer ? `<div style="font-size:11px;color:var(--arise);margin-bottom:2px;">"${escapeHtml(e.questionText||'')}"</div>` : ''}
+      <div style="font-size:12px;white-space:pre-wrap;">${escapeHtml(isOpen ? full : _riwayatTruncate(full))}</div>
+      ${canTruncate ? `<button class="btn btn-sm btn-secondary" style="margin-top:6px;" onclick="toggleRiwayatText('${key}')">${isOpen?'Sembunyikan':'Baca Selengkapnya'}</button>` : ''}
+    </div>`;
+  }
+  // timeline
+  return `<div style="padding:8px 0;border-bottom:1px solid var(--border);">
+    <div style="font-size:11px;color:var(--muted);">${w}</div>
+    <div style="font-size:12px;">${e.icon||'📌'} ${escapeHtml(e.desc||'-')}</div>
+  </div>`;
+}
+// Ringkasan 1 bulan, beda angka per kategori.
+function _riwayatMonthSummary(cat, entries){
+  if(cat==='finansial'){
+    let masuk=0, keluar=0;
+    entries.forEach(e=>{ if(e.type==='in') masuk += Number(e.amount||0); else keluar += Number(e.amount||0); });
+    return `${entries.length} transaksi · <span style="color:var(--jade);">+Rp${masuk.toLocaleString('id-ID')}</span> · <span style="color:var(--crimson);">-Rp${keluar.toLocaleString('id-ID')}</span>`;
+  }
+  if(cat==='momentum'){
+    const avg = Math.round(entries.reduce((a,e)=>a+(e.lifeScore||0),0) / Math.max(1,entries.length));
+    return `${entries.length} hari tercatat · Rata-rata Skor Hidup: ${avg}`;
+  }
+  if(cat==='goal') return `${entries.length} goal selesai`;
+  if(cat==='sedekah'){
+    const total = entries.reduce((a,e)=>a+Number(e.nominal||0),0);
+    return `${entries.length} kali sedekah · Total Rp${total.toLocaleString('id-ID')}`;
+  }
+  if(cat==='jurnal') return `${entries.length} hari menulis jurnal`;
+  if(cat==='refleksi'){
+    const jml = entries.filter(e=>e._sourceType!=='answer').length, jwb = entries.filter(e=>e._sourceType==='answer').length;
+    return `${jml} jurnal refleksi · ${jwb} jawaban pertanyaan`;
+  }
+  return `${entries.length} peristiwa`; // timeline
+}
+function renderHistoryArchive(){
+  ensureHistoryArchive(state);
+  const chips = RIWAYAT_CATS.map(c=>{
+    const n = (state.historyArchive[c.key]||[]).length;
+    return `<button class="btn btn-sm ${c.key===_riwayatCat?'btn-primary':'btn-secondary'}" onclick="setRiwayatCat('${c.key}')">${c.icon} ${c.label}${n?` (${n})`:''}</button>`;
+  }).join('');
+
+  const list = (state.historyArchive[_riwayatCat] || []).slice();
+  const activeDef = RIWAYAT_CATS.find(c=>c.key===_riwayatCat);
+
+  let body;
+  if(!list.length){
+    body = `<div class="empty-state card" style="margin-top:14px;"><span class="big">${activeDef.icon}</span>Belum ada arsip ${activeDef.label} — entri yang sudah lewat 30 hari akan otomatis muncul di sini.</div>`;
+  } else {
+    // Kelompokkan per bulan berdasarkan tanggal kejadian, urut terbaru dulu.
+    const groups = {};
+    list.forEach(e=>{
+      const d = _riwayatEntryJsDate(_riwayatCat, e);
+      const key = d && !isNaN(d) ? (d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')) : '0000-00';
+      if(!groups[key]) groups[key] = { entries: [], jsDate: d };
+      groups[key].entries.push(e);
+    });
+    const monthKeys = Object.keys(groups).sort().reverse();
+    body = monthKeys.map(mk=>{
+      const g = groups[mk];
+      const label = g.jsDate && !isNaN(g.jsDate) ? (_RIWAYAT_MONTH_NAMES[g.jsDate.getMonth()]+' '+g.jsDate.getFullYear()) : 'Tanggal tidak diketahui';
+      const expandKey = _riwayatCat+'|'+mk;
+      const isOpen = !!_riwayatExpanded[expandKey];
+      const sorted = g.entries.slice().sort((a,b)=>{
+        const da = _riwayatEntryJsDate(_riwayatCat,a), db = _riwayatEntryJsDate(_riwayatCat,b);
+        return (db?db.getTime():0) - (da?da.getTime():0);
+      });
+      return `<div class="card" style="margin-top:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="toggleRiwayatMonth('${expandKey}')">
+          <div>
+            <div style="font-weight:700;font-size:13px;">${label}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;">${_riwayatMonthSummary(_riwayatCat, g.entries)}</div>
+          </div>
+          <div style="font-size:16px;color:var(--muted);">${isOpen?'▴':'▾'}</div>
+        </div>
+        ${isOpen ? `<div style="margin-top:10px;border-top:1px solid var(--border);">${sorted.map(e=>_riwayatEntryLine(_riwayatCat,e)).join('')}</div>` : ''}
+      </div>`;
+    }).join('');
+  }
+
+  return `
+    <div class="section-title">🗂️ Sejarah Riwayat</div>
+    <p style="color:var(--muted);font-size:12px;margin:-6px 0 12px;">Arsip permanen — riwayat tiap kategori yang sudah lewat 30 hari dipindahkan ke sini, tidak pernah dihapus.</p>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">${chips}</div>
+    ${body}
+  `;
+}
 function renderProfile(){
   const c = state.character; const s = state.settings; const blocks = state.schedule[c.shift] || [];
   const schedHtml = blocks.map((b,i)=>`<div style="margin-bottom:6px;"><div class="realm-row" style="margin-bottom:0;"><input type="text" value="${escapeAttr(b.time)}" style="flex:0.85;font-size:11.5px;" onchange="updateScheduleBlock('${c.shift}', ${i}, 'time', this.value)"><input type="text" value="${escapeAttr(b.label)}" style="flex:1.6;font-size:12px;" onchange="updateScheduleBlock('${c.shift}', ${i}, 'label', this.value)"><button class="icon-btn" onclick="deleteScheduleBlock('${c.shift}', ${i})" title="Hapus"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button></div><div style="display:flex;align-items:center;gap:6px;padding:4px 2px 0;"><span style="font-size:10px;color:var(--muted);font-family:var(--font-system);font-weight:700;min-width:100px;">📦 Time Box (jam):</span><input type="number" min="0.25" max="12" step="0.25" value="${b.boxing||''}" placeholder="cth: 2" style="width:70px;font-size:11px;" oninput="updateScheduleBlock('${c.shift}', ${i}, 'boxing', parseFloat(this.value)||0)" class="input" title="Durasi fokus intensif (jam). 0 = tidak diatur."><span style="font-size:10px;color:var(--muted-2);font-family:var(--font-body);">jam fokus per sesi</span></div></div>`).join('');
@@ -7101,6 +7501,11 @@ function renderSettingsModal(){
       <button class="btn btn-danger btn-block" onclick="confirmResetData()" style="margin-top:4px;">⚠️ Reset Semua (Full Reset)</button>
       <div style="font-size:10.5px;color:var(--muted);margin-top:6px;text-align:center;">Menghapus seluruh progres. Tidak dapat dibatalkan.</div>
     </div></details>
+    <details class="settings-section"><summary>🚨 Konsekuensi HP &amp; Mana Habis</summary><div class="settings-body">
+      <div class="small muted" style="margin-bottom:8px;">Tulis konsekuensi/hukuman pribadimu sendiri. Teks ini akan muncul sebagai peringatan merah berkedip saat HP dan Mana kamu benar-benar habis (0).</div>
+      <div class="form-group"><textarea id="s-consequence-text" class="input" rows="4" style="resize:vertical;">${escapeHtml(s.consequenceText || '')}</textarea></div>
+      <button class="btn btn-secondary btn-block mt-10" onclick="saveConsequenceText()">Simpan Konsekuensi</button>
+    </div></details>
     <button class="btn btn-secondary btn-block mt-14" onclick="openSecMgr()">🗂️ Kelola Tampilan Seksi (Aktif/Urutan)</button>
     <button class="btn btn-secondary btn-block mt-14" onclick="closeModal('modal-settings')">Tutup Pengaturan</button>
   </div></div>`;
@@ -7134,6 +7539,12 @@ function deleteLifePrincipleHistory(lpId){
   const c = state.character; if(!Array.isArray(c.lifePrincipleHistory)) return;
   c.lifePrincipleHistory = c.lifePrincipleHistory.filter(h=>h.id!==lpId);
   save(); render();
+}
+function saveConsequenceText(){
+  const el = document.getElementById('s-consequence-text'); if(!el) return;
+  const text = el.value.trim();
+  if(!text){ showToast('Isi dulu teks konsekuensinya.', 'bad'); return; }
+  state.settings.consequenceText = text; save(); showToast('Konsekuensi disimpan!', 'ach');
 }
 function saveSettingsProfile(){ state.character.name = document.getElementById('s-char-name').value.trim() || 'Jian'; state.character.job = document.getElementById('s-char-job').value.trim(); state.character.age = parseInt(document.getElementById('s-char-age').value) || 22; state.settings.characterAvatar = document.getElementById('s-char-avatar').value.trim() || '⚔️'; const lpEl = document.getElementById('s-char-life-principle'); if(lpEl) state.character.lifePrinciple = lpEl.value.trim(); save(); render(); showToast('Profil disimpan!', 'ach'); }
 function setNameHoloStyle(style){ state.settings.nameHoloStyle = style; save(); render(); const slot = document.getElementById('settings-slot'); if(slot){ slot.innerHTML = renderSettingsModal(); openModal('modal-settings'); } showToast('Warna hologram nama diperbarui', 'ach'); }
@@ -8811,14 +9222,14 @@ function resetNavGroupOrder() {
     quest:     { tabs: ['quests','goals','project','ritual','refleksi'] },
     progres:   { tabs: ['stats','caracter','enlight'] },
     finansial: { tabs: ['boss'] },
-    profil:    { tabs: ['profile','hall','lifeenc','realmenc'] }
+    profil:    { tabs: ['profile','hall','lifeenc','realmenc','riwayat'] }
   };
 
   var TAB_LABELS = {
     home:'Home', quests:'Quest', goals:'Goals', project:'Project',
     ritual:'Ritual', refleksi:'Refleksi', stats:'Stats', caracter:'Character',
     enlight:'Enlight', boss:'Finansial', profile:'Profile', hall:'Fame',
-    lifeenc:'Life Enc', realmenc:'Realm'
+    lifeenc:'Life Enc', realmenc:'Realm', riwayat:'Riwayat'
   };
 
   // Ingat sub-tab terakhir per grup
@@ -8893,4 +9304,4 @@ function resetNavGroupOrder() {
 </script>
 
 </body>
-</html>
+</html
