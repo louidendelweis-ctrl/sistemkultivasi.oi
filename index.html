@@ -1666,6 +1666,11 @@ a{color:var(--cyan);}
 
 <script>
 let state = null; let saveTimer = null; let daoChart = null; let financialMomentumChart = null; let lifeMomentumChart = null; let lifeMomentumRange = 'weekly'; let _sectionMgrTab = 'home'; let heatmapView = 'monthly'; let _ltExpanded = {};
+// Navigasi Heatmap Kehidupan: Bulanan bisa mundur/maju bulan, Tahunan bisa mundur/maju tahun kalender penuh (Jan-Des).
+let heatmapMonthYear = new Date().getFullYear(); let heatmapMonthMonth = new Date().getMonth();
+let heatmapYearYear = new Date().getFullYear();
+function changeHeatmapMonth(offset){ heatmapMonthMonth += offset; if(heatmapMonthMonth > 11){ heatmapMonthMonth = 0; heatmapMonthYear++; } if(heatmapMonthMonth < 0){ heatmapMonthMonth = 11; heatmapMonthYear--; } render(); }
+function changeHeatmapYear(offset){ heatmapYearYear += offset; render(); }
 
 const canvas = document.getElementById('bg-canvas');
 const ctx = canvas.getContext('2d');
@@ -2495,6 +2500,22 @@ function logHpChange(delta, reason){
   if(state.hpEventLog.length > 100) state.hpEventLog = state.hpEventLog.slice(-100);
 }
 
+// ═══ Riwayat perubahan Mana (sama seperti hpEventLog, biar user bisa lihat kapan & kenapa Mana berkurang/bertambah) ═══
+function logManaChange(delta, reason){
+  if(!state || !delta) return;
+  if(!state.manaEventLog) state.manaEventLog = [];
+  state.manaEventLog.push({
+    ts: Date.now(),
+    date: todayStr(),
+    delta: Math.round(delta),
+    reason: reason || '-',
+    manaAfter: state.character ? state.character.mana : null,
+    maxMana: state.character ? state.character.maxMana : null
+  });
+  // Simpan maksimal 100 entri terakhir biar data tidak membengkak
+  if(state.manaEventLog.length > 100) state.manaEventLog = state.manaEventLog.slice(-100);
+}
+
 // ═══════════════════════════════════
 // PATCH 1 — Penalti EXP saat HP mencapai 0 (bertingkat sesuai level karakter)
 // Level rendah (Lv.1-20): maksimal -100 EXP
@@ -3039,7 +3060,7 @@ function DEFAULT_SETTINGS(){
 
 // ═══════════════════════════════════
 // SECTION MANAGER — definisi & helpers
-// ═══════════════════════════════════
+// ═════════════════════════════════) �═
 const SECTION_DEFS = {
   home: [
     { id:'realm-card',       label:'⚔️ Kartu Karakter (Level, Realm, HP)' },
@@ -4439,11 +4460,16 @@ function logSpiritual(key, isSuccess, isCustom = false){
       if(item.wajib){
         state.spiritual.exp = Math.max(0, state.spiritual.exp - 10);
         gainExp(-50);
-        state.character.hp = Math.max(0, (state.character.hp||100) - 20);
-        logHpChange(-20, `Gagal Ritual Wajib: ${item.label}`);
+        if(typeof state.character.mana !== 'number') state.character.mana = 200;
+        const _prevMana = state.character.mana;
+        state.character.mana = Math.max(0, state.character.mana - 40);
+        logManaChange(state.character.mana - _prevMana, `Gagal Ritual Wajib: ${item.label}`);
+        const _prevHpW = state.character.hp;
+        state.character.hp = Math.max(0, (typeof state.character.hp === 'number' ? state.character.hp : 100) - 3);
+        logHpChange(state.character.hp - _prevHpW, `Gagal Ritual Wajib: ${item.label}`);
         checkConsequenceTrigger();
         bumpStat('discipline', -1);
-        showToast(`Gagal ${item.label}: -50 EXP, -20 HP, -10 Spiritual EXP`, 'bad');
+        showToast(`Gagal ${item.label}: -50 EXP, -3 HP, -40 Mana, -10 Spiritual EXP`, 'bad');
       } else {
         const penalty = Math.round(item.exp * 0.5);
         state.spiritual.exp = Math.max(0, state.spiritual.exp - penalty);
@@ -5854,7 +5880,7 @@ function questCardHTML(q, compact){
   if(q.status==='pending'){
     actions = `<button class="btn btn-primary btn-sm" ${btnDisabled} onclick="completeQuest('${q.id}')">✓ Selesai</button><button class="btn btn-ghost btn-sm" onclick="postponeQuest('${q.id}')">Tunda</button><button class="btn btn-danger btn-sm" onclick="failQuest('${q.id}')">Gagal</button>`;
   } else if(q.status==='done'){ actions = `<span class="pill" style="background:rgba(52,211,153,0.15);color:var(--jade);">✓ Selesai</span>`; } 
-  else if(q.status==='failed'){ actions = `<button class="btn btn-ghost btn-sm" onclick="resetQuestStatus('${q.id}')">↺ Coba Lagi</button>`; } 
+  else if(q.status==='failed'){ actions = `<span class="pill" style="background:rgba(255,71,104,0.15);color:var(--crimson);">✕ Gagal</span>`; } 
   else if(q.status==='postponed'){ actions = `<button class="btn btn-ghost btn-sm" onclick="resetQuestStatus('${q.id}')">↺ Aktifkan</button>`; }
   const editFn = q.type === 'heaven_trampling' ? `openEditHeavenQuestModal('${q.id}')` : `openEditQuest('${q.id}')`;
   const _dragAttrs = compact ? '' : `draggable="true" data-qid="${q.id}" ondragstart="qDragStart('${q.id}',event)" ondragover="qDragOver('${q.id}',event)" ondrop="qDrop('${q.id}',event)" ondragend="qDragEnd(event)"`;
@@ -6707,7 +6733,38 @@ const RIWAYAT_CATS = [
   {key:'jurnal',    icon:'📓', label:'Jurnal'},
   {key:'refleksi',  icon:'🪞', label:'Refleksi'},
   {key:'timeline',  icon:'📆', label:'Timeline'},
+  {key:'vitalitas', icon:'❤️', label:'Vitalitas'},
+  {key:'karakter',  icon:'📊', label:'Karakter'},
 ];
+// Vitalitas beda sumber data: bukan dari state.historyArchive (arsip 30 hari),
+// tapi gabungan langsung dari state.hpEventLog + state.manaEventLog (log permanen, maks 100 entri masing-masing).
+function _riwayatVitalitasList(){
+  const hp = (state.hpEventLog || []).map(e => ({...e, _vType:'hp'}));
+  const mana = (state.manaEventLog || []).map(e => ({...e, _vType:'mana'}));
+  return hp.concat(mana);
+}
+// Karakter juga beda sumber data: gabungan langsung dari state.charHistory (level/hp/realm/streak),
+// yang tersimpan PERMANEN tanpa batas jumlah (beda dengan hpEventLog/manaEventLog yang dibatasi 100).
+function _riwayatKarakterList(){
+  ensureCharHistory(state);
+  const ch = state.charHistory;
+  const lvl = (ch.level||[]).map(e=>({...e,_kType:'level'}));
+  const hp = (ch.hp||[]).map(e=>({...e,_kType:'hp'}));
+  const realm = (ch.realm||[]).map(e=>({...e,_kType:'realm'}));
+  const streak = (ch.streak||[]).map(e=>({...e,_kType:'streak'}));
+  return lvl.concat(hp, realm, streak);
+}
+// ts di charHistory formatnya tidak konsisten: level/realm pakai locale string "dd/mm/yyyy, hh:mm",
+// sedangkan hp/streak pakai ISO "yyyy-mm-dd". Helper ini menormalkan keduanya jadi Date object.
+function _parseCharTs(ts){
+  if(!ts) return null;
+  let m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ts);
+  if(m) return new Date(+m[1], +m[2]-1, +m[3]);
+  m = /^(\d{2})\/(\d{2})\/(\d{4}),?\s*(\d{2}):(\d{2})$/.exec(ts);
+  if(m) return new Date(+m[3], +m[2]-1, +m[1], +m[4], +m[5]);
+  const d = new Date(ts);
+  return isNaN(d) ? null : d;
+}
 const _RIWAYAT_MONTH_NAMES = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 
 function setRiwayatCat(cat){ _riwayatCat = cat; render(); }
@@ -6725,13 +6782,15 @@ function _riwayatEntryJsDate(cat, e){
     if(cat==='goal') return e.completedAt ? new Date(e.completedAt+'T00:00:00') : null;
     if(cat==='refleksi') return e._ts ? new Date(e._ts) : null;
     if(cat==='timeline') return e.ts ? new Date(e.ts) : (e.date ? new Date(e.date+'T00:00:00') : null);
+    if(cat==='vitalitas') return e.ts ? new Date(e.ts) : (e.date ? new Date(e.date+'T00:00:00') : null);
+    if(cat==='karakter') return _parseCharTs(e.ts);
     return e.date ? new Date(e.date+'T00:00:00') : null; // finansial, momentum, sedekah, jurnal
   }catch(err){ return null; }
 }
 function _riwayatFormatDateTime(cat, e){
   const d = _riwayatEntryJsDate(cat, e);
   if(!d || isNaN(d)) return e.date || '-';
-  const hasTime = (cat==='refleksi') || (cat==='timeline' && e.ts);
+  const hasTime = (cat==='refleksi') || (cat==='timeline' && e.ts) || (cat==='vitalitas' && e.ts) || (cat==='karakter' && (e._kType==='level'||e._kType==='realm'));
   const tgl = d.getDate()+' '+_RIWAYAT_MONTH_NAMES[d.getMonth()]+' '+d.getFullYear();
   if(!hasTime) return tgl;
   const hh = String(d.getHours()).padStart(2,'0'), mm = String(d.getMinutes()).padStart(2,'0');
@@ -6789,6 +6848,33 @@ function _riwayatEntryLine(cat, e){
       ${canTruncate ? `<button class="btn btn-sm btn-secondary" style="margin-top:6px;" onclick="toggleRiwayatText('${key}')">${isOpen?'Sembunyikan':'Baca Selengkapnya'}</button>` : ''}
     </div>`;
   }
+  if(cat==='vitalitas'){
+    const isHp = e._vType==='hp';
+    const isGain = e.delta > 0;
+    const color = isGain ? 'var(--cyan)' : 'var(--crimson)';
+    const sign = isGain ? '+' : '';
+    const label = isHp ? 'HP' : 'Mana';
+    const afterText = isHp
+      ? (e.maxHp!=null ? ` · HP jadi ${e.hpAfter}/${e.maxHp}` : '')
+      : (e.maxMana!=null ? ` · Mana jadi ${e.manaAfter}/${e.maxMana}` : '');
+    return `<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+      <div style="min-width:0;">
+        <div style="font-size:12px;">${escapeHtml(e.reason||'-')}</div>
+        <div style="font-size:11px;color:var(--muted);">${w}${afterText}</div>
+      </div>
+      <div style="color:${color};font-weight:700;white-space:nowrap;">${sign}${e.delta} ${label}</div>
+    </div>`;
+  }
+  if(cat==='karakter'){
+    // Baris ringkas 1 baris per catatan — biar tetap rapi walau datanya nambah terus tanpa batas.
+    const K = { level:{icon:'⭐',label:'Level',color:'var(--arise-bright)'}, hp:{icon:'❤️',label:'HP',color:'var(--crimson)'}, realm:{icon:'⛰️',label:'Realm',color:'var(--cyan)'}, streak:{icon:'🔥',label:'Streak',color:'var(--orange)'} };
+    const k = K[e._kType] || K.level;
+    const valText = e._kType==='hp' ? `${e.val} HP` : e._kType==='streak' ? `${e.val} hari` : `${e.val}`;
+    return `<div style="display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);">
+      <div style="font-size:12px;color:var(--muted);">${k.icon} ${k.label} · ${w}</div>
+      <div style="font-size:12px;font-weight:700;color:${k.color};white-space:nowrap;">${escapeHtml(String(valText))}</div>
+    </div>`;
+  }
   // timeline
   return `<div style="padding:8px 0;border-bottom:1px solid var(--border);">
     <div style="font-size:11px;color:var(--muted);">${w}</div>
@@ -6816,16 +6902,25 @@ function _riwayatMonthSummary(cat, entries){
     const jml = entries.filter(e=>e._sourceType!=='answer').length, jwb = entries.filter(e=>e._sourceType==='answer').length;
     return `${jml} jurnal refleksi · ${jwb} jawaban pertanyaan`;
   }
+  if(cat==='vitalitas'){
+    const hpN = entries.filter(e=>e._vType==='hp').length, manaN = entries.filter(e=>e._vType==='mana').length;
+    return `${hpN} kejadian HP · ${manaN} kejadian Mana`;
+  }
+  if(cat==='karakter'){
+    const lvlN = entries.filter(e=>e._kType==='level').length, hpN = entries.filter(e=>e._kType==='hp').length;
+    const realmN = entries.filter(e=>e._kType==='realm').length, streakN = entries.filter(e=>e._kType==='streak').length;
+    return `${lvlN} level naik · ${realmN} realm naik · ${hpN} catatan HP · ${streakN} update streak`;
+  }
   return `${entries.length} peristiwa`; // timeline
 }
 function renderHistoryArchive(){
   ensureHistoryArchive(state);
   const chips = RIWAYAT_CATS.map(c=>{
-    const n = (state.historyArchive[c.key]||[]).length;
+    const n = c.key==='vitalitas' ? _riwayatVitalitasList().length : c.key==='karakter' ? _riwayatKarakterList().length : (state.historyArchive[c.key]||[]).length;
     return `<button class="btn btn-sm ${c.key===_riwayatCat?'btn-primary':'btn-secondary'}" onclick="setRiwayatCat('${c.key}')">${c.icon} ${c.label}${n?` (${n})`:''}</button>`;
   }).join('');
 
-  const list = (state.historyArchive[_riwayatCat] || []).slice();
+  const list = _riwayatCat==='vitalitas' ? _riwayatVitalitasList() : _riwayatCat==='karakter' ? _riwayatKarakterList() : (state.historyArchive[_riwayatCat] || []).slice();
   const activeDef = RIWAYAT_CATS.find(c=>c.key===_riwayatCat);
 
   let body;
@@ -7771,7 +7866,7 @@ function showTrophy(title, subtitle, icon) { document.getElementById('fx-boss-ti
 
 // ═══════════════════════════════════
 // FUNGSI SHIFT & JADWAL (sebelumnya hilang)
-// ═══════════════════════════════════
+// ════════════════r��══════════════════
 function setShift(shift) {
     state.character.shift = shift;
     render(); save();
@@ -8868,8 +8963,7 @@ function renderLifeHeatmap() {
 
   // ── MONTHLY ──
   } else if (heatmapView === 'monthly') {
-    const now = new Date();
-    const year = now.getFullYear(); const month = now.getMonth();
+    const year = heatmapMonthYear; const month = heatmapMonthMonth;
     const daysInMonth = new Date(year, month+1, 0).getDate();
     const firstDow = new Date(year, month, 1).getDay(); // 0=Sun
     const startOffset = (firstDow + 6) % 7; // Monday-first offset
@@ -8887,38 +8981,36 @@ function renderLifeHeatmap() {
         color:${st.textColor};">${d}</div>`;
     }).join('');
 
-    gridHTML = `<div style="text-align:center;font-family:var(--font-system);font-size:12px;font-weight:700;color:var(--bone);margin-bottom:8px;">
-        ${MONTH_FULL[month]} ${year}
+    gridHTML = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <button class="cal-nav-btn" onclick="changeHeatmapMonth(-1)"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <div style="font-family:var(--font-system);font-size:12px;font-weight:700;color:var(--bone);">${MONTH_FULL[month]} ${year}</div>
+        <button class="cal-nav-btn" onclick="changeHeatmapMonth(1)"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
       </div>
       <div class="heatmap-monthly-grid">${headerRow}${emptyCells}${dayCells}</div>`;
 
   // ── YEARLY ──
   } else {
-    // 52 weeks (364 days), oldest → newest, rows=day-of-week (Mon..Sun), cols=weeks
-    const TOTAL = 52 * 7;
-    const dates = [];
-    for (let i = TOTAL - 1; i >= 0; i--) {
-      const d = new Date(); d.setDate(d.getDate() - i);
-      dates.push(d.toLocaleDateString('en-CA'));
-    }
-    // Build weeks array [52][7]
+    // Tahun kalender penuh Jan-Des (bukan lagi 364 hari bergulir), bisa dinavigasi mundur/maju per tahun.
+    const year = heatmapYearYear;
     const weeks = [];
-    for (let w = 0; w < 52; w++) weeks.push(dates.slice(w*7, w*7+7));
+    for (let m = 0; m < 12; m++) {
+      const daysInM = new Date(year, m+1, 0).getDate();
+      const monthDates = Array.from({length: daysInM}, (_, i) => `${year}-${String(m+1).padStart(2,'0')}-${String(i+1).padStart(2,'0')}`);
+      // Pad awal bulan ke Senin-pertama biar sejajar per minggu (kosong = null, tidak dihitung).
+      const firstDow = new Date(year, m, 1).getDay();
+      const startOffset = (firstDow + 6) % 7;
+      const padded = Array(startOffset).fill(null).concat(monthDates);
+      for (let w = 0; w < padded.length; w += 7) weeks.push({ month: m, cells: padded.slice(w, w+7) });
+    }
 
-    // Month labels: show month name at first week of each month
-    const monthLabelCells = weeks.map((wk, wi) => {
-      const firstDs = wk.find(d => d);
-      if (!firstDs) return `<div class="heatmap-month-lbl"></div>`;
-      const d = new Date(firstDs + 'T00:00:00');
-      // Show label if this week contains the 1st of month
-      const hasFirst = wk.some(ds => ds && ds.slice(8) === '01');
-      return `<div class="heatmap-month-lbl">${hasFirst ? MONTH_NAMES[d.getMonth()] : ''}</div>`;
+    const monthLabelCells = weeks.map(wk => {
+      const hasFirst = wk.cells.some(ds => ds && ds.slice(8) === '01');
+      return `<div class="heatmap-month-lbl">${hasFirst ? MONTH_NAMES[wk.month] : ''}</div>`;
     }).join('');
 
-    // 7 rows (Mon=0..Sun=6), each row is a day-of-week across all 52 weeks
     const rows = Array.from({length:7}, (_, r) => {
       const cells = weeks.map(wk => {
-        const ds = wk[r];
+        const ds = wk.cells[r];
         if (!ds) return `<div class="heatmap-yearly-cell" style="background:#1c1c2e;"></div>`;
         const sc = getHeatmapDayScore(ds);
         const st = getHeatmapCellStyle(sc, ds === today);
@@ -8929,7 +9021,12 @@ function renderLifeHeatmap() {
       return `<div class="heatmap-yearly-row">${cells}</div>`;
     }).join('');
 
-    gridHTML = `<div class="heatmap-yearly-scroll">
+    gridHTML = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <button class="cal-nav-btn" onclick="changeHeatmapYear(-1)"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <div style="font-family:var(--font-system);font-size:12px;font-weight:700;color:var(--bone);">${year}</div>
+        <button class="cal-nav-btn" onclick="changeHeatmapYear(1)"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
+      </div>
+      <div class="heatmap-yearly-scroll">
       <div class="heatmap-yearly-inner">
         <div class="heatmap-month-labels">${monthLabelCells}</div>
         ${rows}
