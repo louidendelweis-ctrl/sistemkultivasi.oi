@@ -1979,17 +1979,23 @@ const AudioEngine = {
       if(!this.ctx) { const AudioContext = window.AudioContext || window.webkitAudioContext; this.ctx = new AudioContext(); } 
       if(this.ctx.state === 'suspended') this.ctx.resume(); 
   },
+  // Efek suara TIDAK BOLEH PERNAH menggagalkan aksi utama (simpan transaksi, sinkron ke riwayat,
+  // render ulang, dsb). Kalau audio gagal (misal browser/HP nge-block AudioContext, autoplay
+  // policy, dll), kita cukup diamkan errornya di sini — jangan sampai bikin fungsi pemanggil
+  // (mis. addFinanceTransaction) berhenti di tengah jalan sebelum sempat render()/save().
   play(freqs, type, dur, vol = 0.05) {
-    if(!state || state.settings?.soundEnabled===false) return;
-    this.init();
-    freqs.forEach((f, i) => {
-      const o = this.ctx.createOscillator(), g = this.ctx.createGain();
-      o.type = type; o.frequency.value = f;
-      g.gain.setValueAtTime(vol, this.ctx.currentTime + i*dur);
-      g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + i*dur + dur);
-      o.connect(g); g.connect(this.ctx.destination);
-      o.start(this.ctx.currentTime + i*dur); o.stop(this.ctx.currentTime + i*dur + dur);
-    });
+    try{
+      if(!state || state.settings?.soundEnabled===false) return;
+      this.init();
+      freqs.forEach((f, i) => {
+        const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+        o.type = type; o.frequency.value = f;
+        g.gain.setValueAtTime(vol, this.ctx.currentTime + i*dur);
+        g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + i*dur + dur);
+        o.connect(g); g.connect(this.ctx.destination);
+        o.start(this.ctx.currentTime + i*dur); o.stop(this.ctx.currentTime + i*dur + dur);
+      });
+    }catch(err){ console.warn('SFX gagal diputar (diabaikan, tidak mengganggu aksi utama):', err); }
   }
 };
 const SFX = {
@@ -2913,7 +2919,7 @@ const HOF_DEFS = [
   {id:'hof_br7',  cat:'heaven',  tier:'p', icon:'🌉', label:'Bridge 7 — Eternal',         desc:'Menembus Jembatan Surga ke-7',           check:s=>(s.character.heavenBridges||0)>=7},
   {id:'hof_br8',  cat:'heaven',  tier:'p', icon:'🌉', label:'Bridge 8 — Absolute',        desc:'Menembus Jembatan Surga ke-8',           check:s=>(s.character.heavenBridges||0)>=8},
   {id:'hof_br9',  cat:'heaven',  tier:'l', icon:'👑', label:'Bridge 9 — Supreme Immortal', desc:'Menembus seluruh 9 Jembatan Surga — PUNCAK ABSOLUT', check:s=>(s.character.heavenBridges||0)>=9},
-  // ── STREAK ─────────────────────────────────────────────────────────────────
+  // ── STREAK ─────────────────────────────────────────u��───────────────────────
   {id:'hof_sk7',   cat:'streak',  tier:'b', icon:'🔥', label:'Streak 7 Hari',             desc:'Menjaga konsistensi 7 hari',             check:s=>(s.character.longestStreak||0)>=7},
   {id:'hof_sk30',  cat:'streak',  tier:'s', icon:'🔥', label:'Streak 30 Hari',            desc:'Menjaga konsistensi 30 hari',            check:s=>(s.character.longestStreak||0)>=30},
   {id:'hof_sk100', cat:'streak',  tier:'g', icon:'🐉', label:'Streak 100 Hari',           desc:'Menjaga konsistensi 100 hari',           check:s=>(s.character.longestStreak||0)>=100},
@@ -3060,7 +3066,7 @@ function DEFAULT_SETTINGS(){
 
 // ═══════════════════════════════════
 // SECTION MANAGER — definisi & helpers
-// ═════════════════════════════════) �═
+// ═══════════════════════════════════
 const SECTION_DEFS = {
   home: [
     { id:'realm-card',       label:'⚔️ Kartu Karakter (Level, Realm, HP)' },
@@ -4539,7 +4545,8 @@ function addFinanceTransaction(){
   const amount = parseInt(document.getElementById('bi-amount').value,10); 
   const note = document.getElementById('bi-note').value.trim();
   const type = document.getElementById('bi-type').value;
-  const cat = document.getElementById('bi-cat').value || 'Lainnya';
+  const cat = document.getElementById('bi-cat').value.trim() || 'Lainnya';
+  const akun = document.getElementById('bi-akun').value || 'cash';
 
   if(!amount || amount<=0){ document.getElementById('bi-amount').focus(); return; } 
   
@@ -4547,27 +4554,105 @@ function addFinanceTransaction(){
       state.character.lifetimeIncome = (state.character.lifetimeIncome||0) + amount; 
       bumpStat('finance', Math.max(1, Math.round(amount/100000))); 
       addRealmEnergy(Math.round(amount/50000));
-      const _finIn = {date: todayStr(), amount, note, cat, type: 'in'};
+      const _finIn = {date: todayStr(), amount, note, cat, type: 'in', akun};
       state.financeLog.unshift(_finIn); _riwayatArchivePush('finansial', _finIn);
       // Sinkronkan pemasukan ke Target Finansial yang aktif secara otomatis
       applyIncomeToTargets(amount);
   } else {
-      const _finOut = {date: todayStr(), amount, note, cat, type: 'out'};
+      const _finOut = {date: todayStr(), amount, note, cat, type: 'out', akun};
       state.financeLog.unshift(_finOut); _riwayatArchivePush('finansial', _finOut);
   }
 
   // Riwayat transaksi disimpan seluruhnya (tidak dipotong otomatis lagi)
   
   closeModal('modal-log-income'); 
-  document.getElementById('bi-amount').value=''; document.getElementById('bi-note').value=''; 
+  document.getElementById('bi-amount').value=''; document.getElementById('bi-note').value=''; document.getElementById('bi-cat').value='';
   if(type === 'in') SFX.cashRegister(); else SFX.moneyOut();
-  checkAchievements(); render(); save();
+  checkAchievements(); buildModals(); render(); save();
 }
 
-// Total pengeluaran (seluruh riwayat transaksi bertipe 'out')
+// Pindah saldo antar kantong Cash <-> Saldo. Tidak dihitung sebagai pemasukan/pengeluaran —
+// hanya memindahkan posisi uang, Total Uang (Cash+Saldo) tidak berubah.
+function transferSaldo(){
+  const amount = parseInt(document.getElementById('ts-amount').value,10);
+  const dari = document.getElementById('ts-dari').value;
+  const ke = document.getElementById('ts-ke').value;
+  const note = document.getElementById('ts-note').value.trim();
+
+  if(!amount || amount<=0){ document.getElementById('ts-amount').focus(); return; }
+  if(dari === ke){ showToast('Kantong asal dan tujuan tidak boleh sama.','bad'); return; }
+
+  const tersedia = dari === 'cash' ? getCashBalance() : getSaldoAccountBalance();
+  if(amount > tersedia){ showToast('Saldo di kantong asal tidak cukup.','bad'); return; }
+
+  const _transfer = {date: todayStr(), amount, note, type: 'transfer', dari, ke};
+  state.financeLog.unshift(_transfer); _riwayatArchivePush('finansial', _transfer);
+
+  closeModal('modal-transfer-saldo');
+  document.getElementById('ts-amount').value=''; document.getElementById('ts-note').value='';
+  SFX.cashRegister();
+  render(); save();
+}
+function swapTransferDirection(){
+  const dariEl = document.getElementById('ts-dari'); const keEl = document.getElementById('ts-ke');
+  const d = dariEl.value; dariEl.value = keEl.value; keEl.value = d;
+}
+function fillCatChip(text){
+  const el = document.getElementById('bi-cat'); if(!el) return;
+  el.value = text; el.focus();
+}
+
+// Total pengeluaran (seluruh riwayat transaksi bertipe 'out', lintas kantong Cash & Saldo)
 function getTotalExpense(){ return (state.financeLog||[]).filter(l => l.type === 'out').reduce((sum, l) => sum + l.amount, 0); }
 // Saldo saat ini = total pemasukan seumur hidup dikurangi total pengeluaran (INI YANG BENAR-BENAR BERKURANG saat ada pengeluaran)
+// Ini adalah TOTAL UANG gabungan (Cash + Saldo). Transfer antar kantong tidak mempengaruhi angka ini
+// karena selalu saling meniadakan (keluar dari satu kantong, masuk ke kantong lain).
 function getSaldo(){ return (state.character.lifetimeIncome||0) - getTotalExpense(); }
+
+// ── CASH & SALDO — dua kantong terpisah ─────────────────────────────────────
+// Setiap transaksi in/out punya field `akun` ('cash' atau 'saldo'). Entri lama (sebelum fitur
+// ini ada) tidak punya field ini — dianggap default 'cash'. Transaksi 'transfer' punya `dari`/`ke`
+// dan memindahkan nominal antar kantong tanpa dihitung sebagai pemasukan/pengeluaran.
+function getCashBalance(){
+  let bal = 0;
+  (state.financeLog||[]).forEach(l=>{
+    const akun = l.akun || 'cash';
+    if(l.type === 'in' && akun === 'cash') bal += l.amount;
+    else if(l.type === 'out' && akun === 'cash') bal -= l.amount;
+    else if(l.type === 'transfer'){
+      if(l.dari === 'cash') bal -= l.amount;
+      if(l.ke === 'cash') bal += l.amount;
+    }
+  });
+  return bal;
+}
+function getSaldoAccountBalance(){
+  let bal = 0;
+  (state.financeLog||[]).forEach(l=>{
+    const akun = l.akun || 'cash';
+    if(l.type === 'in' && akun === 'saldo') bal += l.amount;
+    else if(l.type === 'out' && akun === 'saldo') bal -= l.amount;
+    else if(l.type === 'transfer'){
+      if(l.dari === 'saldo') bal -= l.amount;
+      if(l.ke === 'saldo') bal += l.amount;
+    }
+  });
+  return bal;
+}
+// Total Uang = Cash + Saldo (selalu sama dengan getSaldo() karena transfer saling meniadakan)
+function getTotalUang(){ return getCashBalance() + getSaldoAccountBalance(); }
+
+// Saran kategori cepat: default umum + kategori custom yang pernah dipakai user, terbaru duluan
+const DEFAULT_FIN_CATEGORIES = ['Gaji/Upah','Freelance','Bisnis','Investasi','Makan','Transport','Tagihan','Belanja','Hiburan','Kesehatan','Pendidikan'];
+function getCategorySuggestions(){
+  const used = [];
+  (state.financeLog||[]).forEach(l=>{
+    if(l.type!=='transfer' && l.cat && l.cat!=='Lainnya' && !used.includes(l.cat)) used.push(l.cat);
+  });
+  const merged = [...used];
+  DEFAULT_FIN_CATEGORIES.forEach(c=>{ if(!merged.includes(c)) merged.push(c); });
+  return merged.slice(0, 12);
+}
 
 // Financial Rank — hanya membaca state, tidak mengubah data apapun
 function getFinancialRank(){
@@ -5394,7 +5479,7 @@ function addSedekah(evt){
   state.sedekah.totalLifetime += nominal; state.sedekah.dailyExpGained += expGained;
   
   state.character.lifetimeIncome = Math.max(0, (state.character.lifetimeIncome||0) - nominal);
-  const _sedekahFin = {date: today, amount: nominal, note: 'Sedekah: ' + document.getElementById('sedekah-note').value.trim(), type: 'out'};
+  const _sedekahFin = {date: today, amount: nominal, note: 'Sedekah: ' + document.getElementById('sedekah-note').value.trim(), type: 'out', akun: 'cash'};
   state.financeLog.unshift(_sedekahFin);
   _riwayatArchivePush('finansial', _sedekahFin);
 
@@ -5819,9 +5904,19 @@ function renderHome(){
   <div data-sec-tab="home" data-sec-id="daily-schedule">${renderTodayScheduleCard()}</div>
 
   <div class="card glass-panel" data-sec-tab="home" data-sec-id="finance-summary" style="border-color: rgba(240,185,59,0.3); background: linear-gradient(145deg, rgba(240,185,59,0.05), transparent);">
-    <div class="row-between small"><span style="color:var(--gold); font-weight:800; font-family:var(--font-system); letter-spacing:1px;">TOTAL UANG (SALDO)</span></div>
+    <div class="row-between small"><span style="color:var(--gold); font-weight:800; font-family:var(--font-system); letter-spacing:1px;">TOTAL UANG</span></div>
     <div class="mt-10" style="text-align:center;">
         <div style="font-family:var(--font-system); font-size:26px; font-weight:800; color:${saldo>=0?'var(--gold)':'var(--crimson)'};">${formatRupiah(saldo)}</div>
+    </div>
+    <div class="row-between mt-10" style="align-items:flex-end; border-top:1px solid var(--border); padding-top:10px;">
+        <div>
+            <div class="small muted">💵 Cash</div>
+            <div style="font-family:var(--font-system); font-size:15px; font-weight:800; color:var(--bone);">${formatRupiah(getCashBalance())}</div>
+        </div>
+        <div style="text-align:right;">
+            <div class="small muted">🏦 Saldo</div>
+            <div style="font-family:var(--font-system); font-size:15px; font-weight:800; color:var(--bone);">${formatRupiah(getSaldoAccountBalance())}</div>
+        </div>
     </div>
     <div class="row-between mt-10" style="align-items:flex-end; border-top:1px solid var(--border); padding-top:10px;">
         <div>
@@ -6070,14 +6165,20 @@ function renderBoss(){
 
     const _catColors = {'Gaji/Upah':'rgba(45,212,244,0.15)','Freelance':'rgba(124,92,255,0.15)','Bisnis':'rgba(240,185,59,0.15)','Investasi':'rgba(52,211,153,0.15)','Makan':'rgba(255,138,61,0.15)','Transport':'rgba(100,150,255,0.15)','Tagihan':'rgba(200,100,255,0.15)','Belanja':'rgba(255,180,80,0.15)','Hiburan':'rgba(255,100,150,0.15)','Kesehatan':'rgba(80,220,150,0.15)','Pendidikan':'rgba(80,180,255,0.15)','Lainnya':'rgba(150,150,180,0.15)'};
     const _catTextColors = {'Gaji/Upah':'var(--cyan)','Freelance':'var(--arise-bright)','Bisnis':'var(--gold-soft)','Investasi':'var(--jade)','Makan':'var(--orange)','Transport':'#8aaeff','Tagihan':'#d080ff','Belanja':'#ffcc60','Hiburan':'#ff80a0','Kesehatan':'#50dc96','Pendidikan':'#60c8ff','Lainnya':'var(--muted)'};
+    const _akunLabel = {cash:'💵 Cash', saldo:'🏦 Saldo'};
     function _logItemHtml(l){
+        if(l.type === 'transfer'){
+            const dariLbl = _akunLabel[l.dari] || l.dari; const keLbl = _akunLabel[l.ke] || l.ke;
+            return `<div class="log-item"><span class="muted" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;"><span style="font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:6px;background:rgba(150,150,180,0.15);color:var(--muted);font-family:var(--font-system);letter-spacing:0.3px;white-space:nowrap;">🔄 Transfer</span> ${dariLbl} → ${keLbl} · ${l.date}${l.note?' · '+escapeHtml(l.note):''}</span><span class="log-amount" style="color:var(--muted);">${formatRupiah(l.amount)}</span></div>`;
+        }
         const isOut = l.type === 'out';
         const isSedekah = isOut && l.note && l.note.startsWith('Sedekah:');
         const catBg = l.cat ? (_catColors[l.cat]||'rgba(150,150,180,0.15)') : '';
         const catCol = l.cat ? (_catTextColors[l.cat]||'var(--muted)') : '';
         const catChip = l.cat ? `<span style="font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:6px;background:${catBg};color:${catCol};font-family:var(--font-system);letter-spacing:0.3px;white-space:nowrap;">${escapeHtml(l.cat)}</span> ` : '';
+        const akunChip = `<span style="font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:6px;background:rgba(255,255,255,0.06);color:var(--muted);font-family:var(--font-system);letter-spacing:0.3px;white-space:nowrap;">${_akunLabel[l.akun||'cash']}</span> `;
         const amtColor = isSedekah ? 'var(--gold)' : isOut ? 'var(--crimson)' : 'var(--jade)';
-        return `<div class="log-item"><span class="muted" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">${catChip}${l.date}${l.note?' · '+escapeHtml(l.note):''}</span><span class="log-amount" style="color:${amtColor}">${isOut?'-':'+'}${formatRupiah(l.amount)}</span></div>`;
+        return `<div class="log-item"><span class="muted" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">${catChip}${akunChip}${l.date}${l.note?' · '+escapeHtml(l.note):''}</span><span class="log-amount" style="color:${amtColor}">${isOut?'-':'+'}${formatRupiah(l.amount)}</span></div>`;
     }
     const _allLog = state.financeLog||[];
     const _logRecent = _allLog.slice(0,10);
@@ -6093,7 +6194,8 @@ function renderBoss(){
     const _pColor = (v) => v >= 0 ? 'var(--jade)' : 'var(--crimson)';
 
     const _secTarget = `<div class="section-title row-between"><span>🎯 Target Finansial Aktif</span><button class="icon-btn" onclick="openNewTargetModal()"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button></div>${(state.targets||[]).length ? `<div class="small muted" style="margin:-6px 0 12px;">💡 Setiap kamu catat <b>Pemasukan</b>, nominalnya otomatis singkron jadi progress ke semua target di bawah ini.</div>` : ''}<div class="target-list">${targetsHtml || `<div class="empty-state card"><span class="big">Belum ada Target Finansial</span>Tambahkan target tabungan/pembelian baru.</div>`}</div>`;
-    const _secIncome = `<div class="card boss-card glass-panel" style="background: linear-gradient(135deg, rgba(240,185,59,0.05), transparent);"><div class="boss-name" style="font-family:var(--font-display);font-weight:800;display:flex;justify-content:center;align-items:center;gap:8px;"><span style="font-size:28px;">💰</span> Pemasukan & Pengeluaran</div><div class="commerce-metric" style="margin-bottom:10px;"><div class="lbl">Saldo Saat Ini</div><div class="val highlight" style="font-size:22px; color:${saldo>=0?'var(--gold)':'var(--crimson)'};">${formatRupiah(saldo)}</div></div><div class="commerce-grid"><div class="commerce-metric"><div class="lbl">Total Pemasukan</div><div class="val" style="color:var(--jade);">${formatRupiah(state.character.lifetimeIncome||0)}</div></div><div class="commerce-metric" style="border-color: rgba(255,71,104,0.3);"><div class="lbl">Pengeluaran</div><div class="val" style="color:var(--crimson);">${formatRupiah(pengeluaran)}</div></div></div><button class="btn btn-gold btn-block mt-14" onclick="openModal('modal-log-income')">Catat Transaksi (In/Out)</button></div>`;
+    const _cashBal = getCashBalance(); const _saldoBal = getSaldoAccountBalance();
+    const _secIncome = `<div class="card boss-card glass-panel" style="background: linear-gradient(135deg, rgba(240,185,59,0.05), transparent);"><div class="boss-name" style="font-family:var(--font-display);font-weight:800;display:flex;justify-content:center;align-items:center;gap:8px;"><span style="font-size:28px;">💰</span> Pemasukan & Pengeluaran</div><div class="commerce-metric" style="margin-bottom:10px;"><div class="lbl">Total Uang (Cash + Saldo)</div><div class="val highlight" style="font-size:22px; color:${saldo>=0?'var(--gold)':'var(--crimson)'};">${formatRupiah(saldo)}</div></div><div class="commerce-grid"><div class="commerce-metric"><div class="lbl">💵 Cash</div><div class="val" style="color:var(--bone);">${formatRupiah(_cashBal)}</div></div><div class="commerce-metric"><div class="lbl">🏦 Saldo</div><div class="val" style="color:var(--bone);">${formatRupiah(_saldoBal)}</div></div></div><div class="commerce-grid mt-10"><div class="commerce-metric"><div class="lbl">Total Pemasukan</div><div class="val" style="color:var(--jade);">${formatRupiah(state.character.lifetimeIncome||0)}</div></div><div class="commerce-metric" style="border-color: rgba(255,71,104,0.3);"><div class="lbl">Pengeluaran</div><div class="val" style="color:var(--crimson);">${formatRupiah(pengeluaran)}</div></div></div><div style="display:flex;gap:8px;margin-top:14px;"><button class="btn btn-gold" style="flex:1;" onclick="openModal('modal-log-income')">Catat Transaksi</button><button class="btn btn-secondary" style="flex:1;" onclick="openModal('modal-transfer-saldo')">🔄 Pindah Saldo</button></div></div>`;
     const _secFuturePrediction = `<div class="section-title">🔮 Prediksi Tabungan</div><div class="card glass-panel" style="border-top:3px solid var(--arise-bright);"><div class="small muted" style="margin-bottom:12px;">Berdasarkan rata-rata harian ${_dailyAvg>=0?'+':''}${formatRupiah(_dailyAvg)}/hari (${_daysSince} hari sejak mulai)</div><div class="commerce-grid" style="grid-template-columns:1fr 1fr 1fr;gap:8px;"><div class="commerce-metric"><div class="lbl">30 Hari</div><div class="val" style="color:${_pColor(_p30)};font-size:13px;">${formatRupiah(_p30)}</div></div><div class="commerce-metric"><div class="lbl">1 Tahun</div><div class="val" style="color:${_pColor(_p1y)};font-size:13px;">${formatRupiah(_p1y)}</div></div><div class="commerce-metric"><div class="lbl">5 Tahun</div><div class="val" style="color:${_pColor(_p5y)};font-size:13px;">${formatRupiah(_p5y)}</div></div></div></div>`;
     const _secMomentum = `<div class="section-title">📈 Financial Momentum</div><div class="card glass-panel"><div class="chart-container"><canvas id="financialMomentumChart"></canvas></div><div id="fm-point-info" class="small muted" style="text-align:center;margin-top:10px;min-height:18px;">Tekan titik pada grafik untuk melihat detail transaksi.</div></div>`;
     const _secDaoChart = `<div class="section-title">Tren Momentum Pemasukan (7 Hari)</div><div class="card glass-panel"><div class="chart-container"><canvas id="daoChart"></canvas></div></div>`;
@@ -6123,6 +6225,7 @@ function initFinancialMomentumChart() {
     const perDay = {}; dayKeys.forEach(k => perDay[k] = { in: 0, out: 0, inNotes: [], outNotes: [] });
     (state.financeLog||[]).forEach(l => {
         if(!perDay[l.date]) return;
+        if(l.type === 'transfer') return;
         if(l.type === 'out') { perDay[l.date].out += l.amount; perDay[l.date].outNotes.push(l.note || 'Tanpa kategori'); }
         else { perDay[l.date].in += l.amount; perDay[l.date].inNotes.push(l.note || 'Tanpa kategori'); }
     });
@@ -6171,7 +6274,7 @@ function initFinancialMomentumChart() {
 function initDaoChart() {
     if(typeof Chart === 'undefined') { const c=document.getElementById('daoChart'); if(c){ const p=c.parentElement; p.innerHTML='<div class="small muted" style="text-align:center;padding:20px;">📊 Grafik tidak tersedia (perlu koneksi internet)</div>'; } return; }
     const ctx = document.getElementById('daoChart'); if(!ctx) return; if(daoChart) daoChart.destroy();
-    const dailyIncome = {}; (state.financeLog||[]).forEach(l => { if(l.type !== 'out') { if(!dailyIncome[l.date]) dailyIncome[l.date] = 0; dailyIncome[l.date] += l.amount; }});
+    const dailyIncome = {}; (state.financeLog||[]).forEach(l => { if(l.type === 'in') { if(!dailyIncome[l.date]) dailyIncome[l.date] = 0; dailyIncome[l.date] += l.amount; }});
     const labels = []; const data = []; for(let i=6; i>=0; i--) { let d = new Date(); d.setDate(d.getDate() - i); labels.push(d.toLocaleDateString('id-ID', {weekday:'short'})); data.push(dailyIncome[d.toLocaleDateString('en-CA')] || 0); }
     Chart.defaults.color = '#9492AC'; Chart.defaults.font.family = "'Rajdhani', sans-serif";
     daoChart = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [{ label: 'Pemasukan (Rp)', data: data, borderColor: '#F0B93B', backgroundColor: 'rgba(240, 185, 59, 0.15)', borderWidth: 2, tension: 0.4, fill: true, pointBackgroundColor: '#F0B93B', pointBorderColor: '#fff' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { callback: function(value) { if(value >= 1000000) return (value / 1000000).toFixed(1) + 'M'; if(value >= 1000) return (value / 1000).toFixed(1) + 'K'; return value; }, font:{size:10} } }, x: { grid: { display: false } } }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => formatRupiah(ctx.raw) } } } } });
@@ -6661,6 +6764,43 @@ function renderRefleksi(){
     ? `<div class="small muted" style="text-align:center;padding:14px 0;">Belum ada riwayat. Simpan jurnal, prinsip, atau jawab pertanyaan untuk mulai.</div>`
     : `<div>${histFirst5.map(histEntryHtml).join('')}</div>${histRest.length?`<div id="rf-hist-all" style="display:none;">${histRest.map(histEntryHtml).join('')}</div><button class="btn btn-ghost btn-block" id="rf-hist-more-btn" style="font-size:11px;margin-top:6px;" onclick="toggleMoreLess('rf-hist-all', this, 'Lihat Semua ${allHistory.length} Riwayat →', 'Sederhanakan ↑')">Lihat Semua ${allHistory.length} Riwayat →</button>`:''}`;
 
+  // === Riwayat jawaban milik satu pertanyaan (ditampilkan langsung di bawah pertanyaan itu,
+  // supaya tidak perlu bongkar-bongkar feed Riwayat gabungan di atas untuk lihat jawaban lama). ===
+  function questionAnswerHistoryHtml(q){
+    const answers = (q.answers||[]).slice().sort((a,b)=>(b._ts||0)-(a._ts||0));
+    if(!answers.length) return '';
+    const expandKey = 'rfq|'+q.id;
+    const isOpen = !!_riwayatExpanded[expandKey];
+    const shown = isOpen ? answers : answers.slice(0,2);
+    const rows = shown.map(a=>{
+      const preview = a.text.length > 150 ? a.text.slice(0,150)+'…' : a.text;
+      let lihatBtn = '';
+      if(a.text.length > 150){
+        const lIdx = _lihatPenuhLookup.push({judul:'💬 Jawaban · '+(a.date||''), konten:a.text, tanggal:a.ts||''}) - 1;
+        lihatBtn = `<button class="btn btn-ghost btn-sm" onclick="openLihatPenuhModal(${lIdx})" style="margin-top:4px;font-size:10px;padding:2px 10px;">🔍 Lihat Penuh</button>`;
+      }
+      return `<div style="padding:8px 0;border-top:1px solid rgba(200,168,75,0.15);">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;">
+          <div style="font-size:9.5px;color:rgba(200,168,75,0.55);font-weight:600;">📅 ${a.date||''} · ${a.ts||''}</div>
+          <div style="display:flex;gap:5px;flex-shrink:0;">
+            <button class="btn btn-sm btn-xs ${a.pinnedProfile?'btn-primary':'btn-ghost'}" onclick="pinRefleksiAnswer('${q.id}','${a.id}')" style="font-size:9.5px;padding:2px 7px;">${a.pinnedProfile?'✅ Di Profil':'📌 Pakai di Profil'}</button>
+            <button class="btn btn-sm btn-xs btn-ghost" onclick="deleteRefleksiAnswer('${q.id}','${a.id}')" style="font-size:10px;padding:2px 6px;">🗑</button>
+          </div>
+        </div>
+        <div style="font-size:12px;line-height:1.6;color:var(--bone);white-space:pre-wrap;word-break:break-word;">${escapeHtml(preview)}</div>
+        ${lihatBtn}
+      </div>`;
+    }).join('');
+    const toggleBtn = answers.length > 2
+      ? `<button class="btn btn-ghost btn-sm btn-block" style="font-size:10.5px;margin-top:4px;" onclick="toggleRiwayatMonth('${expandKey}')">${isOpen ? 'Sederhanakan ↑' : `Lihat Semua ${answers.length} Jawaban Sebelumnya →`}</button>`
+      : '';
+    return `<div style="margin-top:10px;">
+      <div style="font-size:10px;font-weight:800;color:rgba(200,168,75,0.7);letter-spacing:0.6px;text-transform:uppercase;margin-bottom:2px;">📜 Riwayat Jawaban (${answers.length})</div>
+      ${rows}
+      ${toggleBtn}
+    </div>`;
+  }
+
   // === Pertanyaan: daftar tetap tampil, textarea kosong ===
   const qHtml = questions.length===0
     ? `<div class="small muted" style="text-align:center;padding:14px 0;">Belum ada pertanyaan. Tambahkan pertanyaan refleksimu di atas.</div>`
@@ -6673,6 +6813,7 @@ function renderRefleksi(){
         <div style="margin-top:8px;text-align:right;">
           <button class="btn btn-secondary btn-sm" onclick="saveRefleksiAnswer('${q.id}')">💾 Simpan Jawaban</button>
         </div>
+        ${questionAnswerHistoryHtml(q)}
       </div>`).join('');
 
   return `<div>
@@ -6800,6 +6941,13 @@ function _riwayatFormatDateTime(cat, e){
 function _riwayatEntryLine(cat, e){
   const w = _riwayatFormatDateTime(cat, e);
   if(cat==='finansial'){
+    if(e.type==='transfer'){
+      const _akunLbl = {cash:'💵 Cash', saldo:'🏦 Saldo'};
+      return `<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+        <div><div style="font-size:12px;">🔄 Transfer ${_akunLbl[e.dari]||e.dari} → ${_akunLbl[e.ke]||e.ke}${e.note?' · '+escapeHtml(e.note):''}</div><div style="font-size:11px;color:var(--muted);">${w}</div></div>
+        <div style="color:var(--muted);font-weight:700;white-space:nowrap;">Rp${Number(e.amount||0).toLocaleString('id-ID')}</div>
+      </div>`;
+    }
     const sign = e.type==='in' ? '+' : '-'; const color = e.type==='in' ? 'var(--jade)' : 'var(--crimson)';
     return `<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
       <div><div style="font-size:12px;">${escapeHtml(e.note||e.cat||'-')}</div><div style="font-size:11px;color:var(--muted);">${w}</div></div>
@@ -6884,9 +7032,9 @@ function _riwayatEntryLine(cat, e){
 // Ringkasan 1 bulan, beda angka per kategori.
 function _riwayatMonthSummary(cat, entries){
   if(cat==='finansial'){
-    let masuk=0, keluar=0;
-    entries.forEach(e=>{ if(e.type==='in') masuk += Number(e.amount||0); else keluar += Number(e.amount||0); });
-    return `${entries.length} transaksi · <span style="color:var(--jade);">+Rp${masuk.toLocaleString('id-ID')}</span> · <span style="color:var(--crimson);">-Rp${keluar.toLocaleString('id-ID')}</span>`;
+    let masuk=0, keluar=0, transfer=0;
+    entries.forEach(e=>{ if(e.type==='in') masuk += Number(e.amount||0); else if(e.type==='out') keluar += Number(e.amount||0); else if(e.type==='transfer') transfer += Number(e.amount||0); });
+    return `${entries.length} transaksi · <span style="color:var(--jade);">+Rp${masuk.toLocaleString('id-ID')}</span> · <span style="color:var(--crimson);">-Rp${keluar.toLocaleString('id-ID')}</span>${transfer?` · <span style="color:var(--muted);">🔄 Rp${transfer.toLocaleString('id-ID')}</span>`:''}`;
   }
   if(cat==='momentum'){
     const avg = Math.round(entries.reduce((a,e)=>a+(e.lifeScore||0),0) / Math.max(1,entries.length));
@@ -7707,8 +7855,19 @@ function buildModals() {
   <div class="modal-overlay" id="modal-add-todo"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">Tambah To-Do Cepat</div><div class="field"><label>Tugas</label><input type="text" id="at-title" placeholder="Contoh: Balas chat" class="input"></div><div class="field"><label>Prioritas Matriks</label><select id="at-priority" class="input"><option value="penting">🔴 Penting (Goals/Core)</option><option value="tidak_penting">🔵 Tidak Penting (Trivial)</option></select></div><div class="field"><label class="checkbox-row" style="margin-bottom:0;"><input type="checkbox" id="at-urgent" checked> Urgent (Hari Ini)</label></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-add-todo')">Batal</button><button class="btn btn-primary" onclick="addToDo()">Simpan</button></div></div></div>
   <div class="modal-overlay" id="modal-log-income"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">Catat Transaksi Finansial</div>
     <div class="field"><label>Jenis Transaksi</label><select id="bi-type" class="input"><option value="in">Pemasukan (+)</option><option value="out">Pengeluaran (-)</option></select></div>
-    <div class="field"><label>Kategori</label><select id="bi-cat" class="input"><option value="Gaji/Upah">💼 Gaji / Upah</option><option value="Freelance">🖥️ Freelance / Proyek</option><option value="Bisnis">🏪 Bisnis</option><option value="Investasi">📈 Investasi</option><option value="Makan">🍱 Makan & Minum</option><option value="Transport">🚗 Transport</option><option value="Tagihan">💡 Tagihan / Utilitas</option><option value="Belanja">🛒 Belanja</option><option value="Hiburan">🎮 Hiburan</option><option value="Kesehatan">❤️ Kesehatan</option><option value="Pendidikan">📚 Pendidikan</option><option value="Lainnya" selected>📌 Lainnya</option></select></div>
+    <div class="field"><label>Kantong</label><select id="bi-akun" class="input"><option value="cash">💵 Cash</option><option value="saldo">🏦 Saldo</option></select></div>
+    <div class="field"><label>Kategori</label><input type="text" id="bi-cat" placeholder="Ketik kategori... (mis. Kopi, Servis Motor)" class="input">
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">${getCategorySuggestions().map(c=>`<button type="button" class="btn btn-ghost btn-sm" style="font-size:10.5px;padding:3px 10px;" onclick="fillCatChip('${escapeHtml(c).replace(/'/g,"\\'")}')">${escapeHtml(c)}</button>`).join('')}</div>
+    </div>
     <div class="field"><label>Jumlah (Rp)</label><input type="number" id="bi-amount" placeholder="100000" inputmode="numeric" class="input"></div><div class="field"><label>Catatan (opsional)</label><input type="text" id="bi-note" placeholder="Hasil proyek, target tercapai, dll" class="input"></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-log-income')">Batal</button><button class="btn btn-primary" onclick="addFinanceTransaction()">Catat</button></div></div></div>
+  <div class="modal-overlay" id="modal-transfer-saldo"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">🔄 Pindah Saldo</div>
+    <div class="small muted" style="margin:-6px 0 12px;line-height:1.5;">Memindahkan uang antar kantong. Tidak dihitung sebagai pemasukan/pengeluaran — Total Uang tidak berubah.</div>
+    <div class="field"><label>Dari</label><select id="ts-dari" class="input"><option value="cash">💵 Cash</option><option value="saldo">🏦 Saldo</option></select></div>
+    <div style="text-align:center;margin:-4px 0 4px;"><button type="button" class="icon-btn" title="Tukar arah" onclick="swapTransferDirection()">⇄</button></div>
+    <div class="field"><label>Ke</label><select id="ts-ke" class="input"><option value="cash">💵 Cash</option><option value="saldo" selected>🏦 Saldo</option></select></div>
+    <div class="field"><label>Jumlah (Rp)</label><input type="number" id="ts-amount" placeholder="100000" inputmode="numeric" class="input"></div>
+    <div class="field"><label>Catatan (opsional)</label><input type="text" id="ts-note" placeholder="Setor ke rekening, tarik tunai, dll" class="input"></div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-transfer-saldo')">Batal</button><button class="btn btn-primary" onclick="transferSaldo()">Pindahkan</button></div></div></div>
   <div class="modal-overlay" id="modal-update-boss"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">Progress Target Custom</div><div class="field"><label>Jumlah Progress (Rp/Poin)</label><input type="number" id="bt-amount" placeholder="10000" inputmode="numeric" class="input"></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-update-boss')">Batal</button><button class="btn btn-primary" onclick="updateBossTarget()">Proses</button></div></div></div>
   <div class="modal-overlay" id="modal-new-boss"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">Edit / Set Target Finansial Spesifik Baru</div><div class="field"><label>Nama Target</label><input type="text" id="nb-name" placeholder="Target Dana Darurat" class="input"></div><div class="field"><label>Goal Angka/Nominal (Rp/Poin)</label><input type="number" id="nb-maxhp" placeholder="10000000" inputmode="numeric" class="input"></div><div class="field"><label>⏳ Deadline / Cooldown Target (Opsional)</label><input type="date" id="nb-deadline" class="input"><div class="small muted" style="margin-top:4px;">Isi deadline untuk memunculkan timer countdown pada target</div></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-new-boss')">Batal</button><button class="btn btn-gold" onclick="setNewBoss()">Tetapkan Target</button></div></div></div>
   <div class="modal-overlay" id="modal-confirm"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">Konfirmasi</div><div class="small" id="confirm-message" style="line-height:1.5;color:var(--bone);"></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-confirm')">Batal</button><button class="btn btn-danger" onclick="runConfirm()">Ya, Lanjutkan</button></div></div></div>
@@ -7866,7 +8025,7 @@ function showTrophy(title, subtitle, icon) { document.getElementById('fx-boss-ti
 
 // ═══════════════════════════════════
 // FUNGSI SHIFT & JADWAL (sebelumnya hilang)
-// ════════════════r��══════════════════
+// ═══════════════════════════════════
 function setShift(shift) {
     state.character.shift = shift;
     render(); save();
