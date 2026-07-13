@@ -1352,9 +1352,7 @@ a{color:var(--cyan);}
 .heatmap-yearly-scroll {
   overflow-x: auto; -webkit-overflow-scrolling: touch;
   padding-bottom: 6px; margin: 0 -4px; padding: 0 4px 6px;
-  scrollbar-width: none; -ms-overflow-style: none;
 }
-.heatmap-yearly-scroll::-webkit-scrollbar { display: none; }
 .heatmap-yearly-inner {
   display: inline-flex; flex-direction: column; gap: 2px;
 }
@@ -2389,7 +2387,7 @@ function firebaseStartRealTimeSync(){
   if(_fbEventSource) _fbEventSource.close();
 
   // Firebase SSE endpoint — streaming perubahan secara real-time
-  _fbEventSource = new EventSource(_fbUrl().replace('.json', '.json'));
+  _fbEventSource = new EventSource(_fbUrl());
 
   _fbEventSource.addEventListener('put', function(e){
     try{
@@ -2452,11 +2450,9 @@ const STAT_ID_LABELS = {
 const TYPE_META = { daily:{label:'Harian',cls:'t-daily'}, weekly:{label:'Mingguan',cls:'t-weekly'}, monthly:{label:'Bulanan',cls:'t-monthly'}, special:{label:'Spesial',cls:'t-special'}, mythic:{label:'Mythic',cls:'t-mythic'}, legendary:{label:'Legendary',cls:'t-legendary'}, heaven_trampling:{label:'Heaven Trampling',cls:'t-legendary'}, };
 const DIFFICULTY_EXP = {easy:10, normal:25, hard:50, epic:120};
 // Skala HP berdasarkan tingkat kesulitan quest — Berhasil: min 3 (easy) s/d maks 15 (epic).
-// Gagal: min 5 (easy) s/d maks 20 (epic/hard).
+// Gagal: lihat HP_LOSS_WITH_MANA_BY_DIFFICULTY dan HP_LOSS_NO_MANA_BY_DIFFICULTY di bawah.
 const HP_GAIN_BY_DIFFICULTY = {easy:3, normal:10, hard:13, epic:15};
-const HP_LOSS_BY_DIFFICULTY = {easy:5, normal:10, hard:15, epic:20};
 function hpGainForQuest(q){ return HP_GAIN_BY_DIFFICULTY[q && q.difficulty] ?? HP_GAIN_BY_DIFFICULTY.normal; }
-function hpLossForQuest(q){ return HP_LOSS_BY_DIFFICULTY[q && q.difficulty] ?? HP_LOSS_BY_DIFFICULTY.normal; }
 
 // ═══ Sistem Mana (tameng/shield sebelum HP kena dampak gagal quest) ═══
 // Mana didapat saat quest/ritual/jurnal/goal berhasil, dan jadi penyerap utama saat quest gagal.
@@ -2493,36 +2489,77 @@ function acceptConsequence(){
   save(); render();
 }
 
+// BUGFIX: hpEventLog/manaEventLog dulu dibatasi 100 entri dan entri lama yang kelebihan
+// LANGSUNG DIBUANG PERMANEN (slice), beda dengan kategori riwayat lain (Finansial, Jurnal,
+// Goal, dll) yang selalu diarsipkan dulu ke state.historyArchive sebelum dibuang dari daftar
+// aktif. Helper ini menyamakan perlakuannya: begitu daftar aktif kelebihan 100 entri, sisa
+// entri terlama yang belum pernah diarsipkan (belum bertanda _archived) dipindah dulu ke
+// state.historyArchive.vitalitas (permanen, tanpa batas), baru dibuang dari daftar aktif.
+function _trimVitalitasLog(arr){
+  const LIMIT = 100;
+  if(!Array.isArray(arr) || arr.length <= LIMIT) return arr;
+  ensureHistoryArchive(state);
+  const excess = arr.slice(0, arr.length - LIMIT); // arr[0] = terlama (push), jadi excess = yang paling lama
+  const stay = arr.slice(arr.length - LIMIT);
+  excess.filter(e => !e._archived).forEach(e => {
+    e._archived = true;
+    state.historyArchive.vitalitas.push({...e});
+  });
+  return stay;
+}
+
 // ═══ Riwayat perubahan HP (biar user bisa lihat kapan & kenapa HP berkurang/bertambah) ═══
 function logHpChange(delta, reason){
   if(!state || !delta) return;
   if(!state.hpEventLog) state.hpEventLog = [];
-  state.hpEventLog.push({
+  const entry = {
     ts: Date.now(),
     date: todayStr(),
     delta: Math.round(delta),
     reason: reason || '-',
     hpAfter: state.character ? state.character.hp : null,
-    maxHp: state.character ? state.character.maxHp : null
-  });
-  // Simpan maksimal 100 entri terakhir biar data tidak membengkak
-  if(state.hpEventLog.length > 100) state.hpEventLog = state.hpEventLog.slice(-100);
+    maxHp: state.character ? state.character.maxHp : null,
+    _vType: 'hp'
+  };
+  state.hpEventLog.push(entry);
+  // BUGFIX: arsipkan permanen SAAT DIBUAT (realtime), sama seperti Finansial/Goal/dll,
+  // supaya riwayat vitalitas tidak pernah benar-benar hilang walau daftar aktif dibatasi 100.
+  _riwayatArchivePush('vitalitas', entry);
+  // Simpan maksimal 100 entri terakhir di daftar aktif biar data tidak membengkak
+  // (sisanya sudah aman tersimpan permanen di state.historyArchive.vitalitas di atas).
+  state.hpEventLog = _trimVitalitasLog(state.hpEventLog);
+  // BUGFIX: catat juga ke grafik tren HP (charHistory.hp) SETIAP KALI HP berubah — naik ATAUPUN turun.
+  // Sebelumnya charHistory.hp cuma diisi manual di completeQuest() (saat HP naik), jadi penurunan HP
+  // (gagal quest, quest terlewat, gagal ritual, dll) tidak pernah tercatat di grafik tren — seolah
+  // HP cuma naik terus padahal aslinya turun juga. Kalau sudah ada entri untuk hari ini, update
+  // nilainya (bukan tambah entri baru) supaya grafik selalu menampilkan nilai HP terbaru hari itu.
+  if(state.character){
+    ensureCharHistory(state);
+    const today = todayStr();
+    const last = state.charHistory.hp[state.charHistory.hp.length-1];
+    if(last && last.ts === today) last.val = state.character.hp;
+    else state.charHistory.hp.push({ts: today, val: state.character.hp});
+  }
 }
 
 // ═══ Riwayat perubahan Mana (sama seperti hpEventLog, biar user bisa lihat kapan & kenapa Mana berkurang/bertambah) ═══
 function logManaChange(delta, reason){
   if(!state || !delta) return;
   if(!state.manaEventLog) state.manaEventLog = [];
-  state.manaEventLog.push({
+  const entry = {
     ts: Date.now(),
     date: todayStr(),
     delta: Math.round(delta),
     reason: reason || '-',
     manaAfter: state.character ? state.character.mana : null,
-    maxMana: state.character ? state.character.maxMana : null
-  });
-  // Simpan maksimal 100 entri terakhir biar data tidak membengkak
-  if(state.manaEventLog.length > 100) state.manaEventLog = state.manaEventLog.slice(-100);
+    maxMana: state.character ? state.character.maxMana : null,
+    _vType: 'mana'
+  };
+  state.manaEventLog.push(entry);
+  // BUGFIX: arsipkan permanen SAAT DIBUAT (realtime) — sama seperti logHpChange di atas.
+  _riwayatArchivePush('vitalitas', entry);
+  // Simpan maksimal 100 entri terakhir di daftar aktif (sisanya aman di historyArchive.vitalitas).
+  state.manaEventLog = _trimVitalitasLog(state.manaEventLog);
 }
 
 // ═══════════════════════════════════
@@ -2800,15 +2837,15 @@ const ACHIEVEMENT_DEFS = [
   {id:'sedekah1m', icon:'🌙', label:'Generous Deity', hint:'Total sedekah ≥ Rp 1.000.000', check:s=>(s.sedekah?.totalLifetime||0)>=1000000},
   
   // Epic Achievements
-  {id:'spirit_severing', icon:'🗡️', label:'Spirit Severing', hint:'Hapus 1 kebiasaan buruk', check:s=>s.habits.length>=1, grantsTitle:'Spirit Severer'},
+  {id:'spirit_severing', icon:'🗡️', label:'Spirit Severing', hint:'Hapus 1 kebiasaan buruk', check:s=>(s.meta.habitsDeleted||0)>=1, grantsTitle:'Spirit Severer'},
   {id:'mortal_arc', icon:'🚶‍♂️', label:'Mortal Arc', hint:'Selesaikan 10 skill dasar', check:s=>(s.kanban?.cards||[]).filter(c=>c.col==='selesai').length>=10, grantsTitle:'Mortal Cultivator'},
   {id:'slaughter_clone', icon:'👥', label:'Slaughter Clone', hint:'Ciptakan 1 passive income', check:s=>(s.stats.finance||0)>=10, grantsTitle:'Lord of Clones'},
-  {id:'dao_thunder', icon:'⚡', label:'Dao of Thunder', hint:'Selesaikan 5 task prioritas tinggi dalam 24 jam', check:s=>(s.meta.completedTodayCount||0)>=5, grantsTitle:'Thunder Sovereign'},
+  {id:'dao_thunder', icon:'⚡', label:'Dao of Thunder', hint:'Selesaikan 5 task Hard/Epic dalam 24 jam', check:s=>(s.meta.hardQuestsToday||0)>=5, grantsTitle:'Thunder Sovereign'},
   {id:'immortal_cave', icon:'🏔️', label:'Immortal Cave', hint:'100% bebas distraksi', check:s=>(s.stats.focus||0)>=20},
   {id:'heaven_sundering', icon:'🌌', label:'Heaven Sundering', hint:'Tembus rekor pemasukan', check:s=>(s.character.lifetimeIncome||0)>=20000000},
-  {id:'firm_dao_heart', icon:'🧘‍♂️', label:'Firm Dao Heart', hint:'30 hari tanpa mengeluh', check:s=>(s.character.longestStreak||0)>=30, grantsTitle:'Unshakable Heart'},
+  {id:'firm_dao_heart', icon:'🧘‍♂️', label:'Firm Dao Heart', hint:'60 hari tanpa putus', check:s=>(s.character.longestStreak||0)>=60, grantsTitle:'Unshakable Heart'},
   {id:'blood_ancestor', icon:'🩸', label:'Blood Ancestor', hint:'Deep Work 4 jam tanpa jeda', check:s=>(s.stats.focus||0)>=50},
-  {id:'ancient_scroll', icon:'📜', label:'Ancient Scroll', hint:'Habiskan 5 buku/course', check:s=>(s.kanban?.cards||[]).filter(c=>c.col==='selesai').length>=5},
+  {id:'ancient_scroll', icon:'📜', label:'Ancient Scroll', hint:'Habiskan 5 buku/course', check:s=>(s.kanban?.cards||[]).filter(c=>c.col==='selesai'&&(c.type==='Buku'||c.type==='Course')).length>=5},
   {id:'suzaku_mark', icon:'🔥', label:'Suzaku\'s Mark', hint:'150 hari streak', check:s=>(s.character.longestStreak||0)>=150, grantsTitle:'Suzaku Lord'},
   {id:'heaven_trampler_ach', icon:'👑', label:'Heaven Trampler', hint:'Kalahkan 15 Target Boss', check:s=>(s.character.bossesDefeated||0)>=15, grantsTitle:'Heaven Trampler'},
   {id:'defying_sov', icon:'🛡️', label:'Defying Sovereign', hint:'Tabungan darurat 1 tahun', check:s=>(s.character.lifetimeIncome||0)>=50000000, grantsTitle:'Defying Sovereign'},
@@ -2823,8 +2860,8 @@ const ACHIEVEMENT_DEFS = [
   {id:'defying_will', icon:'🌌', label:'Defying Will', hint:'Pertahankan streak saat sakit', check:s=>(s.stats.health||0)>=20},
   {id:'all_seer', icon:'👁️', label:'All-Seer Defeated', hint:'Capai target mustahil', check:s=>(s.character.lifetimeIncome||0)>=100000000, grantsTitle:'All-Seer\'s Nightmare'},
   {id:'ancient_god_body', icon:'🌟', label:'Ancient God Body', hint:'Olahraga 30 hari', check:s=>(s.stats.health||0)>=30, grantsTitle:'Royal Ancient God'},
-  {id:'defying_mortal', icon:'🏋️', label:'Defying Mortal', hint:'100 Hard Tasks', check:s=>(s.meta.completedTodayCount||0)>=100, grantsTitle:'Defying Mortal'},
-  {id:'slaughter_fiend', icon:'🪓', label:'Slaughter Fiend', hint:'30 hari mode grinding', check:s=>(s.character.longestStreak||0)>=30, grantsTitle:'Slaughter Fiend'},
+  {id:'defying_mortal', icon:'🏋️', label:'Defying Mortal', hint:'Selesaikan total 100 quest Hard/Epic', check:s=>(s.meta.totalHardQuestsCompleted||0)>=100, grantsTitle:'Defying Mortal'},
+  {id:'slaughter_fiend', icon:'🪓', label:'Slaughter Fiend', hint:'45 hari mode grinding', check:s=>(s.character.longestStreak||0)>=45, grantsTitle:'Slaughter Fiend'},
   // New Titles to reach 40+ Titles
   {id:'lv5', icon:'5', label:'Rookie', hint:'Mencapai Level 5', check:s=>(s.character.level||1)>=5, grantsTitle:'Star Shatterer'},
   {id:'lv15', icon:'15', label:'Adept', hint:'Mencapai Level 15', check:s=>(s.character.level||1)>=15, grantsTitle:'Abyssal Monarch'},
@@ -3054,7 +3091,7 @@ function DEFAULT_SETTINGS(){
     researchQuestLimit: 3, sedekahExpPerRibu: 1, sedekahMaxExpPerDay: 50, language: 'id',
     showWeeklyCalendar: true, showEisenhowerMatrix: true, show3Rules: true,
     showSIP: true, showToDo: true, showBackgroundAnim: true,
-    dailyExpCap: 9999999, dailyExpCapEnabled: false, difficultyExp: {...DIFFICULTY_EXP}, comboBonusStep: 0.05, comboBonusCap: 5, streakBonusStep: 0.02, streakBonusCap: 30, realmBonusStep: 0.04, customExpEnabled: true,
+    dailyExpCap: 9999999, dailyExpCapEnabled: false, difficultyExp: {...DIFFICULTY_EXP}, comboBonusStep: 0.05, comboBonusCap: 5, streakBonusStep: 0.02, streakBonusCap: 30, realmBonusStep: 0.04, realmBonusCap: 16, customExpEnabled: true,
     showExpCalculator: true,
     showLifePrinciple: true,
     showRefleksiHome: true, showRefleksiProfile: true,
@@ -3397,9 +3434,9 @@ function resetSectionConfig(tab) {
 
 function DEFAULT_STATE(){
   return {
-    meta:{ lastActiveDate:null, lastWeekKey:null, lastMonthKey:null, completedTodayCount:0, levelCurve:1, startDate: todayStr(), activityLog: {}, activityNotes: {}, dailyExpEarned:0, dailyExpLog:{} },
+    meta:{ lastActiveDate:null, lastWeekKey:null, lastMonthKey:null, completedTodayCount:0, levelCurve:1, startDate: todayStr(), activityLog: {}, activityNotes: {}, dailyExpEarned:0, dailyExpLog:{}, habitsDeleted:0, hardQuestsToday:0, totalHardQuestsCompleted:0 },
     ui:{ tab:'home', questFilter:'all' },
-    character:{ name:'Jian Haikal', age:22, job:'Pejuang', shift:'pagi', avatarColor: 'linear-gradient(135deg,var(--arise),var(--cyan))', level:1, exp:0, hp: 100, maxHp: 100, mana: 200, maxMana: 200, consequencePending:false, realmIndex:0, realmEnergy:0, lifeScore:0, streak:0, longestStreak:0, failStreak:0, recoveryMode:false, lifetimeIncome:0, bossesDefeated:0, goalsCompleted:0, totalQuests:0, failedQuests:0, failedGoals:0, failedProjects:0, heavenBridges: 0, equippedTitle:'The Beginner', equippedMedal:'', titlesUnlocked:['The Beginner', 'Wealth Core Lord'], lifePrinciple:'Disiplin mengalahkan motivasi.', lifePrincipleHistory:[], },
+    character:{ name:'Jian Haikal', age:22, job:'Pejuang', shift:'pagi', avatarColor: 'linear-gradient(135deg,var(--arise),var(--cyan))', level:1, exp:0, hp: 100, maxHp: 100, mana: 200, maxMana: 200, consequencePending:false, realmIndex:0, realmEnergy:0, lifeScore:0, streak:0, longestStreak:0, failStreak:0, recoveryMode:false, lifetimeIncome:0, bossesDefeated:0, goalsCompleted:0, totalQuests:0, failedQuests:0, failedGoals:0, failedProjects:0, heavenBridges: 0, equippedTitle:'The Beginner', equippedMedal:'', titlesUnlocked:['The Beginner'], lifePrinciple:'Disiplin mengalahkan motivasi.', lifePrincipleHistory:[], },
     _realmMigratedV2:false,
     stats:{ strength:0,health:0,discipline:0,knowledge:0,communication:0,finance:0,focus:0,spirituality:0,leadership:0,confidence:0,consistency:0 },
     spiritual:{ level:1, exp:0, dailyLog:{} }, 
@@ -3411,7 +3448,7 @@ function DEFAULT_STATE(){
     goals:[], habits:[], goalHistory:[], lifeTimeline:[], lifeMomentum:[],
     // Arsip permanen "Sejarah Riwayat" (tab Profil) — entri tiap kategori yang sudah lewat 30 hari
     // dipindahkan ke sini dari riwayat aktifnya masing-masing, tersimpan selamanya, tidak pernah dihapus.
-    historyArchive: { finansial:[], momentum:[], goal:[], sedekah:[], jurnal:[], refleksi:[], timeline:[] },
+    historyArchive: { finansial:[], momentum:[], goal:[], sedekah:[], jurnal:[], refleksi:[], timeline:[], vitalitas:[] },
     sip: { pagi: { status: 'pending', checkedCount:0 }, siang: { status: 'pending', progress: 0, checkedCount:0 }, config: { pagi: ['Bangun tepat waktu', 'Minum air', 'Target Hari Ini'], siang: ['Progress Quest Utama', 'Fokus'] } },
     schedule: JSON.parse(JSON.stringify(DEFAULT_SCHEDULE)), settings: DEFAULT_SETTINGS(), customStats:[], achievementsUnlocked:[],
     kanban: { cards: [] }, todos: [], completedTargets: [], sedekah: { entries:[], totalLifetime:0, dailyExpGained:0, lastExpDate:'' },
@@ -3443,7 +3480,7 @@ function ensureCharHistory(s){
 // yang valid. Dipakai saat migrasi data lama & oleh fungsi pemindah arsip harian, sama seperti pola ensureCharHistory.
 function ensureHistoryArchive(s){
   if(!s.historyArchive) s.historyArchive = {};
-  ['finansial','momentum','goal','sedekah','jurnal','refleksi','timeline'].forEach(k=>{
+  ['finansial','momentum','goal','sedekah','jurnal','refleksi','timeline','vitalitas'].forEach(k=>{
     if(!Array.isArray(s.historyArchive[k])) s.historyArchive[k] = [];
   });
   return s.historyArchive;
@@ -3532,6 +3569,11 @@ function sweepHistoryArchive(s){
 
   // Timeline Kehidupan (push = terlama duluan)
   if(Array.isArray(s.lifeTimeline)) s.lifeTimeline = trimOldestFirst(s.lifeTimeline, 'timeline');
+
+  // Vitalitas (HP/Mana log, push = terlama duluan) — jaring pengaman tambahan, normalnya sudah
+  // langsung diarsipkan realtime tiap kali logHpChange/logManaChange dipanggil (lihat _trimVitalitasLog).
+  if(Array.isArray(s.hpEventLog)) s.hpEventLog = trimOldestFirst(s.hpEventLog, 'vitalitas');
+  if(Array.isArray(s.manaEventLog)) s.manaEventLog = trimOldestFirst(s.manaEventLog, 'vitalitas');
 }
 // Salin entri baru ke Sejarah Riwayat SAAT DIBUAT (realtime). Dipanggil dari titik-titik
 // pembuatan entri (transaksi, sedekah, goal selesai, timeline, jurnal, refleksi, momentum).
@@ -4038,7 +4080,7 @@ function rewardFor(q){
   }
   const comboBonus = cfg.comboBonus ? 1 + Math.min(state.meta.completedTodayCount || 0, cfg.comboBonusCap) * cfg.comboBonusStep : 1;
   const streakBonus = cfg.streakBonus ? 1 + Math.min(state.character.streak, cfg.streakBonusCap) * cfg.streakBonusStep : 1;
-  const realmBonus = cfg.realmBonus ? 1 + state.character.realmIndex * cfg.realmBonusStep : 1;
+  const realmBonus = cfg.realmBonus ? 1 + Math.min(state.character.realmIndex, cfg.realmBonusCap ?? 16) * cfg.realmBonusStep : 1;
   return Math.max(1, Math.round(base * comboBonus * streakBonus * realmBonus));
 }
 
@@ -4052,12 +4094,12 @@ function completeQuest(id){
     if(!canCompleteQuestToday(q)) { showToast('Batas harian quest ini habis.', 'bad'); SFX.error(); return; }
     const exp = rewardFor(q); q.status='done'; q.lastCompletedAt = Date.now();
     state.meta.completedTodayCount = (state.meta.completedTodayCount||0)+1; state.character.totalQuests = (state.character.totalQuests||0)+1;
+    if(q.difficulty==='hard'||q.difficulty==='epic'){ state.meta.hardQuestsToday=(state.meta.hardQuestsToday||0)+1; state.meta.totalHardQuestsCompleted=(state.meta.totalHardQuestsCompleted||0)+1; }
     afterQuestComplete(q); addActivityLog(`Quest Selesai: ${q.title}`); state.questSuccessLog = state.questSuccessLog || {}; state.questSuccessLog[todayStr()] = (state.questSuccessLog[todayStr()]||0)+1; gainExp(exp); addRealmEnergy(Math.round(exp*0.5));
     const _prevHp631 = state.character.hp;
     state.character.hp = Math.min(state.character.maxHp, state.character.hp + hpGainForQuest(q)); // Restore HP (skala kesulitan)
     logHpChange(state.character.hp - _prevHp631, `Selesai Quest: ${q.title}`);
     gainMana(manaGainForQuest(q), `Selesai Quest: ${q.title}`);
-    { ensureCharHistory(state); const _hpD=todayStr(); if(!state.charHistory.hp.length||state.charHistory.hp[state.charHistory.hp.length-1].ts!==_hpD) state.charHistory.hp.push({ts:_hpD, val:state.character.hp}); }
     if(state.settings.showFloatingExp) showFloatingExp(exp); SFX.success(); showToast(`Selamat, kamu menyelesaikan quest: ${q.title}`, 'ach'); checkAchievements(); render(); save();
     gainBondExp(2);
     const _pendingCore = state.quests.filter(x=>x.isCore && x.status==='pending').length;
@@ -4295,8 +4337,8 @@ function rollover(){
   }
   if(gap >= 1) {
       // Normal penalties if less than 3 days
-      let missedCount = 0; let missedHpLoss = 0;
-      dailyQuests.forEach(q => { if(q.status !== 'done' && q.status !== 'postponed') { missedCount++; missedHpLoss += hpLossForQuest(q); } });
+      let missedCount = 0;
+      dailyQuests.forEach(q => { if(q.status !== 'done' && q.status !== 'postponed') missedCount++; });
       if(missedCount > 0 && gap >= 1) {
           // ══ HEAVEN TRAMPLING specific daily penalties (lebih berat) ══
           if(isHeavenTrampling()){
@@ -4321,15 +4363,41 @@ function rollover(){
                   applyHtQiDeviation();
               }
           } else {
-              state.character.hp = Math.max(0, state.character.hp - missedHpLoss);
-              logHpChange(-missedHpLoss, `Quest terlewat saat reset harian (${missedCount} quest)`);
+              // BUGFIX: quest yang terlewat (gagal karena reset harian) sekarang lewat tameng Mana
+              // dulu juga, persis seperti gagal quest manual (failQuest). Sebelumnya di sini HP
+              // langsung dipotong penuh tanpa cek Mana sama sekali — jadi walau Mana masih penuh,
+              // HP tetap kena penuh saat quest terlewat gara-gara refresh/reset harian.
+              let totalHpLoss = 0, totalManaDrained = 0, manaWasUsedAny = false;
+              dailyQuests.forEach(q => {
+                  if(q.status === 'done' || q.status === 'postponed') return;
+                  if(typeof state.character.mana !== 'number') state.character.mana = 200;
+                  let hpLoss;
+                  if(state.character.mana > 0){
+                      const manaDrain = manaDrainForQuest(q);
+                      const manaBeforeDrain = state.character.mana;
+                      state.character.mana = Math.max(0, state.character.mana - manaDrain);
+                      totalManaDrained += (manaBeforeDrain - state.character.mana);
+                      hpLoss = hpLossWithManaForQuest(q);
+                      manaWasUsedAny = true;
+                  } else {
+                      hpLoss = hpLossNoManaForQuest(q);
+                  }
+                  totalHpLoss += hpLoss;
+              });
+              if(totalManaDrained > 0) logManaChange(-totalManaDrained, `Quest terlewat saat reset harian (${missedCount} quest)`);
+              state.character.hp = Math.max(0, state.character.hp - totalHpLoss);
+              if(totalHpLoss > 0) logHpChange(-totalHpLoss, `Quest terlewat saat reset harian (${missedCount} quest)`);
               checkConsequenceTrigger();
               if (state.character.level > 20) {
                   const penalty = missedCount * 50 * Math.max(1, state.character.level / 10);
                   gainExp(-penalty);
-                  showToast(`Disiplin Mengendur: HP Turun & -${penalty} EXP (${missedCount} Quest terlewat)`, 'bad');
+                  showToast(manaWasUsedAny
+                      ? `🛡️ Tameng Mana menyerap! Mana -${totalManaDrained}, HP -${totalHpLoss} & EXP -${penalty} (${missedCount} Quest terlewat)`
+                      : `Disiplin Mengendur: HP -${totalHpLoss} & EXP -${penalty} (${missedCount} Quest terlewat)`, 'bad');
               } else {
-                  showToast(`Disiplin Mengendur: HP Turun (${missedCount} Quest terlewat)`, 'bad');
+                  showToast(manaWasUsedAny
+                      ? `🛡️ Tameng Mana menyerap! Mana -${totalManaDrained}, HP -${totalHpLoss} (${missedCount} Quest terlewat)`
+                      : `Disiplin Mengendur: HP -${totalHpLoss} (${missedCount} Quest terlewat)`, 'bad');
               }
               if (state.character.hp <= 0) {
                   state.character.hp = 0;
@@ -4347,6 +4415,28 @@ function rollover(){
           g.status = 'failed'; state.character.failedGoals = (state.character.failedGoals||0)+1;
           gainExp(-1000 * Math.max(1, state.character.level));
           showToast(`Goal Gagal (Deadline): ${g.title} - EXP Terkuras!`, 'bad');
+          // BUGFIX: dulu goal yang gagal (lewat deadline) cuma ditandai status='failed' lalu
+          // "hilang" dari daftar aktif tanpa jejak — cuma goal yang SUKSES yang tercatat permanen
+          // di goalHistory/Riwayat. Sekarang goal gagal juga dicatat permanen, sama seperti sukses,
+          // supaya riwayat Goal tidak cuma menampilkan cerita sukses.
+          if(!Array.isArray(state.goalHistory)) state.goalHistory = [];
+          const _goalFailed = {
+              id: g.id,
+              title: g.title,
+              notes: g.notes || '',
+              createdAt: g.createdAt,
+              deadline: g.deadline || '',
+              completedAt: today,
+              rewardExp: 0,
+              rewardMoney: 0,
+              status: 'failed',
+              target: g.target,
+              current: g.current,
+              unit: g.unit
+          };
+          state.goalHistory.unshift(_goalFailed);
+          _riwayatArchivePush('goal', _goalFailed);
+          addTimelineEvent('goal', 'Goal "' + g.title + '" gagal (lewat deadline)', '💀');
       }
   });
 
@@ -4366,7 +4456,7 @@ function rollover(){
   if(state.character.streak > 0){ ensureCharHistory(state); const _stD=todayStr(); if(!state.charHistory.streak.length||state.charHistory.streak[state.charHistory.streak.length-1].ts!==_stD) state.charHistory.streak.push({ts:_stD, val:state.character.streak}); }
 
   (state.quests || []).forEach(q => { if(q.type==='daily'){ q.status='pending'; q.completionsToday = 0; } });
-  state.meta.completedTodayCount = 0; state.meta.dailyExpEarned = 0;
+  state.meta.completedTodayCount = 0; state.meta.dailyExpEarned = 0; state.meta.hardQuestsToday = 0;
   // Reset HT quest completion tracking setiap hari
   state.character.htQuestCompletedToday = {};
   if(state.sip) { state.sip.pagi.status = 'pending'; state.sip.siang.status = 'pending'; }
@@ -4474,16 +4564,30 @@ function logSpiritual(key, isSuccess, isCustom = false){
       if(item.wajib){
         state.spiritual.exp = Math.max(0, state.spiritual.exp - 10);
         gainExp(-50);
+        // BUGFIX: dulu Mana & HP selalu dipotong BERSAMAAN (-40 Mana DAN -3 HP tanpa syarat),
+        // jadi Mana tidak benar-benar berfungsi sebagai tameng — HP tetap kena walau Mana penuh.
+        // Sekarang disamakan dengan quest biasa: kalau masih ada Mana, Mana diserap dulu dan HP
+        // cuma kena penalti kecil (-3, sama seperti sebelumnya). Kalau Mana sudah habis, HP kena
+        // penalti penuh (-24) karena tidak ada lagi yang melindungi.
         if(typeof state.character.mana !== 'number') state.character.mana = 200;
         const _prevMana = state.character.mana;
-        state.character.mana = Math.max(0, state.character.mana - 40);
-        logManaChange(state.character.mana - _prevMana, `Gagal Ritual Wajib: ${item.label}`);
         const _prevHpW = state.character.hp;
-        state.character.hp = Math.max(0, (typeof state.character.hp === 'number' ? state.character.hp : 100) - 3);
+        let _ritualHpLoss; let _manaDrained = 0;
+        if(state.character.mana > 0){
+          state.character.mana = Math.max(0, state.character.mana - 40);
+          _manaDrained = _prevMana - state.character.mana;
+          logManaChange(-_manaDrained, `Gagal Ritual Wajib: ${item.label}`);
+          _ritualHpLoss = 3;
+        } else {
+          _ritualHpLoss = 24;
+        }
+        state.character.hp = Math.max(0, (typeof state.character.hp === 'number' ? state.character.hp : 100) - _ritualHpLoss);
         logHpChange(state.character.hp - _prevHpW, `Gagal Ritual Wajib: ${item.label}`);
         checkConsequenceTrigger();
         bumpStat('discipline', -1);
-        showToast(`Gagal ${item.label}: -50 EXP, -3 HP, -40 Mana, -10 Spiritual EXP`, 'bad');
+        showToast(_manaDrained > 0
+          ? `Gagal ${item.label}: -50 EXP, -${_ritualHpLoss} HP, -${_manaDrained} Mana, -10 Spiritual EXP`
+          : `Gagal ${item.label}: -50 EXP, -${_ritualHpLoss} HP (Mana habis!), -10 Spiritual EXP`, 'bad');
       } else {
         const penalty = Math.round(item.exp * 0.5);
         state.spiritual.exp = Math.max(0, state.spiritual.exp - penalty);
@@ -4546,7 +4650,7 @@ function checkAllHabitsDoneToday(dateStr){
   }
 }
 function addHabit(){ const titleEl = document.getElementById('ah-title'); const title = titleEl.value.trim(); if(!title){ titleEl.focus(); return; } state.habits.push({ id:uid('h'), title, log:{}, createdAt:Date.now() }); titleEl.value=''; closeModal('modal-add-habit'); render(); save(); }
-function deleteHabit(id){ const h = state.habits.find(x=>x.id===id); if(!h) return; openConfirm('Hapus habit "'+escapeHtml(h.title)+'" beserta seluruh riwayatnya?', ()=>{ state.habits = state.habits.filter(x=>x.id!==id); render(); save(); }); }
+function deleteHabit(id){ const h = state.habits.find(x=>x.id===id); if(!h) return; openConfirm('Hapus habit "'+escapeHtml(h.title)+'" beserta seluruh riwayatnya?', ()=>{ state.habits = state.habits.filter(x=>x.id!==id); state.meta.habitsDeleted = (state.meta.habitsDeleted||0) + 1; render(); save(); }); }
 function getLast7Days(){ const days = []; const dayNames = ['Min','Sen','Sel','Rab','Kam','Jum','Sab']; for(let i=6; i>=0; i--){ const d = new Date(); d.setDate(d.getDate() - i); days.push({ dateStr: d.toLocaleDateString('en-CA'), label: dayNames[d.getDay()], isToday: i===0 }); } return days; }
 
 function addFinanceTransaction(){
@@ -5093,10 +5197,15 @@ function _renderDailyHistoryModal() {
         sections += `<div class="dhist-section"><div class="dhist-label">🆙 Level Up</div><div style="display:flex;flex-direction:column;gap:5px;">${_levelChanges.map(e=>`<span style="font-size:14px;font-weight:800;color:var(--arise-bright);">⭐ Naik ke Level ${e.val}</span>`).join('')}</div></div>`;
     }
 
-    // Goal selesai hari itu
-    const _goalsDoneDay = (state.goalHistory||[]).filter(g => g.completedAt === d);
+    // Goal selesai/gagal hari itu (goalHistory sekarang menyimpan dua-duanya, lihat bug 4 fix)
+    const _goalsAllDay = (state.goalHistory||[]).filter(g => g.completedAt === d);
+    const _goalsDoneDay = _goalsAllDay.filter(g => g.status !== 'failed');
+    const _goalsFailedDay = _goalsAllDay.filter(g => g.status === 'failed');
     if(_goalsDoneDay.length) {
         sections += `<div class="dhist-section"><div class="dhist-label">🎯 Goal Selesai (${_goalsDoneDay.length})</div><div style="display:flex;flex-direction:column;gap:4px;">${_goalsDoneDay.map(g=>`<span style="font-size:12px;color:var(--cyan);">🏆 ${escapeHtml(g.title||'Goal')}</span>`).join('')}</div></div>`;
+    }
+    if(_goalsFailedDay.length) {
+        sections += `<div class="dhist-section"><div class="dhist-label">💀 Goal Gagal (${_goalsFailedDay.length})</div><div style="display:flex;flex-direction:column;gap:4px;">${_goalsFailedDay.map(g=>`<span style="font-size:12px;color:var(--crimson);">💀 ${escapeHtml(g.title||'Goal')}</span>`).join('')}</div></div>`;
     }
 
     // Streak hari itu
@@ -6093,15 +6202,25 @@ function renderGoals(){
 
 function renderGoalHistory(){
   const history = state.goalHistory || [];
+  // BUGFIX: dulu setiap entri riwayat dianggap pasti sukses (badge/label "Selesai" dihardcode).
+  // Sekarang goal gagal (status:'failed') juga ada di riwayat, jadi tampilannya dibedakan.
   const items = history.map(h => {
+    const isFailed = h.status === 'failed';
     const createdDate = h.createdAt ? new Date(h.createdAt).toLocaleDateString('id-ID', {day:'2-digit', month:'short', year:'numeric'}) : '-';
+    const badge = isFailed ? '💀' : '🏆';
+    const statusChip = isFailed
+      ? `<span class="goal-history-chip gh-date" style="background:rgba(255,71,104,0.1);color:var(--crimson);border-color:rgba(255,71,104,0.25);">💀 Gagal ${h.completedAt||'-'}</span>`
+      : `<span class="goal-history-chip gh-date">✅ ${h.completedAt||'-'}</span>`;
+    const rewardChip = isFailed
+      ? `<span class="goal-history-chip gh-date" style="background:rgba(255,71,104,0.1);color:var(--crimson);border-color:rgba(255,71,104,0.25);">-EXP</span>`
+      : `<span class="goal-history-chip gh-exp">+${(h.rewardExp||0).toLocaleString()} EXP</span>`;
     return `<div class="goal-history-item">
-      <div class="goal-history-badge">},��</div>
+      <div class="goal-history-badge">${badge}</div>
       <div class="goal-history-body">
         <div class="goal-history-title">${escapeHtml(h.title)}</div>
         <div class="goal-history-meta">
-          <span class="goal-history-chip gh-exp">+${(h.rewardExp||0).toLocaleString()} EXP</span>
-          <span class="goal-history-chip gh-date">✅ ${h.completedAt||'-'}</span>
+          ${rewardChip}
+          ${statusChip}
           <span class="goal-history-chip gh-date" style="background:rgba(52,211,153,0.1);color:var(--jade);border-color:rgba(52,211,153,0.25);">📅 ${createdDate}</span>
         </div>
         <button class="btn btn-ghost btn-sm" style="margin-top:8px; font-size:11px; padding:4px 10px;" onclick="openGoalDetail('${h.id}')">🔍 Lihat Detail</button>
@@ -6109,7 +6228,9 @@ function renderGoalHistory(){
     </div>`;
   }).join('');
   const emptyHtml = `<div class="goal-history-empty"><span class="big">🏅</span>Belum ada goal yang diselesaikan.<br><span style="font-size:11px;opacity:0.6;">Selesaikan goal aktif untuk merekam riwayatmu.</span></div>`;
-  return `<div class="section-title row-between" style="margin-top:10px;"><span>🏆 Riwayat Goal</span><span class="small muted" style="font-weight:600;">${history.length} Selesai</span></div>
+  const doneCount = history.filter(h=>h.status!=='failed').length;
+  const failedCount = history.filter(h=>h.status==='failed').length;
+  return `<div class="section-title row-between" style="margin-top:10px;"><span>🏆 Riwayat Goal</span><span class="small muted" style="font-weight:600;">${doneCount} Selesai${failedCount ? ' · ' + failedCount + ' Gagal' : ''}</span></div>
 <div class="card">${history.length === 0 ? emptyHtml : items}</div>`;
 }
 
@@ -6133,9 +6254,10 @@ function openGoalDetail(id) {
   const el4 = document.getElementById('gd-deadline'); if(el4) el4.textContent = deadlineDisplay;
   const el5 = document.getElementById('gd-selesai'); if(el5) el5.textContent = completedDate;
   const el6 = document.getElementById('gd-durasi'); if(el6) el6.textContent = durasi;
-  const el7 = document.getElementById('gd-exp'); if(el7) el7.textContent = '+' + (h.rewardExp||0).toLocaleString() + ' EXP';
+  const isFailed = h.status === 'failed';
+  const el7 = document.getElementById('gd-exp'); if(el7) el7.textContent = isFailed ? '-EXP (Terkuras)' : ('+' + (h.rewardExp||0).toLocaleString() + ' EXP');
   const el8 = document.getElementById('gd-money'); if(el8) el8.textContent = (h.rewardMoney && h.rewardMoney > 0) ? 'Rp ' + h.rewardMoney.toLocaleString() : '-';
-  const el9 = document.getElementById('gd-status'); if(el9) el9.textContent = '✅ Selesai';
+  const el9 = document.getElementById('gd-status'); if(el9) el9.textContent = isFailed ? '💀 Gagal (Lewat Deadline)' : '✅ Selesai';
   openModal('modal-goal-detail');
 }
 
@@ -6363,7 +6485,7 @@ function initGoalCharts(){
         const d=new Date(); d.setDate(d.getDate()-i);
         const ds=d.toLocaleDateString('en-CA');
         lineLabels.push(i%6===0?d.toLocaleDateString('id-ID',{day:'2-digit',month:'short'}):'');
-        lineData.push((state.goalHistory||[]).filter(h=>h.completedAt===ds).length);
+        lineData.push((state.goalHistory||[]).filter(h=>h.completedAt===ds && h.status!=='failed').length);
     }
     const yMax=Math.max(3,...lineData)+1;
     _goalLineChart = new Chart(lineCtx,{type:'line',data:{labels:lineLabels,datasets:[{label:'Goal Selesai',data:lineData,borderColor:'#2DD4F4',backgroundColor:'rgba(45,212,244,0.10)',borderWidth:2,tension:0.35,fill:true,pointBackgroundColor:_mkPtColors(lineData),pointBorderColor:'rgba(255,255,255,0.5)',pointRadius:lineData.map(v=>v>0?4:2),segment:{borderColor:_mkSegColor(lineData)}}]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{grid:{color:'rgba(255,255,255,0.07)'},ticks:{stepSize:1,font:{size:9}},min:0,max:yMax},x:{grid:{color:'rgba(255,255,255,0.03)'},ticks:{maxTicksLimit:6,font:{size:9}}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.raw} goal selesai`}}}}});
@@ -6372,7 +6494,7 @@ function initGoalCharts(){
     if(_goalBarChart){ _goalBarChart.destroy(); _goalBarChart=null; }
     const aktif=(state.goals||[]).filter(g=>g.status==='active').length;
     const gagal=(state.goals||[]).filter(g=>g.status==='failed').length;
-    const selesai=(state.goalHistory||[]).length;
+    const selesai=(state.goalHistory||[]).filter(h=>h.status!=='failed').length;
     const gBarMax=Math.max(3,aktif,gagal,selesai)+1;
     _goalBarChart = new Chart(barCtx,{type:'bar',data:{labels:['Aktif','Gagal','✅'],datasets:[{data:[aktif,gagal,selesai],backgroundColor:['rgba(124,92,255,0.65)','rgba(255,71,104,0.65)','rgba(52,211,153,0.65)'],borderColor:['#7C5CFF','#FF4768','#34D399'],borderWidth:1.5,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{grid:{color:'rgba(255,255,255,0.07)'},ticks:{stepSize:1,font:{size:9}},min:0,max:gBarMax},x:{grid:{display:false},ticks:{font:{size:9}}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.raw} goal`}}}}});
     // ── Doughnut chart: proporsi goal
@@ -6933,12 +7055,18 @@ const RIWAYAT_CATS = [
   {key:'vitalitas', icon:'❤️', label:'Vitalitas'},
   {key:'karakter',  icon:'📊', label:'Karakter'},
 ];
-// Vitalitas beda sumber data: bukan dari state.historyArchive (arsip 30 hari),
-// tapi gabungan langsung dari state.hpEventLog + state.manaEventLog (log permanen, maks 100 entri masing-masing).
+// BUGFIX: Vitalitas dulu HANYA mengambil dari state.hpEventLog + state.manaEventLog, yang
+// dibatasi 100 entri masing-masing dan entri lebih lama DIBUANG PERMANEN — beda dari semua
+// kategori riwayat lain yang diarsipkan selamanya ke state.historyArchive. Sekarang entri baru
+// diarsipkan realtime saat dibuat (lihat logHpChange/logManaChange + _trimVitalitasLog), jadi
+// daftar di sini menggabungkan arsip permanen (state.historyArchive.vitalitas) dengan entri aktif
+// yang belum sempat diarsipkan (data lama sebelum bugfix ini, sebelum sempat ke-trim).
 function _riwayatVitalitasList(){
-  const hp = (state.hpEventLog || []).map(e => ({...e, _vType:'hp'}));
-  const mana = (state.manaEventLog || []).map(e => ({...e, _vType:'mana'}));
-  return hp.concat(mana);
+  ensureHistoryArchive(state);
+  const archived = state.historyArchive.vitalitas || [];
+  const activeHp = (state.hpEventLog || []).filter(e => !e._archived).map(e => ({...e, _vType:'hp'}));
+  const activeMana = (state.manaEventLog || []).filter(e => !e._archived).map(e => ({...e, _vType:'mana'}));
+  return archived.concat(activeHp, activeMana);
 }
 // Karakter juga beda sumber data: gabungan langsung dari state.charHistory (level/hp/realm/streak),
 // yang tersimpan PERMANEN tanpa batas jumlah (beda dengan hpEventLog/manaEventLog yang dibatasi 100).
@@ -7060,15 +7188,14 @@ function editRefleksiAnswerBtn(qId, answerId){
 function pakaiLifePrincipleHistory(lpId){
   if(!state.character || !Array.isArray(state.character.lifePrincipleHistory)) return;
   const entry = state.character.lifePrincipleHistory.find(h=>h.id===lpId); if(!entry) return;
-  // Toggle: klik lagi saat sudah aktif → lepas (seperti pinJournalHome & pinRefleksiAnswer)
-  const willPin = !entry.pinnedHome;
-  state.character.lifePrincipleHistory.forEach(h => { h.pinnedHome = willPin && h.id === lpId; });
+  // Set pinnedHome: hanya satu yang aktif, sisanya false — konsisten seperti Jurnaling & Pertanyaan
+  state.character.lifePrincipleHistory.forEach(h => { h.pinnedHome = h.id === lpId; });
   // Sinkron ke historyArchive.refleksi
   (state.historyArchive?.refleksi||[]).forEach(e => {
-    if(e._sourceType==='principle') e.pinnedHome = willPin && e.id === lpId;
+    if(e._sourceType==='principle') e.pinnedHome = e.id === lpId;
   });
-  if(willPin) state.character.lifePrinciple = entry.text;
-  save(); render(); showToast(willPin ? '✅ Prinsip dipakai!' : '↩️ Prinsip dilepas','ach');
+  state.character.lifePrinciple = entry.text;
+  save(); render(); showToast('✅ Prinsip dipakai!','ach');
 }
 // Toggle "Baca Selengkapnya" per-entri (khusus Jurnal & Refleksi, teksnya bisa panjang).
 // Independen per entri — buka satu entri tidak menutup/mengubah entri lain.
@@ -7473,7 +7600,7 @@ function renderLifeEncyclopedia(){
   const biggestIn  = allIn.length  ? allIn.reduce((a,b)=>b.amount>a.amount?b:a, allIn[0])  : null;
   const biggestOut = allOut.length ? allOut.reduce((a,b)=>b.amount>a.amount?b:a, allOut[0]) : null;
 
-  const goals = state.goalHistory || [];
+  const goals = (state.goalHistory || []).filter(g=>g.status!=='failed');
   const biggestGoal = goals.length ? goals.reduce((a,b)=>((b.rewardMoney||0)+(b.rewardExp||0))>((a.rewardMoney||0)+(a.rewardExp||0))?b:a, goals[0]) : null;
 
   const momentum = state.lifeMomentum || [];
@@ -8317,10 +8444,25 @@ function failDayTask(dayName, taskId){
   const wasFailed = t.failed;
   t.failed = !t.failed; if(t.failed) t.done = false;
   if(!wasFailed && t.failed){
+    // BUGFIX: dulu HP langsung -15 tanpa cek Mana sama sekali. Sekarang disamakan dengan
+    // quest biasa: Mana diserap dulu (kalau masih ada), HP cuma kena -3. Kalau Mana sudah
+    // habis, HP kena penalti penuh -15 (sama seperti perilaku lama, dipertahankan sebagai fallback).
+    if(typeof state.character.mana !== 'number') state.character.mana = 200;
+    const prevMana = state.character.mana;
     const prev = state.character.hp;
-    state.character.hp = Math.max(0, state.character.hp - 15);
+    let hpLoss;
+    if(state.character.mana > 0){
+      state.character.mana = Math.max(0, state.character.mana - 25);
+      logManaChange(state.character.mana - prevMana, 'Gagal jadwal: ' + t.label);
+      hpLoss = 3;
+    } else {
+      hpLoss = 15;
+    }
+    state.character.hp = Math.max(0, state.character.hp - hpLoss);
     logHpChange(state.character.hp - prev, 'Gagal jadwal: ' + t.label);
-    showToast('❤️ HP −15 karena gagal!', 'bad');
+    showToast(prevMana > 0
+      ? `🛡️ Tameng Mana menyerap! Mana −25, HP −${hpLoss} karena gagal!`
+      : `❤️ HP −${hpLoss} karena gagal (Mana habis)!`, 'bad');
   }
   save(); render();
 }
@@ -9263,7 +9405,7 @@ function getHeatmapDayScore(dateStr) {
   let score = 0;
   score += (state.meta.activityLog || {})[dateStr] || 0;
   (state.habits || []).forEach(h => { if (h.log && h.log[dateStr]) score += 1; });
-  (state.goalHistory || []).forEach(g => { if (g.completedAt === dateStr) score += 3; });
+  (state.goalHistory || []).forEach(g => { if (g.completedAt === dateStr && g.status !== 'failed') score += 3; });
   (state.financeLog || []).forEach(e => { if (e.date === dateStr && e.type === 'in') score += 2; });
   // Hitung hari login: lastActiveDate (hari ini) atau ada entri streak di charHistory
   if (state.meta.lastActiveDate === dateStr) score = Math.max(score, 2);
