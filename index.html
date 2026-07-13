@@ -2333,8 +2333,9 @@ const FIREBASE_DATA_PATH = 'mysistem-jian-ascension';
 let _fbSyncTimer   = null;
 let _fbSyncing     = false;
 let _fbErrNotified = false;
-let _fbLastPushedTs = 0;   // cap timestamp terakhir yang kita push, biar tidak echo
-let _fbEventSource  = null; // referensi SSE connection
+let _fbLastPushedTs    = 0;    // timestamp terakhir yang kita push, agar tidak echo sendiri
+let _fbEventSource     = null; // referensi SSE connection
+let _pendingRemoteState = null; // state dari device lain yang ditunda karena user sedang mengetik
 
 function _fbUrl(){ return `${FIREBASE_DB_URL}/${FIREBASE_DATA_PATH}.json`; }
 
@@ -2383,6 +2384,34 @@ async function firebaseResolveOnLoad(localState){
 }
 
 // ── REAL-TIME LISTENER: SSE Firebase → update UI otomatis dari device lain ──
+// Terapkan state dari device lain: replace state, simpan lokal, re-render.
+function _applyRemoteState(incoming){
+  state = migrateState(deepMerge(DEFAULT_STATE(), incoming));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  rollover(); recomputeLifeScore(); render();
+  showToast('🔄 Disinkron dari perangkat lain', 'good');
+}
+
+// Cek apakah user sedang aktif mengetik di input / textarea / contenteditable.
+function _isUserEditing(){
+  const el = document.activeElement;
+  if(!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable;
+}
+
+// Terapkan segera jika user tidak sedang mengetik; tunda jika sedang aktif di form.
+// State yang ditunda disimpan di _pendingRemoteState dan diterapkan saat focusout.
+function _scheduleRemoteApply(incoming){
+  if(_isUserEditing()){
+    // Simpan selalu yang paling baru — kalau ada dua update berturut-turut saat mengetik,
+    // yang berlaku adalah update terakhir.
+    _pendingRemoteState = incoming;
+  } else {
+    _applyRemoteState(incoming);
+  }
+}
+
 function firebaseStartRealTimeSync(){
   if(_fbEventSource) _fbEventSource.close();
 
@@ -2403,11 +2432,8 @@ function firebaseStartRealTimeSync(){
       // Abaikan kalau data yang masuk lebih lama dari state sekarang
       if(incomingTs <= currentTs) return;
 
-      // Data dari device lain lebih baru → terapkan & render ulang
-      state = migrateState(deepMerge(DEFAULT_STATE(), incoming));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      rollover(); recomputeLifeScore(); render();
-      showToast('🔄 Disinkron dari perangkat lain', 'good');
+      // Data dari device lain lebih baru → terapkan (atau tunda jika user sedang mengetik)
+      _scheduleRemoteApply(incoming);
     } catch(err){ console.error('[FIREBASE SSE] Error parse event:', err); }
   });
 
@@ -2419,10 +2445,7 @@ function firebaseStartRealTimeSync(){
       const currentTs  = (state && state.meta && state.meta.updatedAt) || 0;
       if(incomingTs === _fbLastPushedTs) return;
       if(incomingTs <= currentTs) return;
-      state = migrateState(deepMerge(DEFAULT_STATE(), cloud));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      rollover(); recomputeLifeScore(); render();
-      showToast('🔄 Disinkron dari perangkat lain', 'good');
+      _scheduleRemoteApply(cloud);
     }).catch(()=>{});
   });
 
@@ -2431,6 +2454,19 @@ function firebaseStartRealTimeSync(){
     // EventSource otomatis reconnect — tidak perlu tindakan manual
   };
 }
+
+// Listener global: saat user meninggalkan input/textarea, terapkan remote state yang tertunda.
+// Pakai setTimeout agar focusout yang terjadi karena pindah antar input (bukan keluar form)
+// tidak memicu sync prematur — jika activeElement berikutnya masih input, batalkan.
+document.addEventListener('focusout', function(){
+  if(!_pendingRemoteState) return;
+  setTimeout(function(){
+    if(_isUserEditing()) return; // pindah ke input lain, tunda lagi
+    const toApply = _pendingRemoteState;
+    _pendingRemoteState = null;
+    _applyRemoteState(toApply);
+  }, 150);
+});
 
 const STAT_META = {
   strength:{label:'Strength',group:'Body',color:'var(--jade)'}, health:{label:'Health',group:'Body',color:'var(--jade)'},
@@ -4766,7 +4802,9 @@ function getTotalUang(){ return getCashBalance() + getSaldoAccountBalance(); }
 const DEFAULT_FIN_CATEGORIES = ['Gaji/Upah','Freelance','Bisnis','Investasi','Makan','Transport','Tagihan','Belanja','Hiburan','Kesehatan','Pendidikan'];
 function getCategorySuggestions(){
   const used = [];
-  (state.financeLog||[]).forEach(l=>{
+  // Gunakan _getAllFinanceEntries() agar kategori custom dari transaksi lama (sudah di-archive)
+  // tetap muncul sebagai saran — bukan hanya dari financeLog aktif (maks 100 entri).
+  _getAllFinanceEntries().forEach(l=>{
     if(l.type!=='transfer' && l.cat && l.cat!=='Lainnya' && !used.includes(l.cat)) used.push(l.cat);
   });
   const merged = [...used];
@@ -6330,7 +6368,16 @@ function renderBoss(){
         const amtColor = isSedekah ? 'var(--gold)' : isOut ? 'var(--crimson)' : 'var(--jade)';
         return `<div class="log-item"><span class="muted" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">${catChip}${akunChip}${l.date}${l.note?' · '+escapeHtml(l.note):''}</span><span class="log-amount" style="color:${amtColor}">${isOut?'-':'+'}${formatRupiah(l.amount)}</span></div>`;
     }
-    const _allLog = state.financeLog||[];
+    // Gunakan _getAllFinanceEntries() agar riwayat transaksi mencakup semua entri (termasuk
+    // yang sudah diarchive), bukan hanya financeLog aktif (maks 100 entri terbaru).
+    // Di-sort descending per date supaya terbaru selalu paling atas.
+    const _allLog = _getAllFinanceEntries().slice().sort((a,b)=>{
+      const da = a.date||'', db = b.date||'';
+      if(db !== da) return db > da ? 1 : -1;
+      // Jika tanggal sama, pakai createdAt/id sebagai tiebreaker (terbaru duluan)
+      const ta = a.createdAt || a.id || '', tb = b.createdAt || b.id || '';
+      return tb > ta ? 1 : -1;
+    });
     const _logRecent = _allLog.slice(0,10);
     const _logRest = _allLog.slice(10);
     const logHtml = _allLog.length ? `<div>${_logRecent.map(_logItemHtml).join('')}</div>${_logRest.length?`<div id="fin-log-all" style="display:none;">${_logRest.map(_logItemHtml).join('')}</div><button class="btn btn-ghost btn-block" id="fin-log-more-btn" style="font-size:11px;margin-top:6px;" onclick="toggleMoreLess('fin-log-all', this, 'Lihat Semua ${_allLog.length} Riwayat Transaksi →', 'Sederhanakan ↑')">Lihat Semua ${_allLog.length} Riwayat Transaksi →</button>`:''}` : `<div class="small muted" style="text-align:center;padding:10px 0;">Belum ada catatan transaksi. Mulai mencatat!</div>`;
@@ -6759,12 +6806,31 @@ function saveJournal(){
 function deleteRefleksiJournal(jId){
   if(!state.refleksi) return;
   state.refleksi.journals = state.refleksi.journals.filter(j=>j.id!==jId);
+  // Sinkron hapus dari historyArchive.refleksi supaya tidak ada "data hantu" di Sejarah Riwayat
+  if(state.historyArchive && Array.isArray(state.historyArchive.refleksi))
+    state.historyArchive.refleksi = state.historyArchive.refleksi.filter(e=>!(e.id===jId && e._sourceType==='journal'));
   save(); render();
 }
 function pinJournalHome(jId){
   if(!state.refleksi) return;
-  state.refleksi.journals.forEach(j=>{ j.pinnedHome = j.id===jId ? !j.pinnedHome : false; });
-  save(); render(); showToast(state.refleksi.journals.find(j=>j.id===jId)?.pinnedHome ? '✅ Dipakai di Home!':'↩️ Dilepas dari Home','ach');
+  // Cek apakah jurnal masih ada di active array
+  const activeJournal = state.refleksi.journals.find(j=>j.id===jId);
+  let isPinned;
+  if(activeJournal){
+    // Jurnal aktif: toggle di active array, sisanya unpin
+    state.refleksi.journals.forEach(j=>{ j.pinnedHome = j.id===jId ? !j.pinnedHome : false; });
+    isPinned = !!state.refleksi.journals.find(j=>j.id===jId)?.pinnedHome;
+  } else {
+    // Jurnal archive-only: toggle langsung di historyArchive, tidak ada di active array
+    const archEntry = (state.historyArchive?.refleksi||[]).find(e=>e._sourceType==='journal' && e.id===jId);
+    if(!archEntry){ save(); render(); return; }
+    isPinned = !archEntry.pinnedHome;
+  }
+  // Sinkron flag pinnedHome ke historyArchive.refleksi (satu yang aktif, sisanya false)
+  (state.historyArchive?.refleksi||[]).forEach(e=>{
+    if(e._sourceType==='journal') e.pinnedHome = isPinned && e.id===jId;
+  });
+  save(); render(); showToast(isPinned ? '✅ Dipakai di Home!':'↩️ Dilepas dari Home','ach');
 }
 function addRefleksiQuestion(){
   const el = document.getElementById('rf-new-question'); if(!el) return;
@@ -6807,18 +6873,40 @@ function deleteRefleksiQuestion(qId){
 function pinRefleksiAnswer(qId, answerId){
   if(!state.refleksi) return;
   let currentlyPinned = false;
+  let foundInActive = false;
+  // Unpin semua jawaban aktif, toggle yang ditarget
   state.refleksi.questions.forEach(q => {
     (q.answers||[]).forEach(a => {
-      if(q.id===qId && a.id===answerId){ a.pinnedProfile = !a.pinnedProfile; currentlyPinned = a.pinnedProfile; }
-      else a.pinnedProfile = false;
+      if(q.id===qId && a.id===answerId){
+        a.pinnedProfile = !a.pinnedProfile;
+        currentlyPinned = a.pinnedProfile;
+        foundInActive = true;
+      } else {
+        a.pinnedProfile = false;
+      }
     });
+  });
+  // Jika jawaban archive-only, toggle langsung di archive
+  if(!foundInActive){
+    const archEntry = (state.historyArchive?.refleksi||[]).find(e=>e._sourceType==='answer' && e.id===answerId);
+    if(archEntry){
+      currentlyPinned = !archEntry.pinnedProfile;
+    }
+  }
+  // Sinkron pinnedProfile ke semua entri archive (satu aktif, sisanya false)
+  (state.historyArchive?.refleksi||[]).forEach(e=>{
+    if(e._sourceType==='answer') e.pinnedProfile = (e.id===answerId && currentlyPinned);
   });
   save(); render(); showToast(currentlyPinned ? '✅ Dipakai di Profil!':'↩️ Dilepas dari Profil','ach');
 }
 function deleteRefleksiAnswer(qId, answerId){
   if(!state.refleksi) return;
-  const q = state.refleksi.questions.find(x=>x.id===qId); if(!q||!Array.isArray(q.answers)) return;
-  q.answers = q.answers.filter(a=>a.id!==answerId);
+  // Hapus dari active array jika pertanyaan masih ada (tidak early-return agar archive tetap bersih)
+  const q = state.refleksi.questions.find(x=>x.id===qId);
+  if(q && Array.isArray(q.answers)) q.answers = q.answers.filter(a=>a.id!==answerId);
+  // Hapus dari historyArchive — termasuk jawaban archive-only yang pertanyaannya tidak ditemukan
+  if(state.historyArchive && Array.isArray(state.historyArchive.refleksi))
+    state.historyArchive.refleksi = state.historyArchive.refleksi.filter(e=>!(e.id===answerId && e._sourceType==='answer'));
   save(); render();
 }
 function renderRefleksiProfileChip(){
@@ -6876,12 +6964,40 @@ function renderRefleksi(){
   const c = state.character;
 
   // === Bangun riwayat gabungan dari semua sumber ===
+  // Prioritas: active array dulu (punya full action support), lalu archive-only
+  // (entri yang sudah disapu dari active array tapi harus tetap tampil di feed).
   const allHistory = [];
-  (rf.journals||[]).forEach(j => allHistory.push({...j, _type:'journal'}));
-  (c.lifePrincipleHistory||[]).forEach(h => allHistory.push({...h, _type:'principle'}));
-  questions.forEach(q => {
-    (q.answers||[]).forEach(a => allHistory.push({...a, _type:'answer', _qId:q.id, _qText:q.q}));
+  const _seenIds = new Set();
+
+  // — Active entries (edit/pin/delete semua tersedia) —
+  (rf.journals||[]).forEach(j => {
+    allHistory.push({...j, _type:'journal'});
+    _seenIds.add(j.id);
   });
+  (c.lifePrincipleHistory||[]).forEach(h => {
+    allHistory.push({...h, _type:'principle'});
+    _seenIds.add(h.id);
+  });
+  questions.forEach(q => {
+    (q.answers||[]).forEach(a => {
+      allHistory.push({...a, _type:'answer', _qId:q.id, _qText:q.q});
+      _seenIds.add(a.id);
+    });
+  });
+
+  // — Archive-only entries (sudah disapu dari active, tampil read-only) —
+  // Gunakan questionId/questionText dari arsip sebagai _qId/_qText untuk jawaban.
+  (state.historyArchive?.refleksi||[]).forEach(e => {
+    if(_seenIds.has(e.id)) return; // sudah ada di active, skip agar tidak dobel
+    if(e._sourceType === 'journal'){
+      allHistory.push({...e, _type:'journal', _archiveOnly:true});
+    } else if(e._sourceType === 'answer'){
+      allHistory.push({...e, _type:'answer', _qId:e.questionId, _qText:e.questionText, _archiveOnly:true});
+    } else if(e._sourceType === 'principle'){
+      allHistory.push({...e, _type:'principle', _archiveOnly:true});
+    }
+  });
+
   allHistory.sort((a,b) => (b._ts||0) - (a._ts||0));
 
   // === Render satu entri riwayat ===
@@ -6904,6 +7020,13 @@ function renderRefleksi(){
     const qLabel = entry._type==='answer'
       ? `<div style="font-size:10.5px;font-style:italic;color:rgba(200,168,75,0.75);line-height:1.4;margin-bottom:5px;font-family:var(--font-display);">"${escapeHtml((entry._qText||'').slice(0,80)+((entry._qText||'').length>80?'…':''))}"</div>`
       : '';
+    // Badge arsip — penanda visual saja, tidak membatasi aksi apapun
+    const archiveBadge = entry._archiveOnly
+      ? `<span style="font-size:8.5px;font-weight:700;padding:1px 6px;border-radius:5px;background:rgba(124,92,255,0.15);color:var(--arise-bright);margin-left:5px;letter-spacing:0.3px;">📦 Arsip</span>`
+      : '';
+
+    // Semua tombol tampil penuh untuk semua entri (active maupun archive-only).
+    // Fungsi-fungsi di balik tombol sudah di-extend untuk handle archive-only.
     let actions = '';
     if(entry._type==='journal'){
       const isEditing = _rfJournalEditId === entry.id;
@@ -6922,7 +7045,7 @@ function renderRefleksi(){
     }
     return `<div class="refleksi-history-item">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:5px;">
-        <div>${typeLabel}<div style="font-size:9.5px;color:rgba(200,168,75,0.55);font-weight:600;margin-top:2px;">📅 ${entry.date||''} · ${entry.ts||''}</div></div>
+        <div>${typeLabel}${archiveBadge}<div style="font-size:9.5px;color:rgba(200,168,75,0.55);font-weight:600;margin-top:2px;">📅 ${entry.date||''} · ${entry.ts||''}</div></div>
         <div style="display:flex;gap:5px;flex-shrink:0;">${actions}</div>
       </div>
       ${qLabel}
@@ -7168,7 +7291,10 @@ function confirmDeletePermanen(){
 // ── Edit Jurnal & Jawaban ─────────────────────────────────────────────────────
 function editRefleksiJournal(jId){
   if(!state.refleksi) return;
-  const j = state.refleksi.journals.find(x=>x.id===jId); if(!j) return;
+  // Cari di active array dulu; kalau tidak ada, cari di archive (jurnal archive-only)
+  let j = state.refleksi.journals.find(x=>x.id===jId);
+  if(!j) j = (state.historyArchive?.refleksi||[]).find(x=>x.id===jId && x._sourceType==='journal');
+  if(!j) return;
   const el = document.getElementById('rf-journal-input'); if(!el) return;
   el.value = j.content || '';
   _rfJournalEditId = jId;
@@ -7177,18 +7303,30 @@ function editRefleksiJournal(jId){
 }
 function editRefleksiAnswerBtn(qId, answerId){
   if(!state.refleksi) return;
-  const q = state.refleksi.questions.find(x=>x.id===qId); if(!q) return;
-  const a = (q.answers||[]).find(x=>x.id===answerId); if(!a) return;
-  const el = document.getElementById('rf-ans-'+qId); if(!el) return;
+  const q = state.refleksi.questions.find(x=>x.id===qId);
+  let a = q ? (q.answers||[]).find(x=>x.id===answerId) : null;
+  let resolvedQId = qId;
+  // Jika jawaban tidak ada di active array, cari di archive (jawaban archive-only)
+  if(!a){
+    const arc = (state.historyArchive?.refleksi||[]).find(x=>x.id===answerId && x._sourceType==='answer');
+    if(!arc){ showToast('Jawaban tidak ditemukan.','bad'); return; }
+    a = arc;
+    resolvedQId = arc.questionId || qId;
+  }
+  const el = document.getElementById('rf-ans-'+resolvedQId);
+  if(!el){ showToast('Pertanyaan untuk jawaban ini tidak ditemukan di halaman — tidak bisa diedit langsung.','bad'); return; }
   el.value = a.text || '';
-  _rfAnswerEditCtx = {qId, answerId};
+  _rfAnswerEditCtx = {qId: resolvedQId, answerId};
   el.scrollIntoView({behavior:'smooth', block:'center'}); el.focus();
   render(); showToast('Jawaban dimuat — ubah lalu simpan.','ach');
 }
 function pakaiLifePrincipleHistory(lpId){
   if(!state.character || !Array.isArray(state.character.lifePrincipleHistory)) return;
-  const entry = state.character.lifePrincipleHistory.find(h=>h.id===lpId); if(!entry) return;
-  // Set pinnedHome: hanya satu yang aktif, sisanya false — konsisten seperti Jurnaling & Pertanyaan
+  // Cari di active array dulu; kalau tidak ada, cari di archive (prinsip archive-only)
+  let entry = state.character.lifePrincipleHistory.find(h=>h.id===lpId);
+  if(!entry) entry = (state.historyArchive?.refleksi||[]).find(e=>e._sourceType==='principle' && e.id===lpId);
+  if(!entry) return;
+  // Set pinnedHome: hanya satu yang aktif, sisanya false
   state.character.lifePrincipleHistory.forEach(h => { h.pinnedHome = h.id === lpId; });
   // Sinkron ke historyArchive.refleksi
   (state.historyArchive?.refleksi||[]).forEach(e => {
@@ -7389,11 +7527,13 @@ function renderHistoryArchive(){
       groups[key].entries.push(e);
     });
     const monthKeys = Object.keys(groups).sort().reverse();
-    body = monthKeys.map(mk=>{
+    body = monthKeys.map((mk, mkIdx)=>{
       const g = groups[mk];
       const label = g.jsDate && !isNaN(g.jsDate) ? (_RIWAYAT_MONTH_NAMES[g.jsDate.getMonth()]+' '+g.jsDate.getFullYear()) : 'Tanggal tidak diketahui';
       const expandKey = _riwayatCat+'|'+mk;
-      const isOpen = !!_riwayatExpanded[expandKey];
+      // Bulan terbaru (mkIdx===0) terbuka secara default agar entri baru langsung terlihat.
+      // Kalau user sudah pernah toggle (key ada di _riwayatExpanded), ikuti pilihan mereka.
+      const isOpen = expandKey in _riwayatExpanded ? !!_riwayatExpanded[expandKey] : mkIdx === 0;
       const sorted = g.entries.slice().sort((a,b)=>{
         const da = _riwayatEntryJsDate(_riwayatCat,a), db = _riwayatEntryJsDate(_riwayatCat,b);
         return (db?db.getTime():0) - (da?da.getTime():0);
@@ -7595,8 +7735,11 @@ function renderLifeEncyclopedia(){
   const topRealm = state.realms[c.realmIndex] || state.realms[0];
   const topRealmName = topRealm.nameID || topRealm.name || '-';
 
-  const allIn  = (state.financeLog||[]).filter(l=>l.type==='in');
-  const allOut = (state.financeLog||[]).filter(l=>l.type==='out');
+  // Gunakan _getAllFinanceEntries() agar "terbesar seumur hidup" mencakup semua transaksi
+  // termasuk yang sudah diarchive — bukan hanya financeLog aktif (maks 100 entri).
+  const _allFinEntries = _getAllFinanceEntries();
+  const allIn  = _allFinEntries.filter(l=>l.type==='in');
+  const allOut = _allFinEntries.filter(l=>l.type==='out');
   const biggestIn  = allIn.length  ? allIn.reduce((a,b)=>b.amount>a.amount?b:a, allIn[0])  : null;
   const biggestOut = allOut.length ? allOut.reduce((a,b)=>b.amount>a.amount?b:a, allOut[0]) : null;
 
@@ -8096,7 +8239,10 @@ function saveLifePrinciple(){
 }
 function editLifePrinciple(lpId){
   const c = state.character; if(!Array.isArray(c.lifePrincipleHistory)) return;
-  const entry = c.lifePrincipleHistory.find(h=>h.id===lpId); if(!entry) return;
+  // Cari di active array dulu; kalau tidak ada, cari di archive (prinsip archive-only)
+  let entry = c.lifePrincipleHistory.find(h=>h.id===lpId);
+  if(!entry) entry = (state.historyArchive?.refleksi||[]).find(e=>e._sourceType==='principle' && e.id===lpId);
+  if(!entry) return;
   const el = document.getElementById('rf-life-principle'); if(!el) return;
   el.value = entry.text;
   el.scrollIntoView({behavior:'smooth', block:'center'});
@@ -8106,6 +8252,9 @@ function editLifePrinciple(lpId){
 function deleteLifePrincipleHistory(lpId){
   const c = state.character; if(!Array.isArray(c.lifePrincipleHistory)) return;
   c.lifePrincipleHistory = c.lifePrincipleHistory.filter(h=>h.id!==lpId);
+  // Sinkron hapus dari archive agar tidak ada ghost entry di Sejarah Riwayat
+  if(state.historyArchive && Array.isArray(state.historyArchive.refleksi))
+    state.historyArchive.refleksi = state.historyArchive.refleksi.filter(e=>!(e._sourceType==='principle' && e.id===lpId));
   save(); render();
 }
 function saveConsequenceText(){
@@ -8861,7 +9010,11 @@ function init(){
   // Load dari localStorage dulu — app langsung siap, tidak nunggu Firebase.
   let loaded = loadState();
   state = loaded ? migrateState(deepMerge(DEFAULT_STATE(), loaded)) : DEFAULT_STATE();
-  rollover(); recomputeLifeScore(); recordMomentumHistory(); buildModals(); spiritCompanionGreet(); render();
+  rollover();
+  // sweepHistoryArchive dipanggil terpisah dari rollover agar berjalan setiap kali app dibuka,
+  // bukan hanya saat pergantian hari — menangkap overflow aktif array dalam sesi yang sama.
+  sweepHistoryArchive(state);
+  recomputeLifeScore(); recordMomentumHistory(); buildModals(); spiritCompanionGreet(); render();
   showWelcomeToast();
 
   // Firebase sync di background — kalau cloud lebih baru, refresh UI otomatis.
@@ -8879,7 +9032,7 @@ function init(){
     firebaseStartRealTimeSync();
   }).catch(()=>{ firebaseStartRealTimeSync(); }); // tetap mulai listener meski pull gagal
 
-  // Auto-refresh interval (Midnight reset trigger)
+  // Auto-refresh interval (Midnight reset trigger + periodic sweep)
   setInterval(() => {
       updateTimeBlockUI();
       if(state.meta.lastActiveDate !== todayStr()) {
@@ -8887,6 +9040,10 @@ function init(){
           recordMomentumHistory();
           render();
           save();
+      } else {
+          // Jalankan sweep setiap interval meski bukan pergantian hari —
+          // menangkap overflow array aktif (>100 entri) yang terjadi dalam satu sesi panjang.
+          sweepHistoryArchive(state);
       }
   }, 30000);
 }
@@ -9200,9 +9357,21 @@ function recordMomentumHistory() {
   if(todayEntry && todayEntry.date === today) {
     // Perbarui catatan hari ini secara live, jangan biarkan beku di nilai lama
     todayEntry.pts = pts; todayEntry.level = tier.level; todayEntry.name = tier.name;
+    // Sinkron update ke archive — pakai pts/tierName (BUKAN level) agar tidak menimpa
+    // character level yang sudah diisi captureLifeMomentumSnapshot di entri tanggal yang sama.
+    _riwayatArchiveUpsert('momentum', 'date', { date: today, pts, tierName: tier.name });
   } else {
+    // Arsipkan entri yang akan terdorong keluar (> 30) SEBELUM di-trim, supaya tidak hilang.
+    if(state.momentum.history.length >= 30) {
+      const excess = state.momentum.history.slice(29); // entri ke-30 dst akan tergeser
+      excess.forEach(e => {
+        _riwayatArchiveUpsert('momentum', 'date', { date: e.date, pts: e.pts, tierName: e.name });
+      });
+    }
     state.momentum.history.unshift({ date: today, pts, level: tier.level, name: tier.name });
     if(state.momentum.history.length > 30) state.momentum.history = state.momentum.history.slice(0, 30);
+    // Arsipkan entri hari baru ke Sejarah Riwayat permanen.
+    _riwayatArchiveUpsert('momentum', 'date', { date: today, pts, tierName: tier.name });
   }
   if(state.momentum.lastRecordedDate === today) return;
   state.momentum.lastRecordedDate = today;
