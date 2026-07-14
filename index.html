@@ -686,9 +686,6 @@ a{color:var(--cyan);}
 .refleksi-history-item { padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.05); }
 .refleksi-history-item:last-child { border-bottom:none; }
 
-.sip-panel { border-radius:12px; background:rgba(255,255,255,0.02); border:1px solid var(--border); padding:10px; margin-bottom:8px; }
-.sip-panel .sip-title { font-weight:700; font-size:13px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center; }
-.sip-panel .sip-status { font-family:var(--font-system); font-weight:600; font-size:11.5px; }
 
 .habit-row { padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 10px; }
 .habit-title { font-size: 13.5px; font-weight: 600; color: var(--bone); }
@@ -773,7 +770,6 @@ a{color:var(--cyan);}
 
 .todo-item { display:flex; align-items:flex-start; gap:10px; margin-bottom:8px; font-size:12.5px; line-height:1.4; padding:8px; border-radius:8px; background:rgba(255,255,255,0.02); border:1px solid var(--border); }
 .todo-item.done { opacity:0.6; text-decoration:line-through; }
-.eisenhower-grid { display:grid; grid-template-columns: 1fr 1fr; gap:0.75rem; }
 .quadrant { background:rgba(0,0,0,0.2); border:1px solid var(--border); border-radius:12px; padding:10px; display:flex; flex-direction:column; }
 .quadrant .q-header { font-family:var(--font-head); font-size:0.8rem; }
 .quadrant .q-desc { font-size:0.7rem; color:var(--muted); margin-bottom:0.5rem; }
@@ -3126,7 +3122,7 @@ function DEFAULT_SETTINGS(){
     comboBonus: true, streakBonus: true, realmBonus: true, questDailyLimitEnabled: true, spiritualQuestLimit: 1,
     researchQuestLimit: 3, sedekahExpPerRibu: 1, sedekahMaxExpPerDay: 50, language: 'id',
     showWeeklyCalendar: true, showEisenhowerMatrix: true, show3Rules: true,
-    showSIP: true, showToDo: true, showBackgroundAnim: true,
+    showBackgroundAnim: true,
     dailyExpCap: 9999999, dailyExpCapEnabled: false, difficultyExp: {...DIFFICULTY_EXP}, comboBonusStep: 0.05, comboBonusCap: 5, streakBonusStep: 0.02, streakBonusCap: 30, realmBonusStep: 0.04, realmBonusCap: 16, customExpEnabled: true,
     showExpCalculator: true,
     showLifePrinciple: true,
@@ -3135,6 +3131,7 @@ function DEFAULT_SETTINGS(){
     showMedalBar: true,
     nameHoloStyle: 'none',
     bgTheme: 'void',
+    financeTargetSync: true,
     navGroupOrder: ['home','quest','progres','finansial','profil'],
     consequenceText: 'Kamu gagal dan energi (HP & Mana) benar-benar habis. Terima konsekuensinya: Push up 100x dan jangan makan 1 hari. Jangan bohongi diri sendiri.',
   };
@@ -3153,7 +3150,6 @@ const SECTION_DEFS = {
     { id:'daily-schedule',   label:'📋 Jadwal Hari Ini (Mingguan)' },
     { id:'finance-summary',  label:'💰 Ringkasan Keuangan (Saldo)' },
     { id:'three-rules',      label:'📜 3 Aturan Anti-Gagal' },
-    { id:'sip',              label:'📋 SIP Pagi & Siang' },
     { id:'quest-today',      label:'⚡ Quest Hari Ini' },
     { id:'habits',           label:'🔄 Habit Tracker' },
     { id:'spiritual',        label:'🌙 Ritual Spiritual & Kustom' },
@@ -3161,7 +3157,6 @@ const SECTION_DEFS = {
   ],
   quests: [
     { id:'quest-list',       label:'⚡ Daftar Quest & Filter' },
-    { id:'todos',            label:'✅ To-Do List Cepat' },
   ],
   goals: [
     { id:'active-goals',     label:'🎯 Goal Aktif' },
@@ -3485,9 +3480,8 @@ function DEFAULT_STATE(){
     // Arsip permanen "Sejarah Riwayat" (tab Profil) — entri tiap kategori yang sudah lewat 30 hari
     // dipindahkan ke sini dari riwayat aktifnya masing-masing, tersimpan selamanya, tidak pernah dihapus.
     historyArchive: { finansial:[], momentum:[], goal:[], sedekah:[], jurnal:[], refleksi:[], timeline:[], vitalitas:[] },
-    sip: { pagi: { status: 'pending', checkedCount:0 }, siang: { status: 'pending', progress: 0, checkedCount:0 }, config: { pagi: ['Bangun tepat waktu', 'Minum air', 'Target Hari Ini'], siang: ['Progress Quest Utama', 'Fokus'] } },
     schedule: JSON.parse(JSON.stringify(DEFAULT_SCHEDULE)), settings: DEFAULT_SETTINGS(), customStats:[], achievementsUnlocked:[],
-    kanban: { cards: [] }, todos: [], completedTargets: [], sedekah: { entries:[], totalLifetime:0, dailyExpGained:0, lastExpDate:'' },
+    kanban: { cards: [] }, completedTargets: [], sedekah: { entries:[], totalLifetime:0, dailyExpGained:0, lastExpDate:'' },
     hallOfFame: [],
     weeklyShiftPlan: {senin:'pagi', selasa:'pagi', rabu:'siang', kamis:'siang', jumat:'pagi', sabtu:'siang', minggu:'libur'},
     weeklyDaySchedule: {
@@ -3632,7 +3626,7 @@ function _riwayatArchiveUpsert(cat, dateField, entry){
 }
 function migrateState(s){
   if(!Array.isArray(s.goals)) s.goals = []; if(!Array.isArray(s.habits)) s.habits = []; if(!s.meta.activityLog) s.meta.activityLog = {}; if(!s.meta.activityNotes) s.meta.activityNotes = {}; if(!Array.isArray(s.goalHistory)) s.goalHistory = []; if(!Array.isArray(s.lifeTimeline)) s.lifeTimeline = []; if(!Array.isArray(s.lifeMomentum)) s.lifeMomentum = [];
-  if(typeof s.meta.dailyExpEarned !== 'number') s.meta.dailyExpEarned = 0; if(!s.meta.dailyExpLog) s.meta.dailyExpLog = {}; if(!s.sip) s.sip = DEFAULT_STATE().sip;
+  if(typeof s.meta.dailyExpEarned !== 'number') s.meta.dailyExpEarned = 0; if(!s.meta.dailyExpLog) s.meta.dailyExpLog = {};
   if(!s.schedule || !s.schedule.pagi) s.schedule = JSON.parse(JSON.stringify(DEFAULT_SCHEDULE));
   if(!s._realmMigratedV2){ s.character.realmIndex = s.character.realmIndex || 0; s._realmMigratedV2 = true; }
   s.realms = DEFAULT_REALMS.map(r => ({...r}));
@@ -3660,7 +3654,7 @@ function migrateState(s){
   if(typeof s.settings.consequenceText !== 'string') s.settings.consequenceText = DEFAULT_SETTINGS().consequenceText;
   if(!s.kanban) s.kanban = { cards: [] };
   if(!Array.isArray(s.kanban.blueprint)) s.kanban.blueprint = [];
-  if(!Array.isArray(s.todos)) s.todos = []; if(!s.sedekah) s.sedekah = { entries:[], totalLifetime:0, dailyExpGained:0, lastExpDate:'' };
+  if(!s.sedekah) s.sedekah = { entries:[], totalLifetime:0, dailyExpGained:0, lastExpDate:'' };
   if(!s.weeklyShiftPlan) s.weeklyShiftPlan = DEFAULT_STATE().weeklyShiftPlan;
   if(!s.spiritual.dailyLog) s.spiritual.dailyLog = {};
   if(!s.spiritual.sunnahBonusDate) s.spiritual.sunnahBonusDate = '';
@@ -4495,7 +4489,6 @@ function rollover(){
   state.meta.completedTodayCount = 0; state.meta.dailyExpEarned = 0; state.meta.hardQuestsToday = 0;
   // Reset HT quest completion tracking setiap hari
   state.character.htQuestCompletedToday = {};
-  if(state.sip) { state.sip.pagi.status = 'pending'; state.sip.siang.status = 'pending'; }
   if(!state.spiritual.dailyLog) state.spiritual.dailyLog = {}; state.spiritual.dailyLog[today] = {};
 
   const wk = weekKey(new Date()); if(wk !== state.meta.lastWeekKey){ state.quests.filter(q=>q.type==='weekly').forEach(q=>q.status='pending'); state.meta.lastWeekKey = wk; }
@@ -4704,11 +4697,13 @@ function addFinanceTransaction(){
       addRealmEnergy(Math.round(amount/50000));
       const _finIn = {id: uid('fin'), date: todayStr(), amount, note, cat, type: 'in', akun};
       state.financeLog.unshift(_finIn); _riwayatArchivePush('finansial', _finIn);
-      // Sinkronkan pemasukan ke Target Finansial yang aktif secara otomatis
-      applyIncomeToTargets(amount);
+      // Sinkronkan pemasukan ke Target Finansial — hanya jika toggle aktif
+      if(state.settings.financeTargetSync !== false) applyIncomeToTargets(amount);
   } else {
       const _finOut = {id: uid('fin'), date: todayStr(), amount, note, cat, type: 'out', akun};
       state.financeLog.unshift(_finOut); _riwayatArchivePush('finansial', _finOut);
+      // Sinkronkan pengeluaran ke Target Finansial — mengurangi progress, hanya jika toggle aktif
+      if(state.settings.financeTargetSync !== false) applyExpenseToTargets(amount);
   }
 
   // Riwayat transaksi disimpan seluruhnya (tidak dipotong otomatis lagi)
@@ -4866,6 +4861,15 @@ function applyTargetDamage(target, amount){
 function applyIncomeToTargets(amount){
   if(!state.targets || !state.targets.length) return;
   state.targets.slice().forEach(t => { if(t.currentHp > 0) applyTargetDamage(t, amount); });
+}
+
+// Setiap kali ada pengeluaran baru, progress target berkurang (currentHp naik, min maxHp = 0% progress)
+function applyExpenseToTargets(amount){
+  if(!state.targets || !state.targets.length) return;
+  state.targets.forEach(t => {
+    // currentHp tidak boleh melebihi maxHp (progress tidak bisa minus dari 0%)
+    t.currentHp = Math.min(t.maxHp, (t.currentHp || 0) + amount);
+  });
 }
 
 let _updatingTargetId = null;
@@ -5045,12 +5049,13 @@ function renderRefleksiHomeCard() {
   if(!state.settings?.showRefleksiHome) return '';
   const rf = state.refleksi || {journals:[],questions:[]};
   const pinnedJ = rf.journals.find(j=>j.pinnedHome);
-  const pinnedQ = rf.questions.find(q=>q.pinnedProfile && q.answer);
+  const pinnedQ = rf.questions.find(q=>(q.answers||[]).some(a=>a.pinnedProfile));
   if(!pinnedJ && !pinnedQ) return '';
   const item = pinnedJ || pinnedQ;
   const isQuestion = !!pinnedQ && !pinnedJ;
   const label = isQuestion ? `❓ ${escapeHtml(item.q)}` : '📔 Refleksi Diri';
-  const text = isQuestion ? item.answer : item.content;
+  const pinnedQAnswer = isQuestion ? (pinnedQ.answers||[]).find(a=>a.pinnedProfile) : null;
+  const text = isQuestion ? (pinnedQAnswer ? pinnedQAnswer.text : '') : item.content;
   const _isLong = text && text.length > 160;
   const _preview = escapeHtml((text||'').slice(0,160)) + (_isLong ? '…' : '');
   const _full = escapeHtml(text||'').replace(/\n/g,'<br>');
@@ -5614,33 +5619,6 @@ function renderHabits(){
   return html + `<div class="card">${listHtml}</div>`;
 }
 
-function renderTodos(){
-  if(!state.settings.showToDo) return '';
-  let html = `<div class="section-title row-between"><span>To-Do Cepat</span><button class="icon-btn" onclick="openModal('modal-add-todo')"><svg viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg></button></div>`;
-  const activeTodos = state.todos.filter(t => !t.done);
-  if(activeTodos.length === 0){ html += `<div class="card empty-state"><span class="big">Semua Beres</span>Kamu bisa menambahkan To-Do harian yang singkat.</div>`; } 
-  else {
-    if(state.settings.showEisenhowerMatrix) {
-        html += `<div class="eisenhower-grid">` + 
-          renderQuadrant('🔴 Kerjakan Dulu', activeTodos.filter(t => t.priority==='penting' && t.urgent), 'var(--crimson)', 'Penting & Urgent') +
-          renderQuadrant('🟡 Jadwalkan', activeTodos.filter(t => t.priority==='penting' && !t.urgent), 'var(--jade)', 'Penting & Tidak Urgent') +
-          renderQuadrant('🔵 Delegasikan', activeTodos.filter(t => t.priority==='tidak_penting' && t.urgent), 'var(--orange)', 'Tidak Penting & Urgent') +
-          renderQuadrant('⚪ Opsional', activeTodos.filter(t => t.priority==='tidak_penting' && !t.urgent), 'var(--muted)', 'Tidak Penting & Tidak Urgent') + `</div>`;
-    } else {
-        html += `<div class="card">` + activeTodos.map(t => `<div class="todo-item ${t.done?'done':''}"><input type="checkbox" ${t.done?'checked':''} onchange="toggleToDo('${t.id}')"><span style="flex:1;">${escapeHtml(t.title)}</span><button class="icon-btn" onclick="deleteToDo('${t.id}')" style="padding:0;"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>`).join('') + `</div>`;
-    }
-  } return html;
-}
-function renderQuadrant(title, items, color, desc) {
-    let list = items.map(t => `<div class="todo-item-mini"><input type="checkbox" onchange="toggleToDo('${t.id}')"><span>${escapeHtml(t.title)}</span></div>`).join('');
-    if(!list) list = `<div class="todo-empty-mini">Kosong</div>`;
-    return `<div class="card quadrant"><div class="q-header" style="color:${color};">${title}</div><div class="q-desc">${desc}</div>${list}</div>`;
-}
-
-function addToDo() { const title = document.getElementById('at-title').value.trim(); if(!title) return; state.todos.push({ id: uid('td'), title, priority: document.getElementById('at-priority').value, urgent: document.getElementById('at-urgent').checked, done: false, createdAt: Date.now() }); document.getElementById('at-title').value = ''; closeModal('modal-add-todo'); render(); save(); }
-function toggleToDo(id) { const t = state.todos.find(x => x.id === id); if(t) { t.done = !t.done; t.doneAt = t.done ? new Date().toISOString() : ''; if(t.done) SFX.success(); else SFX.error(); render(); save(); } }
-function deleteToDo(id) { state.todos = state.todos.filter(x => x.id !== id); render(); save(); }
-
 function addSedekah(evt){
   const nominal = parseInt(document.getElementById('sedekah-nominal').value, 10); if(!nominal || nominal <= 0) return;
   const today = todayStr(); if(state.sedekah.lastExpDate !== today){ state.sedekah.dailyExpGained = 0; state.sedekah.lastExpDate = today; }
@@ -6107,13 +6085,6 @@ function renderHome(){
   
   <div data-sec-tab="home" data-sec-id="three-rules">${render3Rules()}</div>
 
-  <div data-sec-tab="home" data-sec-id="sip">${state.settings.showSIP ? `
-  <div class="section-title">SIP (Sistem Instruksi Pribadi)</div>
-  <div class="card">
-      <div class="sip-panel" style="${getTodayActiveShift() === 'pagi' || getTodayActiveShift() === 'libur' ? 'border-color:var(--cyan); box-shadow:inset 0 0 8px rgba(45,212,244,0.1);' : ''}"><div class="sip-title">SIP PAGI <button class="btn btn-ghost btn-sm" onclick="openModal('modal-sip-pagi')" ${state.sip.pagi.status==='done'?'disabled':''}>Buka</button></div><div class="sip-status">Status: ${state.sip.pagi.status==='done'?'<span style="color:var(--jade);">✔ Selesai</span>':'<span style="color:var(--orange);">Belum Evaluasi</span>'}</div></div>
-      <div class="sip-panel" style="${getTodayActiveShift() === 'siang' ? 'border-color:var(--cyan); box-shadow:inset 0 0 8px rgba(45,212,244,0.1);' : ''}"><div class="sip-title">SIP SIANG <button class="btn btn-ghost btn-sm" onclick="openModal('modal-sip-siang')" ${state.sip.siang.status==='done'?'disabled':''}>Buka</button></div><div class="sip-status">Status: ${state.sip.siang.status==='done'?'<span style="color:var(--jade);">✔ Selesai</span>':'<span style="color:var(--orange);">Belum Evaluasi</span>'}</div></div>
-  </div>` : ''}</div>
-
   <div data-sec-tab="home" data-sec-id="quest-today"><div class="section-title">Quest Hari Ini</div>
   ${todaysQuests.length===0 ? `<div class="empty-state card"><span class="big">Belum ada quest harian</span>Tambahkan quest pertamamu di tab Quest.</div>` : todaysQuests.map(q=>questCardHTML(q,true)).join('')}
   ${dailyQuests.length>5 ? `<button class="btn btn-ghost btn-block" onclick="setTab('quests')">Lihat semua quest →</button>` : ''}</div>
@@ -6195,7 +6166,7 @@ function renderQuests(){
   }
   const order = {pending:0, postponed:1, failed:2, done:3}; const _qo = state.meta.questOrder || []; list.sort((a,b)=>{ const sd=order[a.status]-order[b.status]; if(sd!==0) return sd; const ia=_qo.indexOf(a.id),ib=_qo.indexOf(b.id); if(ia===-1&&ib===-1) return b.createdAt-a.createdAt; if(ia===-1) return 1; if(ib===-1) return -1; return ia-ib; });
   const normalQuests = list.length===0 && filter==='heaven_trampling' ? '' : (list.length===0 ? `<div class="empty-state card"><span class="big">Tidak ada quest</span>Coba filter lain atau tambahkan quest baru.</div>` : list.map(q=>questCardHTML(q,false)).join(''));
-  return `<div data-sec-tab="quests" data-sec-id="quest-list"><div class="quest-filters">${filters.map(([key,label])=>`<button class="chip ${filter===key?'active':''}" onclick="setQuestFilter('${key}')">${label}</button>`).join('')}</div><button class="btn btn-primary btn-block" style="margin-bottom:16px;" onclick="openAddQuestModal()">+ Tambah Quest</button>${htSection}${normalQuests}</div><div data-sec-tab="quests" data-sec-id="todos">${renderTodos()}</div>`;
+  return `<div data-sec-tab="quests" data-sec-id="quest-list"><div class="quest-filters">${filters.map(([key,label])=>`<button class="chip ${filter===key?'active':''}" onclick="setQuestFilter('${key}')">${label}</button>`).join('')}</div><button class="btn btn-primary btn-block" style="margin-bottom:16px;" onclick="openAddQuestModal()">+ Tambah Quest</button>${htSection}${normalQuests}</div>`;
 }
 function setQuestFilter(key){ state.ui.questFilter = key; save(); render(); }
 
@@ -6390,7 +6361,8 @@ function renderBoss(){
     const _p30 = _dailyAvg * 30; const _p1y = _dailyAvg * 365; const _p5y = _dailyAvg * 1825;
     const _pColor = (v) => v >= 0 ? 'var(--jade)' : 'var(--crimson)';
 
-    const _secTarget = `<div class="section-title row-between"><span>🎯 Target Finansial Aktif</span><button class="icon-btn" onclick="openNewTargetModal()"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button></div>${(state.targets||[]).length ? `<div class="small muted" style="margin:-6px 0 12px;">💡 Setiap kamu catat <b>Pemasukan</b>, nominalnya otomatis singkron jadi progress ke semua target di bawah ini.</div>` : ''}<div class="target-list">${targetsHtml || `<div class="empty-state card"><span class="big">Belum ada Target Finansial</span>Tambahkan target tabungan/pembelian baru.</div>`}</div>`;
+    const _finSyncOn = state.settings.financeTargetSync !== false;
+  const _secTarget = `<div class="section-title row-between"><span>🎯 Target Finansial Aktif</span><button class="icon-btn" onclick="openNewTargetModal()"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button></div>${(state.targets||[]).length ? `<div class="small muted" style="margin:-6px 0 12px;">${_finSyncOn ? '💡 <b>Pemasukan</b> menaikkan progress · <b>Pengeluaran</b> mengurangi progress — otomatis.' : '⏸️ Sinkron target dinonaktifkan. Aktifkan di <b>Pengaturan → Target Finansial</b>.'}</div>` : ''}<div class="target-list">${targetsHtml || `<div class="empty-state card"><span class="big">Belum ada Target Finansial</span>Tambahkan target tabungan/pembelian baru.</div>`}</div>`;
     const _cashBal = getCashBalance(); const _saldoBal = getSaldoAccountBalance();
     const _secIncome = `<div class="card boss-card glass-panel" style="background: linear-gradient(135deg, rgba(240,185,59,0.05), transparent);"><div class="boss-name" style="font-family:var(--font-display);font-weight:800;display:flex;justify-content:center;align-items:center;gap:8px;"><span style="font-size:28px;">💰</span> Pemasukan & Pengeluaran</div><div class="commerce-metric" style="margin-bottom:10px;"><div class="lbl">Total Uang (Cash + Saldo)</div><div class="val highlight" style="font-size:22px; color:${saldo>=0?'var(--gold)':'var(--crimson)'};">${formatRupiah(saldo)}</div></div><div class="commerce-grid"><div class="commerce-metric"><div class="lbl">💵 Cash</div><div class="val" style="color:var(--bone);">${formatRupiah(_cashBal)}</div></div><div class="commerce-metric"><div class="lbl">🏦 Saldo</div><div class="val" style="color:var(--bone);">${formatRupiah(_saldoBal)}</div></div></div><div class="commerce-grid mt-10"><div class="commerce-metric"><div class="lbl">Total Pemasukan</div><div class="val" style="color:var(--jade);">${formatRupiah(state.character.lifetimeIncome||0)}</div></div><div class="commerce-metric" style="border-color: rgba(255,71,104,0.3);"><div class="lbl">Pengeluaran</div><div class="val" style="color:var(--crimson);">${formatRupiah(pengeluaran)}</div></div></div><div style="display:flex;gap:8px;margin-top:14px;"><button class="btn btn-gold" style="flex:1;" onclick="openModal('modal-log-income')">Catat Transaksi</button><button class="btn btn-secondary" style="flex:1;" onclick="openModal('modal-transfer-saldo')">🔄 Pindah Saldo</button></div></div>`;
     const _secFuturePrediction = `<div class="section-title">🔮 Prediksi Tabungan</div><div class="card glass-panel" style="border-top:3px solid var(--arise-bright);"><div class="small muted" style="margin-bottom:12px;">Berdasarkan rata-rata harian ${_dailyAvg>=0?'+':''}${formatRupiah(_dailyAvg)}/hari (${_daysSince} hari sejak mulai)</div><div class="commerce-grid" style="grid-template-columns:1fr 1fr 1fr;gap:8px;"><div class="commerce-metric"><div class="lbl">30 Hari</div><div class="val" style="color:${_pColor(_p30)};font-size:13px;">${formatRupiah(_p30)}</div></div><div class="commerce-metric"><div class="lbl">1 Tahun</div><div class="val" style="color:${_pColor(_p1y)};font-size:13px;">${formatRupiah(_p1y)}</div></div><div class="commerce-metric"><div class="lbl">5 Tahun</div><div class="val" style="color:${_pColor(_p5y)};font-size:13px;">${formatRupiah(_p5y)}</div></div></div></div>`;
@@ -8152,19 +8124,6 @@ function renderSettingsModal(){
   return `
   <div class="modal-overlay" id="modal-settings"><div class="modal-sheet settings-modal"><div class="modal-handle"></div><h2 class="modal-title">⚙️ Pengaturan OS</h2>
     <details class="settings-section" open><summary>🧑 Profil Karakter</summary><div class="settings-body"><div class="form-group"><label>Nama Karakter</label><input id="s-char-name" type="text" class="input" value="${escapeAttr(state.character.name)}"></div><div class="form-group"><label>Pekerjaan</label><input id="s-char-job" type="text" class="input" value="${escapeAttr(state.character.job)}"></div><div class="form-group"><label>Umur</label><input id="s-char-age" type="number" class="input" value="${state.character.age}"></div><div class="form-group"><label>Avatar (Emoji)</label><input id="s-char-avatar" type="text" class="input" value="${escapeAttr(s.characterAvatar)}" maxlength="4" style="width:5rem"></div><div class="small muted" style="margin:2px 0 6px;">✒️ Prinsip Hidup kini diedit dari tab Quest → Refleksi.</div><div class="form-group"><label>✨ Warna Hologram Nama</label><div style="display:flex;gap:10px;align-items:center;margin-top:4px;"><div class="name-holo-swatch swatch-none ${(!s.nameHoloStyle||s.nameHoloStyle==='none')?'active':''}" title="Tidak ada" onclick="setNameHoloStyle('none')">✕</div><div class="name-holo-swatch swatch-gold ${s.nameHoloStyle==='gold'?'active':''}" title="Emas Gradasi Putih" onclick="setNameHoloStyle('gold')"></div><div class="name-holo-swatch swatch-rainbow ${s.nameHoloStyle==='rainbow'?'active':''}" title="Pelangi Gradasi" onclick="setNameHoloStyle('rainbow')"></div><div class="name-holo-swatch swatch-silver ${s.nameHoloStyle==='silver'?'active':''}" title="Silver Hologram" onclick="setNameHoloStyle('silver')"></div></div></div><button class="btn btn-secondary btn-block mt-10" onclick="saveSettingsProfile()">Simpan Profil</button></div></details>
-    <details class="settings-section"><summary>👁️ Tampilan & UI</summary><div class="settings-body">
-      <div class="toggle-row"><label>Tampilkan SIP</label><input type="checkbox" ${s.showSIP?'checked':''} onchange="setSetting('showSIP',this.checked)"></div>
-      <div class="toggle-row"><label>Tampilkan To-Do Cepat</label><input type="checkbox" ${s.showToDo?'checked':''} onchange="setSetting('showToDo',this.checked)"></div>
-      <div class="toggle-row"><label>Animasi Bintang (Background)</label><input type="checkbox" ${s.showBackgroundAnim?'checked':''} onchange="setSetting('showBackgroundAnim',this.checked)"></div>
-      <div class="toggle-row"><label>Kalender Mingguan</label><input type="checkbox" ${s.showWeeklyCalendar?'checked':''} onchange="setSetting('showWeeklyCalendar',this.checked)"></div>
-      <div class="toggle-row"><label>Matriks Eisenhower (To-Do)</label><input type="checkbox" ${s.showEisenhowerMatrix?'checked':''} onchange="setSetting('showEisenhowerMatrix',this.checked)"></div>
-      <div class="toggle-row"><label>Tampilkan 3 Aturan Anti-Gagal</label><input type="checkbox" ${s.show3Rules?'checked':''} onchange="setSetting('show3Rules',this.checked)"></div>
-      <div class="toggle-row"><label>🧮 Kalkulator Kebutuhan EXP</label><input type="checkbox" ${s.showExpCalculator?'checked':''} onchange="setSetting('showExpCalculator',this.checked)"></div>
-      <div class="toggle-row"><label>👑 Tampilkan Medal Hall of Fame</label><input type="checkbox" ${s.showMedalBar?'checked':''} onchange="setSetting('showMedalBar',this.checked)"></div>
-      <div class="toggle-row"><label>📋 Tampilkan Jadwal Hari Ini di Home</label><input type="checkbox" ${s.showDailySchedule?'checked':''} onchange="setSetting('showDailySchedule',this.checked)"></div>
-      <div class="toggle-row" style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px;"><label style="background:linear-gradient(90deg,#a07830,#ffe680,#c8a84b);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;font-weight:800;">✦ Tampilkan Kutipan Refleksi di Home</label><input type="checkbox" ${s.showRefleksiHome?'checked':''} onchange="setSetting('showRefleksiHome',this.checked)"></div>
-      <div class="toggle-row"><label style="background:linear-gradient(90deg,#a07830,#ffe680,#c8a84b);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;font-weight:800;">✦ Tampilkan Kutipan Refleksi di Profil</label><input type="checkbox" ${s.showRefleksiProfile?'checked':''} onchange="setSetting('showRefleksiProfile',this.checked)"></div>
-    </div></details>
     <details class="settings-section"><summary>🎨 Tema Background</summary><div class="settings-body">
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;line-height:1.5;">Pilih suasana latar belakang animasi. Semua tema ringan & bergerak halus.</div>
       <div style="display:flex;flex-direction:column;gap:8px;">
@@ -8178,8 +8137,21 @@ function renderSettingsModal(){
           <button class="btn ${s.bgTheme===t.key?'btn-primary':'btn-secondary'} btn-sm" style="flex-shrink:0;margin-left:10px;" onclick="setSetting('bgTheme','${t.key}')">${s.bgTheme===t.key?'Aktif':'Pilih'}</button>
         </div>`).join('')}
       </div>
+      <div class="toggle-row" style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;">
+        <label>✨ Animasi Bintang (Background)</label>
+        <input type="checkbox" ${s.showBackgroundAnim?'checked':''} onchange="setSetting('showBackgroundAnim',this.checked)">
+      </div>
     </div></details>
     <details class="settings-section"><summary>⚔️ EXP & Gameplay</summary><div class="settings-body"><label style="display:block;font-size:11.5px;color:var(--muted);margin-bottom:5px;font-weight:600;">Multiplier EXP</label><div class="btn-group">${[0.5,1.0,1.5,2.0].map(m => `<button class="btn btn-secondary ${s.expMultiplier===m?'active':''}" onclick="setSetting('expMultiplier',${m})">${m}x</button>`).join('')}</div><div class="toggle-row"><label>Efek Suara (SFX)</label><input type="checkbox" ${s.soundEnabled?'checked':''} onchange="setSetting('soundEnabled',this.checked)"></div><div class="toggle-row"><label>Floating EXP Animasi</label><input type="checkbox" ${s.showFloatingExp?'checked':''} onchange="setSetting('showFloatingExp',this.checked)"></div><div class="toggle-row"><label>Combo Bonus</label><input type="checkbox" ${s.comboBonus?'checked':''} onchange="setSetting('comboBonus',this.checked)"></div><div class="toggle-row"><label>Streak Bonus</label><input type="checkbox" ${s.streakBonus?'checked':''} onchange="setSetting('streakBonus',this.checked)"></div><div class="toggle-row"><label>Custom EXP Quest (input bebas)</label><input type="checkbox" ${s.customExpEnabled!==false?'checked':''} onchange="setSetting('customExpEnabled',this.checked)"></div><div class="toggle-row"><label>Batas EXP Harian</label><input type="checkbox" ${s.dailyExpCapEnabled===true?'checked':''} onchange="setSetting('dailyExpCapEnabled',this.checked)"></div></div></details>
+    <details class="settings-section"><summary>💰 Target Finansial</summary><div class="settings-body">
+      <div class="toggle-row">
+        <label style="display:flex;flex-direction:column;gap:2px;">
+          <span>Sinkron Pemasukan &amp; Pengeluaran ke Target</span>
+          <span style="font-size:10.5px;color:var(--muted);font-weight:400;">Aktif: pemasukan menaikkan progress, pengeluaran mengurangi progress. Nonaktif: transaksi baru tidak mempengaruhi target sama sekali.</span>
+        </label>
+        <input type="checkbox" ${(s.financeTargetSync!==false)?'checked':''} onchange="setSetting('financeTargetSync',this.checked)">
+      </div>
+    </div></details>
     <details class="settings-section"><summary>💾 Manajemen Data & Reset</summary><div class="settings-body">
       <div class="settings-btn-row"><button class="btn btn-primary" onclick="exportData()" style="flex:1;">📤 Export JSON</button><label class="btn btn-secondary" style="flex:1; cursor:pointer; text-align:center;">📥 Import JSON<input type="file" accept=".json" style="display:none;" onchange="importData(event)"></label></div>
       <div class="settings-divider">Reset Terkontrol (Pilih Manual)</div>
@@ -8207,7 +8179,7 @@ function renderSettingsModal(){
         </div>
       </div>
       <div class="settings-divider" style="margin-top:14px;">Modul Pendukung</div>
-      <div class="settings-btn-row"><button class="btn btn-secondary btn-sm" onclick="resetModule('todos')">Reset To-Do</button><button class="btn btn-secondary btn-sm" onclick="resetModule('kanban')">Reset Kanban</button><button class="btn btn-secondary btn-sm" onclick="resetModule('sedekah')">Reset Sedekah</button><button class="btn btn-secondary btn-sm" onclick="resetModule('habits')">Reset Habits</button></div>
+      <div class="settings-btn-row"><button class="btn btn-secondary btn-sm" onclick="resetModule('kanban')">Reset Kanban</button><button class="btn btn-secondary btn-sm" onclick="resetModule('sedekah')">Reset Sedekah</button><button class="btn btn-secondary btn-sm" onclick="resetModule('habits')">Reset Habits</button></div>
       <div class="settings-divider" style="margin-top:14px;">Berbahaya</div>
       <button class="btn btn-danger btn-block" onclick="confirmResetData()" style="margin-top:4px;">⚠️ Reset Semua (Full Reset)</button>
       <div style="font-size:10.5px;color:var(--muted);margin-top:6px;text-align:center;">Menghapus seluruh progres. Tidak dapat dibatalkan.</div>
@@ -8265,7 +8237,7 @@ function saveConsequenceText(){
 }
 function saveSettingsProfile(){ state.character.name = document.getElementById('s-char-name').value.trim() || 'Jian'; state.character.job = document.getElementById('s-char-job').value.trim(); state.character.age = parseInt(document.getElementById('s-char-age').value) || 22; state.settings.characterAvatar = document.getElementById('s-char-avatar').value.trim() || '⚔️'; const lpEl = document.getElementById('s-char-life-principle'); if(lpEl) state.character.lifePrinciple = lpEl.value.trim(); save(); render(); showToast('Profil disimpan!', 'ach'); }
 function setNameHoloStyle(style){ state.settings.nameHoloStyle = style; save(); render(); const slot = document.getElementById('settings-slot'); if(slot){ slot.innerHTML = renderSettingsModal(); openModal('modal-settings'); } showToast('Warna hologram nama diperbarui', 'ach'); }
-function resetModule(module){ const map = { todos: () => state.todos = [], kanban: () => state.kanban = { cards:[] }, sedekah: () => state.sedekah = { entries:[], totalLifetime:0, dailyExpGained:0, lastExpDate:'' }, habits: () => state.habits = DEFAULT_STATE().habits, }; if(!map[module]) return; openConfirm(`Reset modul "${module}"? Data karakter aman.`, () => { map[module](); save(); render(); document.getElementById('settings-slot').innerHTML = renderSettingsModal(); openModal('modal-settings'); showToast('Modul direset', 'ach'); }); }
+function resetModule(module){ const map = { kanban: () => state.kanban = { cards:[] }, sedekah: () => state.sedekah = { entries:[], totalLifetime:0, dailyExpGained:0, lastExpDate:'' }, habits: () => state.habits = DEFAULT_STATE().habits, }; if(!map[module]) return; openConfirm(`Reset modul "${module}"? Data karakter aman.`, () => { map[module](); save(); render(); document.getElementById('settings-slot').innerHTML = renderSettingsModal(); openModal('modal-settings'); showToast('Modul direset', 'ach'); }); }
 
 function resetPartial(type){
   const labels = { level:'Level & Realm', exp:'EXP aktif', quest:'semua Quest ke pending', uang:'Log Finansial & Target', day:'Hari ke Day 1' };
@@ -8326,7 +8298,6 @@ function buildModals() {
   <div class="modal-overlay" id="modal-add-quest"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title" id="modal-add-quest-title">Tambah Quest</div><div class="field"><label>Judul Quest</label><input type="text" id="aq-title" placeholder="Contoh: Latihan 10 menit" class="input"></div><div class="field"><label>Tipe Quest</label><select id="aq-type" class="input" onchange="toggleLegendaryExp()"><option value="daily">Daily — Harian</option><option value="weekly">Weekly — Mingguan</option><option value="monthly">Monthly — Bulanan</option><option value="special">Special — Spesial</option><option value="mythic">⚔️ Mythic (25.000 EXP)</option><option value="legendary">👑 Legendary (5.000 EXP)</option></select></div><div class="field"><label>Tingkat Kesulitan</label><select id="aq-difficulty" class="input" onchange="updateMaxQuestExpHint()"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option><option value="epic">Epic</option></select></div><div class="small muted" id="aq-max-exp-hint" style="margin:0 0 10px; padding:0 4px;"></div><div class="field"><label>Stat Reward (maks. 2)</label><div class="check-grid">${allStatKeys().map(k=>`<label class="check-item"><input type="checkbox" class="aq-stat" value="${k}" onchange="limitStatChecks(this)"> ${statDef(k).label}${STAT_ID_LABELS[k]?'<span style="display:block;font-size:9px;color:var(--muted);font-weight:400;line-height:1.2;margin-top:1px;">'+STAT_ID_LABELS[k]+'</span>':''}</label>`).join('')}</div></div><div class="field"><label class="checkbox-row" style="margin-bottom:0;"><input type="checkbox" id="aq-core"> Tandai sebagai Core Habit</label></div><div class="field"><label>Catatan (opsional)</label><textarea id="aq-notes" placeholder="Detail tambahan..." class="input"></textarea></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-add-quest')">Batal</button><button class="btn btn-primary" onclick="addQuest()">Simpan</button></div></div></div>
   <div class="modal-overlay" id="modal-blueprint"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title" id="bp-modal-title">📐 Tambah Tahapan Blueprint</div><input type="hidden" id="bp-edit-id"><div class="field"><label>Nama Tahapan / Fase</label><input type="text" id="bp-label" placeholder="Contoh: Riset &amp; Perencanaan" class="input"></div><div class="field"><label>Deskripsi (opsional)</label><textarea id="bp-desc" placeholder="Detail tujuan tahapan ini..." class="input" rows="2"></textarea></div><div class="form-row"><div class="form-group half"><label>Tgl Mulai</label><input type="date" id="bp-dateStart" class="input"></div><div class="form-group half"><label>Deadline</label><input type="date" id="bp-deadline" class="input"></div></div><div class="field"><label>Prioritas</label><select id="bp-priority" class="input"><option value="low">🟢 Rendah</option><option value="medium" selected>🟡 Sedang</option><option value="high">🔴 Tinggi</option></select></div><div class="field"><label>Status</label><select id="bp-status" class="input"><option value="planning">📋 Perencanaan</option><option value="building">🔨 Sedang Dibangun</option><option value="done">✅ Selesai</option></select></div><div class="field"><label>Catatan Tambahan (opsional)</label><textarea id="bp-notes" placeholder="Referensi, link, detail penting..." class="input" rows="2"></textarea></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-blueprint')">Batal</button><button class="btn btn-primary" onclick="submitBlueprintItem()">Simpan</button></div></div></div>
   <div class="modal-overlay" id="modal-kanban-edit"><div class="modal-sheet"><div class="modal-handle"></div><h2 class="modal-title" id="modal-card-title">Detail Materi</h2><input type="hidden" id="km-id"><input type="hidden" id="km-col"><div class="field"><label>Judul Materi</label><input type="text" id="km-title" placeholder="Nama buku, course, dll" class="input"></div><div class="field"><label>Tipe</label><select id="km-type" class="input"><option value="Buku">📖 Buku</option><option value="Course">🎓 Course</option><option value="Video">🎬 Video</option><option value="Artikel">📄 Artikel</option><option value="Lainnya">📦 Lainnya</option></select></div><div class="form-row"><div class="form-group half"><label>Tgl Mulai</label><input type="date" id="km-dateStart" class="input"></div><div class="form-group half"><label>Target Selesai</label><input type="date" id="km-dateTarget" class="input"></div></div><div class="field"><label>Progress: <span id="card-prog-val">0</span>%</label><input type="range" id="km-progress" min="0" max="100" value="0" style="width:100%; accent-color:var(--cyan);" oninput="document.getElementById('card-prog-val').textContent=this.value"></div><div class="field"><label>Kolom</label><select id="card-modal-col" class="input"><option value="mau_dipelajari">📚 Mau Dipelajari</option><option value="sedang_dipelajari">🔥 Sedang Dipelajari</option><option value="direview">🔍 Direview</option><option value="selesai">✅ Selesai</option></select></div><div class="field"><label>Insight / Catatan</label><textarea id="km-notes" placeholder="Tulis hal penting di sini..." class="input"></textarea></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-kanban-edit')">Batal</button><button class="btn btn-danger" onclick="deleteCardFromModal()">Hapus Item</button><button class="btn btn-primary" onclick="submitCardModal()">Simpan</button></div></div></div>
-  <div class="modal-overlay" id="modal-add-todo"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">Tambah To-Do Cepat</div><div class="field"><label>Tugas</label><input type="text" id="at-title" placeholder="Contoh: Balas chat" class="input"></div><div class="field"><label>Prioritas Matriks</label><select id="at-priority" class="input"><option value="penting">🔴 Penting (Goals/Core)</option><option value="tidak_penting">🔵 Tidak Penting (Trivial)</option></select></div><div class="field"><label class="checkbox-row" style="margin-bottom:0;"><input type="checkbox" id="at-urgent" checked> Urgent (Hari Ini)</label></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-add-todo')">Batal</button><button class="btn btn-primary" onclick="addToDo()">Simpan</button></div></div></div>
   <div class="modal-overlay" id="modal-log-income"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">Catat Transaksi Finansial</div>
     <div class="field"><label>Jenis Transaksi</label><select id="bi-type" class="input"><option value="in">Pemasukan (+)</option><option value="out">Pengeluaran (-)</option></select></div>
     <div class="field"><label>Kantong</label><select id="bi-akun" class="input"><option value="cash">💵 Cash</option><option value="saldo">🏦 Saldo</option></select></div>
@@ -8414,8 +8385,6 @@ function buildModals() {
       </div>
     </div>
   </div>
-  <div class="modal-overlay" id="modal-sip-pagi"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">SIP PAGI</div><div class="small muted mb-14">Checklist Persiapan Pagi</div>${DEFAULT_STATE().sip.config.pagi.map((t,i)=>`<div class="field"><label style="display:flex; gap:8px;"><input type="checkbox" id="sp${i}"> ${t}</label></div>`).join('')}<div class="modal-actions mt-14"><button class="btn btn-ghost" onclick="closeModal('modal-sip-pagi')">Tutup</button><button class="btn btn-primary" onclick="submitSIPPagi()">Selesai Pagi (+30 EXP)</button></div></div></div>
-  <div class="modal-overlay" id="modal-sip-siang"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">SIP SIANG</div><div class="small muted mb-14">Evaluasi Tengah Hari</div>${DEFAULT_STATE().sip.config.siang.map((t,i)=>`<div class="field"><label style="display:flex; gap:8px;"><input type="checkbox" id="ss${i}"> ${t}</label></div>`).join('')}<div class="field mt-14"><label>Persentase Selesai Hari Ini (%)</label><input type="number" id="sip-siang-prog" placeholder="65" class="input"></div><div class="modal-actions mt-14"><button class="btn btn-ghost" onclick="closeModal('modal-sip-siang')">Tutup</button><button class="btn btn-primary" onclick="submitSIPSiang()">Selesai Siang (+30 EXP)</button></div></div></div>
   `;
 }
 function limitStatChecks(el){ const checked = document.querySelectorAll('.aq-stat:checked'); if(checked.length>2){ el.checked=false; } }
@@ -8424,8 +8393,6 @@ function closeModal(id){ const el = document.getElementById(id); if(el) el.class
 function openConfirm(message, cb){ document.getElementById('confirm-message').textContent = message; confirmCallback = cb; openModal('modal-confirm'); }
 function runConfirm(){ closeModal('modal-confirm'); if(confirmCallback){ confirmCallback(); confirmCallback=null; } }
 
-function submitSIPPagi() { const items = state.sip.config.pagi; state.sip.pagi.status = 'done'; state.sip.pagi.checkedCount = items.filter((_, i) => document.getElementById('sp'+i)?.checked).length; gainExp(30); bumpStat('discipline', 2); addActivityLog('SIP Pagi'); if(state.settings.showFloatingExp) showToast('+30 EXP', 'exp'); closeModal('modal-sip-pagi'); showToast('SIP Pagi Selesai. Semangat!', 'ach'); SFX.success(); render(); save(); }
-function submitSIPSiang() { const items = state.sip.config.siang; state.sip.siang.status = 'done'; state.sip.siang.progress = Math.max(0, Math.min(100, parseInt(document.getElementById('sip-siang-prog').value, 10) || 0)); state.sip.siang.checkedCount = items.filter((_, i) => document.getElementById('ss'+i)?.checked).length; gainExp(30); bumpStat('focus', 2); addActivityLog('SIP Siang'); if(state.settings.showFloatingExp) showToast('+30 EXP', 'exp'); closeModal('modal-sip-siang'); showToast('SIP Siang Selesai. Tetap fokus!', 'ach'); SFX.success(); render(); save(); }
 function showFloatingExp(amount){ showToast((amount>=0?'+':'')+amount+' EXP', 'exp'); }
 function spawnSedekahRewardFX(x, y, expGained, nominal){
   const flash = document.createElement('div');
@@ -8583,16 +8550,17 @@ function updateDayTask(dayName, taskId, field, value){
 function checkDayTask(dayName, taskId){
   if(!state.weeklyDaySchedule?.[dayName]) return;
   const t = state.weeklyDaySchedule[dayName].tasks.find(x=>x.id===taskId); if(!t) return;
-  t.done = !t.done; if(t.done) t.failed = false;
+  if(t.done || t.failed) return; // terkunci setelah dipilih
+  t.done = true;
   save(); render();
 }
 
 function failDayTask(dayName, taskId){
   if(!state.weeklyDaySchedule?.[dayName]) return;
   const t = state.weeklyDaySchedule[dayName].tasks.find(x=>x.id===taskId); if(!t) return;
-  const wasFailed = t.failed;
-  t.failed = !t.failed; if(t.failed) t.done = false;
-  if(!wasFailed && t.failed){
+  if(t.done || t.failed) return; // terkunci setelah dipilih
+  t.failed = true;
+  if(true){
     // BUGFIX: dulu HP langsung -15 tanpa cek Mana sama sekali. Sekarang disamakan dengan
     // quest biasa: Mana diserap dulu (kalau masih ada), HP cuma kena -3. Kalau Mana sudah
     // habis, HP kena penalti penuh -15 (sama seperti perilaku lama, dipertahankan sebagai fallback).
@@ -8683,8 +8651,13 @@ function _wdTaskRow(day, t, forHome){
     </div>`;
   }
 
-  const checkBtn = `<button class="btn btn-sm ${t.done?'btn-primary':'btn-secondary'}" onclick="checkDayTask('${day}','${t.id}')" style="${t.done?'background:rgba(52,211,153,0.25);border-color:rgba(52,211,153,0.5);color:#34d399;':''}font-size:11px;padding:0 9px;height:30px;white-space:nowrap;">✓ Selesai</button>`;
-  const failBtn  = `<button class="btn btn-sm ${t.failed?'btn-danger':'btn-secondary'}" onclick="failDayTask('${day}','${t.id}')" style="${t.failed?'background:rgba(239,68,68,0.2);border-color:rgba(239,68,68,0.5);':''}font-size:11px;padding:0 9px;height:30px;">Gagal</button>`;
+  const _locked = t.done || t.failed;
+  const checkBtn = _locked
+    ? `<button class="btn btn-sm ${t.done?'btn-primary':'btn-secondary'}" disabled style="${t.done?'background:rgba(52,211,153,0.25);border-color:rgba(52,211,153,0.5);color:#34d399;':'opacity:0.25;'}font-size:11px;padding:0 9px;height:30px;white-space:nowrap;cursor:default;">✓ Selesai</button>`
+    : `<button class="btn btn-sm btn-secondary" onclick="checkDayTask('${day}','${t.id}')" style="font-size:11px;padding:0 9px;height:30px;white-space:nowrap;">✓ Selesai</button>`;
+  const failBtn = _locked
+    ? `<button class="btn btn-sm ${t.failed?'btn-danger':'btn-secondary'}" disabled style="${t.failed?'background:rgba(239,68,68,0.2);border-color:rgba(239,68,68,0.5);color:#ef4444;':'opacity:0.25;'}font-size:11px;padding:0 9px;height:30px;cursor:default;">✕ Gagal</button>`
+    : `<button class="btn btn-sm btn-secondary" onclick="failDayTask('${day}','${t.id}')" style="font-size:11px;padding:0 9px;height:30px;">✕ Gagal</button>`;
   const editBtn  = forHome ? '' : `<button class="icon-btn" onclick="startEditDayTask('${day}','${t.id}')" title="Edit">${_SVG_EDIT}</button>`;
   const delBtn   = forHome ? '' : `<button class="icon-btn" onclick="deleteDayTask('${day}','${t.id}')" title="Hapus">${_SVG_TRASH}</button>`;
 
