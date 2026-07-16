@@ -2332,32 +2332,68 @@ let _fbErrNotified = false;
 let _fbLastPushedTs    = 0;    // timestamp terakhir yang kita push, agar tidak echo sendiri
 let _fbEventSource     = null; // referensi SSE connection
 let _pendingRemoteState = null; // state dari device lain yang ditunda karena user sedang mengetik
+let _fbPendingSnapshot  = null; // snapshot yang tertunda karena push sebelumnya masih berjalan
+let _fbRetryAttempt    = 0;    // hitungan kegagalan berturut-turut, buat exponential backoff
 
 function _fbUrl(){ return `${FIREBASE_DB_URL}/${FIREBASE_DATA_PATH}.json`; }
 
 // ── PUSH: kirim state ke Firebase (debounced 800ms) ──
 function firebasePush(snapshot){
   clearTimeout(_fbSyncTimer);
-  _fbSyncTimer = setTimeout(async () => {
-    if(_fbSyncing) return;
-    _fbSyncing = true;
-    try{
-      const res = await fetch(_fbUrl(), {
-        method : 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body   : JSON.stringify(snapshot),
-      });
-      if(!res.ok) throw new Error('HTTP ' + res.status);
-      _fbLastPushedTs = (snapshot.meta && snapshot.meta.updatedAt) || 0;
-      _fbErrNotified  = false;
-    } catch(e){
-      console.error('[FIREBASE] Gagal push:', e);
-      if(!_fbErrNotified){
-        _fbErrNotified = true;
-        showToast('⚠️ Gagal sinkron ke cloud. Data tetap tersimpan di perangkat ini.', 'bad');
+  _fbSyncTimer = setTimeout(() => _fbDoPush(snapshot), 800);
+}
+
+// Eksekusi push sesungguhnya. Kalau ada push lain yang masih berjalan (_fbSyncing),
+// snapshot ini disimpan sebagai "pending" dan otomatis dikirim ulang begitu push yang
+// sedang berjalan selesai — supaya tidak ada snapshot yang diam-diam terbuang.
+async function _fbDoPush(snapshot){
+  if(_fbSyncing){
+    _fbPendingSnapshot = snapshot;
+    return;
+  }
+  _fbSyncing = true;
+  let _failed = false;
+  try{
+    const res = await fetch(_fbUrl(), {
+      method : 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body   : JSON.stringify(snapshot),
+    });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    _fbLastPushedTs = (snapshot.meta && snapshot.meta.updatedAt) || 0;
+    _fbErrNotified  = false;
+    _fbRetryAttempt = 0; // reset backoff — koneksi pulih
+  } catch(e){
+    _failed = true;
+    console.error('[FIREBASE] Gagal push:', e);
+    // Simpan kembali sebagai pending supaya tetap dicoba lagi (bukan cuma dibuang),
+    // kecuali sudah ada snapshot pending yang lebih baru menunggu.
+    if(!_fbPendingSnapshot || (snapshot.meta && snapshot.meta.updatedAt) >= ((_fbPendingSnapshot.meta && _fbPendingSnapshot.meta.updatedAt) || 0)){
+      _fbPendingSnapshot = snapshot;
+    }
+    if(!_fbErrNotified){
+      _fbErrNotified = true;
+      showToast('⚠️ Gagal sinkron ke cloud. Data tetap tersimpan di perangkat ini.', 'bad');
+    }
+  } finally {
+    _fbSyncing = false;
+    if(_fbPendingSnapshot){
+      const next = _fbPendingSnapshot;
+      _fbPendingSnapshot = null;
+      if(_failed){
+        // Backoff eksponensial (1s, 2s, 4s, ... dibatasi maks 30s) supaya offline berkepanjangan
+        // tidak memicu banjir request gagal berturut-turut tanpa jeda — dulu retry langsung
+        // dipanggil ulang seketika di sini.
+        _fbRetryAttempt++;
+        const delay = Math.min(1000 * Math.pow(2, _fbRetryAttempt - 1), 30000);
+        setTimeout(() => _fbDoPush(next), delay);
+      } else {
+        // Snapshot ini masuk sebagai antrean normal (bukan hasil kegagalan) — misalnya ada
+        // perubahan baru saat push sebelumnya masih berjalan — jadi tidak perlu ditunda.
+        _fbDoPush(next);
       }
-    } finally { _fbSyncing = false; }
-  }, 800);
+    }
+  }
 }
 
 // ── PULL: ambil snapshot sekali (untuk load awal) ──
@@ -2369,22 +2405,40 @@ async function firebasePull(){
   } catch(e){ console.error('[FIREBASE] Gagal pull:', e); return null; }
 }
 
-// ── RESOLVE ON LOAD: bandingkan lokal vs cloud, pakai yang paling baru ──
+// ── RESOLVE ON LOAD: ambil snapshot cloud mentah-mentah (kalau ada) ──
+// Sengaja TIDAK memilih/menimpang salah satu sisi di sini lagi (dulu: return cloud ATAU
+// localState, memilih salah satu utuh) — pemanggil (init()) yang menentukan mana yang lebih
+// baru dan memanggil mergeRemoteState(newer, older) dengan `cloud` dan `localState` sebagai dua
+// objek terpisah. Kalau fungsi ini yang memilih, saat localState menang maka nilai baliknya persis
+// == localState, sehingga mergeRemoteState(loaded, resolved) di pemanggil jadi mergeRemoteState
+// (loaded, loaded) — merge dengan diri sendiri, entri yang cuma ada di cloud tidak pernah ikut
+// masuk. Dengan mengembalikan cloud apa adanya, pemanggil selalu punya dua sisi yang berbeda.
 async function firebaseResolveOnLoad(localState){
-  const cloud = await firebasePull();
-  if(!cloud)      return localState;
-  if(!localState) return cloud;
-  const localTs = (localState.meta && localState.meta.updatedAt) || 0;
-  const cloudTs = (cloud.meta     && cloud.meta.updatedAt)      || 0;
-  return cloudTs > localTs ? cloud : localState;
+  return await firebasePull(); // null kalau tidak ada data / gagal fetch
 }
 
 // ── REAL-TIME LISTENER: SSE Firebase → update UI otomatis dari device lain ──
 // Terapkan state dari device lain: replace state, simpan lokal, re-render.
 function _applyRemoteState(incoming){
-  state = migrateState(deepMerge(DEFAULT_STATE(), incoming));
+  // Sama seperti resolve-on-load: kalau state lokal saat ini sudah di-rollover untuk hari ini,
+  // bawa penanda itu ke state remote sebelum di-apply, supaya rollover() di bawah tidak
+  // menghitung ulang penalti hari-berganti (HP/EXP/streak) yang sudah pernah diterapkan.
+  const _rolledDate = state && state.meta ? state.meta.lastActiveDate : null;
+  const _rolledWeekKey = state && state.meta ? state.meta.lastWeekKey : null;
+  const _rolledMonthKey = state && state.meta ? state.meta.lastMonthKey : null;
+  // `incoming` sudah dipastikan lebih baru dari `state` saat ini oleh pemanggil (cek timestamp
+  // di listener SSE) — gabungkan (bukan replace total) supaya entri yang baru saja ditambah di
+  // device ini (belum sempat ter-push saat update remote ini datang) tidak ikut hilang.
+  const merged = mergeRemoteState(incoming, state);
+  state = migrateState(deepMerge(DEFAULT_STATE(), merged));
+  if(_rolledDate === todayStr()){
+    state.meta.lastActiveDate = _rolledDate;
+    state.meta.lastWeekKey = _rolledWeekKey;
+    state.meta.lastMonthKey = _rolledMonthKey;
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   rollover(); recomputeLifeScore(); render();
+  sweepHistoryArchive(state);
   showToast('🔄 Disinkron dari perangkat lain', 'good');
 }
 
@@ -3287,14 +3341,14 @@ function renderSectionMgrModal() {
   // ── 5-Group + sub-tab selector (sesuai navigasi baru) ──
   const _SMG = {
     home:      { icon:'🏠', label:'Home',     tabs:['home'] },
-    quest:     { icon:'⚔️', label:'Quest',    tabs:['quests','goals','project','ritual','refleksi'] },
+    quest:     { icon:'⚔️', label:'Quest',    tabs:['quests','goals','project','ritual','refleksi','evaluasiMingguan'] },
     progres:   { icon:'📊', label:'Progres',  tabs:['stats','caracter','enlight'] },
     finansial: { icon:'💰', label:'Finansial',tabs:['boss'] },
     profil:    { icon:'👤', label:'Profil',   tabs:['profile','hall','lifeenc','realmenc'] },
   };
   const _SMG_TAB_LABELS = {
     home:'Home', quests:'Quest', goals:'Goals', project:'Project',
-    ritual:'Ritual', refleksi:'Refleksi', stats:'Stats', caracter:'Character',
+    ritual:'Ritual', refleksi:'Refleksi', evaluasiMingguan:'Evaluasi', stats:'Stats', caracter:'Character',
     enlight:'Enlight', boss:'Finansial', profile:'Profile', hall:'Fame',
     lifeenc:'Life Enc', realmenc:'Realm',
   };
@@ -3315,7 +3369,7 @@ function renderSectionMgrModal() {
   const allTabs = [
     ['','— Tab Asli —'],
     ['home','🏠 Home'], ['quests','⚡ Quest'], ['goals','🎯 Goals'],
-    ['project','📋 Project'], ['ritual','🕌 Ritual'], ['refleksi','✦ Refleksi'],
+    ['project','📋 Project'], ['ritual','🕌 Ritual'], ['refleksi','✦ Refleksi'], ['evaluasiMingguan','📋 Evaluasi'],
     ['stats','📊 Stats'], ['caracter','⚡ Character'], ['enlight','💡 Enlight'],
     ['boss','💰 Finansial'], ['profile','👤 Profile'], ['hall','👑 Fame'],
     ['lifeenc','📖 Life Enc'], ['realmenc','🌌 Realm'],
@@ -3485,13 +3539,15 @@ function DEFAULT_STATE(){
     hallOfFame: [],
     weeklyShiftPlan: {senin:'pagi', selasa:'pagi', rabu:'siang', kamis:'siang', jumat:'pagi', sabtu:'siang', minggu:'libur'},
     weeklyDaySchedule: {
-      senin:{tasks:[],lastReset:''}, selasa:{tasks:[],lastReset:''}, rabu:{tasks:[],lastReset:''},
-      kamis:{tasks:[],lastReset:''}, jumat:{tasks:[],lastReset:''}, sabtu:{tasks:[],lastReset:''}, minggu:{tasks:[],lastReset:''}
+      pagi:   {senin:{tasks:[],lastReset:''}, selasa:{tasks:[],lastReset:''}, rabu:{tasks:[],lastReset:''}, kamis:{tasks:[],lastReset:''}, jumat:{tasks:[],lastReset:''}, sabtu:{tasks:[],lastReset:''}, minggu:{tasks:[],lastReset:''}},
+      siang:  {senin:{tasks:[],lastReset:''}, selasa:{tasks:[],lastReset:''}, rabu:{tasks:[],lastReset:''}, kamis:{tasks:[],lastReset:''}, jumat:{tasks:[],lastReset:''}, sabtu:{tasks:[],lastReset:''}, minggu:{tasks:[],lastReset:''}},
+      custom: {senin:{tasks:[],lastReset:''}, selasa:{tasks:[],lastReset:''}, rabu:{tasks:[],lastReset:''}, kamis:{tasks:[],lastReset:''}, jumat:{tasks:[],lastReset:''}, sabtu:{tasks:[],lastReset:''}, minggu:{tasks:[],lastReset:''}},
     },
     commerce_deadline: new Date(new Date().getFullYear(), 11, 1).toISOString(),
     spiritCompanion: { bondLevel:1, bondExp:0, lastOpenDate:'', recentGreetings:[], lastDialog:'', lastDialogTs:0, lastDailyWisdom:'', lastDailyWisdomDate:'', recentWisdomIdx:[], commentedHof:[], hallVisited:false },
     sectionConfig: {},
     refleksi: {journals:[], questions:[]},
+    evaluasiMingguan: { entries:[], customQuestions:[] },
   };
 }
 
@@ -3625,6 +3681,7 @@ function _riwayatArchiveUpsert(cat, dateField, entry){
   else arr.push({...entry});
 }
 function migrateState(s){
+  ensureTombstones(s);
   if(!Array.isArray(s.goals)) s.goals = []; if(!Array.isArray(s.habits)) s.habits = []; if(!s.meta.activityLog) s.meta.activityLog = {}; if(!s.meta.activityNotes) s.meta.activityNotes = {}; if(!Array.isArray(s.goalHistory)) s.goalHistory = []; if(!Array.isArray(s.lifeTimeline)) s.lifeTimeline = []; if(!Array.isArray(s.lifeMomentum)) s.lifeMomentum = [];
   if(typeof s.meta.dailyExpEarned !== 'number') s.meta.dailyExpEarned = 0; if(!s.meta.dailyExpLog) s.meta.dailyExpLog = {};
   if(!s.schedule || !s.schedule.pagi) s.schedule = JSON.parse(JSON.stringify(DEFAULT_SCHEDULE));
@@ -3666,6 +3723,9 @@ function migrateState(s){
   if(!s.refleksi) s.refleksi = {journals:[],questions:[]};
   if(!Array.isArray(s.refleksi.journals)) s.refleksi.journals = [];
   if(!Array.isArray(s.refleksi.questions)) s.refleksi.questions = [];
+  if(!s.evaluasiMingguan) s.evaluasiMingguan = {entries:[], customQuestions:[]};
+  if(!Array.isArray(s.evaluasiMingguan.entries)) s.evaluasiMingguan.entries = [];
+  if(!Array.isArray(s.evaluasiMingguan.customQuestions)) s.evaluasiMingguan.customQuestions = [];
   // Migrasi: answers[] dengan id, pinnedProfile, _ts + migrasi q.answer ke combined history
   s.refleksi.questions.forEach(q => {
     if(!Array.isArray(q.answers)) {
@@ -3702,14 +3762,22 @@ function migrateState(s){
   if(typeof s.settings.showRefleksiHome !== 'boolean') s.settings.showRefleksiHome = true;
   if(typeof s.settings.showRefleksiProfile !== 'boolean') s.settings.showRefleksiProfile = true;
   if(typeof s.settings.showDailySchedule !== 'boolean') s.settings.showDailySchedule = true;
-  // Migrasi weeklyDaySchedule
+  // Migrasi weeklyDaySchedule ke format template (pagi/siang/custom)
   const _wdDays = ['senin','selasa','rabu','kamis','jumat','sabtu','minggu'];
+  const _wdTpls = ['pagi','siang','custom'];
   if(!s.weeklyDaySchedule) s.weeklyDaySchedule = {};
-  _wdDays.forEach(d => {
-    if(!s.weeklyDaySchedule[d]) s.weeklyDaySchedule[d] = {tasks:[], lastReset:''};
-    if(!Array.isArray(s.weeklyDaySchedule[d].tasks)) s.weeklyDaySchedule[d].tasks = [];
-    if(!s.weeklyDaySchedule[d].lastReset) s.weeklyDaySchedule[d].lastReset = '';
-    s.weeklyDaySchedule[d].tasks.forEach(t => { if(!t.id) t.id = uid('wt'); if(typeof t.done!=='boolean') t.done=false; if(typeof t.failed!=='boolean') t.failed=false; });
+  // Format lama: key langsung nama hari → pindahkan ke template 'pagi'
+  if(s.weeklyDaySchedule['senin'] !== undefined && !s.weeklyDaySchedule['pagi']){
+    s.weeklyDaySchedule = { pagi: s.weeklyDaySchedule, siang: {}, custom: {} };
+  }
+  _wdTpls.forEach(tpl => {
+    if(!s.weeklyDaySchedule[tpl]) s.weeklyDaySchedule[tpl] = {};
+    _wdDays.forEach(d => {
+      if(!s.weeklyDaySchedule[tpl][d]) s.weeklyDaySchedule[tpl][d] = {tasks:[], lastReset:''};
+      if(!Array.isArray(s.weeklyDaySchedule[tpl][d].tasks)) s.weeklyDaySchedule[tpl][d].tasks = [];
+      if(!s.weeklyDaySchedule[tpl][d].lastReset) s.weeklyDaySchedule[tpl][d].lastReset = '';
+      s.weeklyDaySchedule[tpl][d].tasks.forEach(t => { if(!t.id) t.id = uid('wt'); if(typeof t.done!=='boolean') t.done=false; if(typeof t.failed!=='boolean') t.failed=false; });
+    });
   });
   if(!Array.isArray(s.hallOfFame)) s.hallOfFame = [];
   if(!s.sectionConfig) s.sectionConfig = {};
@@ -3745,6 +3813,75 @@ function deepMerge(def, loaded){
     if(loaded){ for(const k in loaded){ if(!(k in out)) out[k]=loaded[k]; } } return out;
   }
   return loaded!==undefined ? loaded : def;
+}
+
+// ── TOMBSTONE: catatan id yang sudah sengaja dihapus, per koleksi yang ikut di-sync ──
+// Union-by-id (di bawah) cuma tahu cara MENAMBAH, tidak tahu soal PENGHAPUSAN — kalau device A
+// menghapus sebuah quest sementara device B belum sempat sinkron (masih punya salinan lama quest
+// itu), union polos akan menghidupkan lagi quest yang sudah dihapus. Tombstone mencegah itu:
+// setiap kali sebuah item dihapus, id-nya dicatat permanen di state.meta.tombstones supaya proses
+// merge tahu id itu harus tetap dibuang meski masih muncul di sisi yang lebih lama.
+const TOMBSTONE_COLLECTIONS = ['quests','financeLog','goals','habits','targets','completedTargets','customRituals','customStats','kanbanCards','sedekahEntries'];
+function ensureTombstones(s){
+  if(!s.meta) s.meta = {};
+  if(!s.meta.tombstones || typeof s.meta.tombstones !== 'object') s.meta.tombstones = {};
+  TOMBSTONE_COLLECTIONS.forEach(k=>{
+    if(!s.meta.tombstones[k] || typeof s.meta.tombstones[k] !== 'object') s.meta.tombstones[k] = {};
+  });
+  return s.meta.tombstones;
+}
+// Panggil ini di SETIAP tempat yang menghapus/memindahkan-keluar item dari salah satu koleksi
+// di atas (quest, transaksi, goal, habit, target, kanban card, dst), SEBELUM atau SESUDAH item
+// dibuang dari array-nya — supaya penghapusan itu tetap "menang" walau device lain belum sinkron.
+function markDeleted(collectionKey, id){
+  if(id==null || !TOMBSTONE_COLLECTIONS.includes(collectionKey)) return;
+  ensureTombstones(state);
+  state.meta.tombstones[collectionKey][String(id)] = Date.now();
+}
+
+// Gabungkan dua array of objects berdasarkan field id (default `id`, bisa dikustom lewat idKey
+// misalnya `key` untuk customStats) — bukan pilih salah satu utuh. Item yang cuma ada di sisi
+// `older` tetap dipertahankan (disisipkan di belakang), item yang ada di kedua sisi memakai versi
+// dari `newer`, dan id yang tercatat di `deadIds` (tombstone) selalu dibuang dari hasil akhir.
+function _unionById(newerArr, olderArr, deadIds, idKey){
+  idKey = idKey || 'id';
+  const a = Array.isArray(newerArr) ? newerArr : [];
+  const b = Array.isArray(olderArr) ? olderArr : [];
+  const dead = deadIds || {};
+  const isDead = v => v!=null && Object.prototype.hasOwnProperty.call(dead, String(v));
+  const seen = new Set(a.filter(x=>x && x[idKey]!=null).map(x=>x[idKey]));
+  const onlyInOlder = b.filter(x=>x && x[idKey]!=null && !seen.has(x[idKey]) && !isDead(x[idKey]));
+  return a.concat(onlyInOlder).filter(x=>!(x && x[idKey]!=null && isDead(x[idKey])));
+}
+
+// Gabungkan state `newer` (dianggap sumber kebenaran untuk field skalar seperti character/meta/stats,
+// supaya angka HP/EXP/level tidak tercampur dari 2 sumber berbeda) dengan `older` — tapi untuk
+// koleksi yang isinya "entri yang ditambah user" (quest, transaksi keuangan, goal, habit, kanban,
+// sedekah, target, dst), lakukan UNION per-id (dikurangi id yang sudah di-tombstone di salah satu
+// sisi) supaya entri yang cuma ditambahkan di sisi yang "kalah" (older) tidak ikut hilang, dan entri
+// yang sudah sengaja dihapus tidak ikut dihidupkan kembali.
+function mergeRemoteState(newer, older){
+  if(!older) return newer;
+  if(!newer) return older;
+  const merged = JSON.parse(JSON.stringify(newer));
+  const newerTomb = (newer.meta && newer.meta.tombstones) || {};
+  const olderTomb = (older.meta && older.meta.tombstones) || {};
+  const tomb = {};
+  TOMBSTONE_COLLECTIONS.forEach(k=>{ tomb[k] = Object.assign({}, olderTomb[k]||{}, newerTomb[k]||{}); });
+  if(!merged.meta) merged.meta = {};
+  merged.meta.tombstones = tomb;
+
+  merged.quests           = _unionById(merged.quests, older.quests, tomb.quests);
+  merged.financeLog       = _unionById(merged.financeLog, older.financeLog, tomb.financeLog);
+  merged.goals            = _unionById(merged.goals, older.goals, tomb.goals);
+  merged.habits           = _unionById(merged.habits, older.habits, tomb.habits);
+  merged.targets          = _unionById(merged.targets, older.targets, tomb.targets);
+  merged.completedTargets = _unionById(merged.completedTargets, older.completedTargets, tomb.completedTargets);
+  merged.customRituals    = _unionById(merged.customRituals, older.customRituals, tomb.customRituals);
+  merged.customStats      = _unionById(merged.customStats, older.customStats, tomb.customStats, 'key');
+  if(merged.kanban && older.kanban) merged.kanban.cards = _unionById(merged.kanban.cards, older.kanban.cards, tomb.kanbanCards);
+  if(merged.sedekah && older.sedekah) merged.sedekah.entries = _unionById(merged.sedekah.entries, older.sedekah.entries, tomb.sedekahEntries);
+  return merged;
 }
 
 function loadState(){ try{ const saved = localStorage.getItem(STORAGE_KEY); if(saved) return JSON.parse(saved); } catch(e) { console.error(e); } return null; }
@@ -4206,7 +4343,7 @@ function postponeQuest(id){ const q = state.quests.find(x=>x.id===id); if(!q) re
 function resetQuestStatus(id){ const q = state.quests.find(x=>x.id===id); if(!q) return; q.status='pending'; render(); save(); }
 function deleteQuestConfirm(id){
   const q = state.quests.find(x=>x.id===id); if(!q) return;
-  openConfirm('Hapus quest "'+escapeHtml(q.title)+'"? Tindakan ini tidak dapat dibatalkan.', ()=>{ state.quests = state.quests.filter(x=>x.id!==id); render(); save(); });
+  openConfirm('Hapus quest "'+escapeHtml(q.title)+'"? Tindakan ini tidak dapat dibatalkan.', ()=>{ markDeleted('quests', id); state.quests = state.quests.filter(x=>x.id!==id); render(); save(); });
 }
 
 // Duplikat quest — salin semua data quest (judul, tipe, stat, reward, dll) jadi quest baru berstatus pending.
@@ -4378,7 +4515,7 @@ function rollover(){
               logHpChange(-htHpLoss, `Heaven Trampling Punishment: ${missedCount} quest terlewat`);
               // Kehilangan 1 LV — level global turun, realm ikut sync otomatis via gainExp
               if(isHeavenTrampling()){
-                  state.character.level = Math.max(MAX_LEVEL, state.character.level - 1);
+                  state.character.level = Math.max(1, state.character.level - 1);
                   state.character.exp = 0;
               }
               // EXP loss: 20% dari EXP yang dibutuhkan untuk level saat ini
@@ -4636,7 +4773,7 @@ function addCustomRitual() {
     render(); save();
 }
 function deleteCustomRitual(id) {
-    if(confirm("Hapus ritual kustom ini?")) { state.customRituals = state.customRituals.filter(x => x.id !== id); render(); save(); }
+    if(confirm("Hapus ritual kustom ini?")) { markDeleted('customRituals', id); state.customRituals = state.customRituals.filter(x => x.id !== id); render(); save(); }
 }
 
 function habitConsecutiveDays(h, fromDate) {
@@ -4679,7 +4816,7 @@ function checkAllHabitsDoneToday(dateStr){
   }
 }
 function addHabit(){ const titleEl = document.getElementById('ah-title'); const title = titleEl.value.trim(); if(!title){ titleEl.focus(); return; } state.habits.push({ id:uid('h'), title, log:{}, createdAt:Date.now() }); titleEl.value=''; closeModal('modal-add-habit'); render(); save(); }
-function deleteHabit(id){ const h = state.habits.find(x=>x.id===id); if(!h) return; openConfirm('Hapus habit "'+escapeHtml(h.title)+'" beserta seluruh riwayatnya?', ()=>{ state.habits = state.habits.filter(x=>x.id!==id); state.meta.habitsDeleted = (state.meta.habitsDeleted||0) + 1; render(); save(); }); }
+function deleteHabit(id){ const h = state.habits.find(x=>x.id===id); if(!h) return; openConfirm('Hapus habit "'+escapeHtml(h.title)+'" beserta seluruh riwayatnya?', ()=>{ markDeleted('habits', id); state.habits = state.habits.filter(x=>x.id!==id); state.meta.habitsDeleted = (state.meta.habitsDeleted||0) + 1; render(); save(); }); }
 function getLast7Days(){ const days = []; const dayNames = ['Min','Sen','Sel','Rab','Kam','Jum','Sab']; for(let i=6; i>=0; i--){ const d = new Date(); d.setDate(d.getDate() - i); days.push({ dateStr: d.toLocaleDateString('en-CA'), label: dayNames[d.getDay()], isToday: i===0 }); } return days; }
 
 function addFinanceTransaction(){
@@ -4853,6 +4990,7 @@ function applyTargetDamage(target, amount){
       if(!state.completedTargets) state.completedTargets = [];
       state.completedTargets.unshift({ id: uid('ct'), name: target.name, maxHp: target.maxHp, completedAt: todayStr(), reward });
       if(state.completedTargets.length > 20) state.completedTargets.length = 20;
+      markDeleted('targets', target.id);
       state.targets = state.targets.filter(t => t.id !== target.id);
   }
 }
@@ -4893,6 +5031,7 @@ function updateBossTarget(){
 
 function deleteBossTarget(id) {
     if(confirm('Hapus Target Finansial ini?')) {
+        markDeleted('targets', id);
         state.targets = state.targets.filter(t => t.id !== id);
         render(); save();
     }
@@ -5022,7 +5161,7 @@ function submitGoalProgress(){
   }
   closeModal('modal-update-goal'); render(); save();
 }
-function deleteGoalConfirm(id){ const g = state.goals.find(x=>x.id===id); if(!g) return; openConfirm('Hapus goal "'+escapeHtml(g.title)+'"?', ()=>{ state.goals = state.goals.filter(x=>x.id!==id); render(); save(); }); }
+function deleteGoalConfirm(id){ const g = state.goals.find(x=>x.id===id); if(!g) return; openConfirm('Hapus goal "'+escapeHtml(g.title)+'"?', ()=>{ markDeleted('goals', id); state.goals = state.goals.filter(x=>x.id!==id); render(); save(); }); }
 
 function getCurrentTimeBlockInfo() {
     const shift = getTodayActiveShift() === 'libur' ? state.character.shift : getTodayActiveShift();
@@ -5784,7 +5923,7 @@ function render(){
     renderRecoveryBanner(); renderHpZeroBanner(); renderConsequencePopup(); renderNav(); renderBottomNav(); updateMoodChip();
     const main = document.getElementById('main'); const tab = state.ui && state.ui.tab ? state.ui.tab : 'home';
     if(_rvRaf){ cancelAnimationFrame(_rvRaf); _rvRaf = null; } // cancel old FX before re-render
-    if(tab==='home') main.innerHTML = renderHome(); else if(tab==='quests') main.innerHTML = renderQuests(); else if(tab==='goals') main.innerHTML = renderGoals(); else if(tab==='stats') main.innerHTML = renderStats(); else if(tab==='boss') main.innerHTML = renderBoss(); else if(tab==='ritual') main.innerHTML = renderRitual(); else if(tab==='profile') main.innerHTML = renderProfile(); else if(tab==='project') main.innerHTML = renderProjectKanban(); else if(tab==='enlight') main.innerHTML = renderStatisticsTable(); else if(tab==='realmenc') main.innerHTML = renderRealmEncyclopedia(); else if(tab==='lifeenc') main.innerHTML = renderLifeEncyclopedia(); else if(tab==='hall') main.innerHTML = renderHallOfFame(); else if(tab==='caracter') main.innerHTML = renderCharacterMomentumTab(); else if(tab==='refleksi') main.innerHTML = renderRefleksi(); else if(tab==='riwayat') main.innerHTML = renderHistoryArchive();
+    if(tab==='home') main.innerHTML = renderHome(); else if(tab==='quests') main.innerHTML = renderQuests(); else if(tab==='goals') main.innerHTML = renderGoals(); else if(tab==='stats') main.innerHTML = renderStats(); else if(tab==='boss') main.innerHTML = renderBoss(); else if(tab==='ritual') main.innerHTML = renderRitual(); else if(tab==='profile') main.innerHTML = renderProfile(); else if(tab==='project') main.innerHTML = renderProjectKanban(); else if(tab==='enlight') main.innerHTML = renderStatisticsTable(); else if(tab==='realmenc') main.innerHTML = renderRealmEncyclopedia(); else if(tab==='lifeenc') main.innerHTML = renderLifeEncyclopedia(); else if(tab==='hall') main.innerHTML = renderHallOfFame(); else if(tab==='caracter') main.innerHTML = renderCharacterMomentumTab(); else if(tab==='refleksi') main.innerHTML = renderRefleksi(); else if(tab==='evaluasiMingguan') main.innerHTML = renderEvaluasiMingguan(); else if(tab==='riwayat') main.innerHTML = renderHistoryArchive();
     if(tab==='project') setTimeout(initProjectCharts, 60);
     else if(tab==='goals') setTimeout(initGoalCharts, 60);
     else if(tab==='stats') setTimeout(initStatsChart, 60);
@@ -6292,7 +6431,7 @@ function renderStats(){
 }
 function statBarHTML(key){ const meta = statDef(key); if(!meta) return ''; const val = state.stats[key]||0; const pct = Math.max(2, Math.min(100,val)); const icon = getGroupIcon(meta.group); const idLabel = STAT_ID_LABELS[key] || ''; return `<div class="stat-row"><div class="stat-row-top"><span class="stat-name">${icon} ${meta.label}${idLabel ? `<span style="font-size:9.5px;color:var(--muted);font-weight:400;display:block;margin-top:1px;letter-spacing:0;">${idLabel}</span>` : ''}</span><span class="stat-val">${val}</span></div><div class="stat-track"><div class="stat-fill" style="width:${pct}%;background:${meta.color}"></div></div></div>`; }
 function addCustomStat(){ const labelEl = document.getElementById('as-label'); const label = labelEl.value.trim(); if(!label) return; const group = document.getElementById('as-group').value; const key = 'custom_'+label.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')+'_'+Math.random().toString(36).slice(2,5); const colorMap = {Body:'var(--jade)',Mind:'var(--cyan)',Social:'var(--arise-bright)',Soul:'var(--gold)',Finansial:'var(--gold)',Custom:'var(--orange)'}; state.customStats.push({key, label, group, color: colorMap[group]||'var(--orange)'}); state.stats[key] = 0; labelEl.value=''; closeModal('modal-add-stat'); buildModals(); render(); save(); }
-function deleteCustomStat(key){ const cs = state.customStats.find(s=>s.key===key); if(!cs) return; openConfirm('Hapus stat kustom "'+escapeHtml(cs.label)+'"?', ()=>{ state.customStats = state.customStats.filter(s=>s.key!==key); delete state.stats[key]; buildModals(); render(); save(); }); }
+function deleteCustomStat(key){ const cs = state.customStats.find(s=>s.key===key); if(!cs) return; openConfirm('Hapus stat kustom "'+escapeHtml(cs.label)+'"?', ()=>{ markDeleted('customStats', key); state.customStats = state.customStats.filter(s=>s.key!==key); delete state.stats[key]; buildModals(); render(); save(); }); }
 
 function renderBoss(){
     const targetsHtml = (state.targets || []).map(t => {
@@ -6881,30 +7020,56 @@ function deleteRefleksiAnswer(qId, answerId){
     state.historyArchive.refleksi = state.historyArchive.refleksi.filter(e=>!(e.id===answerId && e._sourceType==='answer'));
   save(); render();
 }
-function renderRefleksiProfileChip(){
-  if(!state.settings?.showRefleksiProfile) return '';
+// Cari jawaban yang di-pin untuk profil: cek active array dulu, lalu arsip sebagai fallback.
+// Sebelumnya hanya cek active — kalau jawaban sudah tersapu ke historyArchive (>30 hari /
+// overflow), klik "Pakai di Profil" sudah menyimpan pinnedProfile di arsip tapi chip tidak
+// pernah membacanya sehingga tampilan profil selalu kosong.
+function _findPinnedRefleksiAnswer(){
   const rf = state.refleksi || {};
-  let pinnedAnswer = null; let pinnedQ = null;
+  // 1) Active questions array
   for(const q of (rf.questions||[])){
     const a = (q.answers||[]).find(x=>x.pinnedProfile);
-    if(a){ pinnedAnswer = a; pinnedQ = q; break; }
+    if(a) return { pinnedAnswer: a, pinnedQ: q, fromArchive: false };
   }
-  if(!pinnedAnswer) return '';
-  const short = pinnedAnswer.text.slice(0,80)+(pinnedAnswer.text.length>80?'…':'');
+  // 2) historyArchive fallback — jawaban yang sudah tersapu dari active tapi masih pinned
+  const archAns = (state.historyArchive?.refleksi||[]).find(e=>e._sourceType==='answer' && e.pinnedProfile);
+  if(archAns){
+    // Bangun objek pertanyaan sintetis dari data yang tersimpan di arsip
+    const syntheticQ = { id: archAns.questionId||'', q: archAns.questionText||'(pertanyaan dihapus)' };
+    return { pinnedAnswer: archAns, pinnedQ: syntheticQ, fromArchive: true };
+  }
+  return null;
+}
+
+function renderRefleksiProfileChip(){
+  if(!state.settings?.showRefleksiProfile) return '';
+  const found = _findPinnedRefleksiAnswer();
+  if(!found) return '';
+  const { pinnedAnswer, pinnedQ } = found;
+  const isLong = pinnedAnswer.text.length > 80;
+  const short = escapeHtml(pinnedAnswer.text.slice(0,80)) + (isLong ? '…' : '');
+  const full  = escapeHtml(pinnedAnswer.text).replace(/\n/g,'<br>');
+  const qText = pinnedQ?.q ? `<div style="font-size:10px;font-style:italic;color:rgba(200,168,75,0.65);margin-bottom:4px;font-family:var(--font-display);font-weight:700;line-height:1.4;">❓ ${escapeHtml(pinnedQ.q)}</div>` : '';
+  const toggleBtn = isLong ? `<button class="btn btn-ghost btn-sm" id="rpc-toggle-btn" onclick="
+    var p=document.getElementById('rpc-preview');
+    var f=document.getElementById('rpc-full');
+    var expanded=f.style.display!=='none';
+    f.style.display=expanded?'none':'block';
+    p.style.display=expanded?'block':'none';
+    this.textContent=expanded?'📖 Baca Selengkapnya':'🔼 Sederhanakan';
+  " style="margin-top:5px;font-size:10px;padding:3px 10px;letter-spacing:0.3px;">📖 Baca Selengkapnya</button>` : '';
   return `<div style="margin-top:7px;">
-    <div class="refleksi-profile-chip" style="cursor:default;"><span>✦</span><span>${escapeHtml(short)}</span></div>
-    <button class="btn btn-ghost btn-sm" onclick="openRefleksiFullModal()" style="margin-top:5px;font-size:10px;padding:3px 10px;letter-spacing:0.3px;">📖 Baca Selengkapnya</button>
+    ${qText}
+    <div id="rpc-preview" class="refleksi-profile-chip" style="cursor:default;white-space:normal;line-height:1.5;"><span>✦</span><span>${short}</span></div>
+    ${isLong ? `<div id="rpc-full" class="refleksi-profile-chip" style="display:none;cursor:default;white-space:pre-wrap;line-height:1.6;"><span>✦</span><span>${full}</span></div>` : ''}
+    ${toggleBtn}
   </div>`;
 }
 
 function openRefleksiFullModal(){
-  const rf = state.refleksi || {};
-  let pinnedAnswer = null; let pinnedQ = null;
-  for(const q of (rf.questions||[])){
-    const a = (q.answers||[]).find(x=>x.pinnedProfile);
-    if(a){ pinnedAnswer = a; pinnedQ = q; break; }
-  }
-  if(!pinnedAnswer||!pinnedQ) return;
+  const found = _findPinnedRefleksiAnswer();
+  if(!found) return;
+  const { pinnedAnswer, pinnedQ } = found;
   document.getElementById('rfm-question').textContent = pinnedQ.q;
   document.getElementById('rfm-answer').textContent   = pinnedAnswer.text;
   document.getElementById('rfm-ts').textContent       = pinnedAnswer.ts ? '📅 Diperbarui: '+pinnedAnswer.ts : '';
@@ -7211,9 +7376,13 @@ function deleteFromPermanen(cat, keys){
   }
   // Sinkron hapus dari sumber aktif
   if(cat==='finansial'){
+    (state.financeLog||[]).forEach(e=>{ if(ks.has(_riwayatEntryKey('finansial',e)) && e.id!=null) markDeleted('financeLog', e.id); });
     state.financeLog = (state.financeLog||[]).filter(e=>!ks.has(_riwayatEntryKey('finansial',e)));
   } else if(cat==='sedekah'){
-    if(state.sedekah) state.sedekah.entries = (state.sedekah.entries||[]).filter(e=>!ks.has(_riwayatEntryKey('sedekah',e)));
+    if(state.sedekah){
+      (state.sedekah.entries||[]).forEach(e=>{ if(ks.has(_riwayatEntryKey('sedekah',e)) && e.id!=null) markDeleted('sedekahEntries', e.id); });
+      state.sedekah.entries = (state.sedekah.entries||[]).filter(e=>!ks.has(_riwayatEntryKey('sedekah',e)));
+    }
   } else if(cat==='momentum'){
     state.lifeMomentum = (state.lifeMomentum||[]).filter(e=>!ks.has(_riwayatEntryKey('momentum',e)));
   } else if(cat==='goal'){
@@ -7458,6 +7627,179 @@ function _riwayatMonthSummary(cat, entries){
   }
   return `${entries.length} peristiwa`; // timeline
 }
+// ═══════════════════════════════════════════════════════════════
+// EVALUASI MINGGUAN — tab ke-6 di grup Quest. Ruang tinjau mingguan
+// dengan 3 pertanyaan preset + pertanyaan kustom buatan user sendiri.
+// Riwayat dikelompokkan per minggu; reward EXP+Mana setiap kali simpan.
+// ═══════════════════════════════════════════════════════════════
+
+const _EVAL_PRESET_QUESTIONS = [
+  { id:'eq1', q:'Apa yang masih kurang minggu ini?' },
+  { id:'eq2', q:'Apakah aku sudah lebih baik dari minggu sebelumnya? Buktinya apa?' },
+  { id:'eq3', q:'Apa yang harus diperbaiki atau difokuskan minggu depan?' },
+];
+
+// Buat label "Minggu 28 · 7–13 Jul 2026" dari ISO date string (Senin pembuka minggu)
+function _evalWeekLabel(wkStr){
+  if(!wkStr) return '?';
+  const start = new Date(wkStr + 'T00:00:00');
+  const end   = new Date(start); end.setDate(start.getDate() + 6);
+  const opts  = {day:'numeric', month:'short'};
+  const yr    = start.getFullYear();
+  // Hitung nomor minggu ISO
+  const tmp = new Date(Date.UTC(start.getFullYear(), start.getMonth(), start.getDate()));
+  const dow = tmp.getUTCDay() || 7; tmp.setUTCDate(tmp.getUTCDate() + 4 - dow);
+  const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+  const wNum = Math.ceil((((tmp - yearStart) / 86400000) + 1) / 7);
+  return `Minggu ${wNum} · ${start.toLocaleDateString('id-ID', opts)}–${end.toLocaleDateString('id-ID', opts)} ${yr}`;
+}
+
+function renderEvaluasiMingguan(){
+  if(!state.evaluasiMingguan) state.evaluasiMingguan = {entries:[], customQuestions:[]};
+  const em = state.evaluasiMingguan;
+  const allQ = [..._EVAL_PRESET_QUESTIONS, ...(em.customQuestions||[])];
+
+  // ── Form pertanyaan ──
+  const formRows = allQ.map(q => {
+    const isPreset = q.id.startsWith('eq');
+    const delBtn = isPreset ? '' : `<div style="text-align:right;margin-top:4px;">
+      <button class="btn btn-ghost btn-sm" style="font-size:10px;" onclick="deleteEvalCustomQuestion('${q.id}')">🗑 Hapus Pertanyaan</button>
+    </div>`;
+    return `<div style="margin-bottom:14px;">
+      <div style="font-family:var(--font-display);font-weight:700;font-size:12px;color:rgba(200,168,75,0.85);margin-bottom:6px;line-height:1.5;">${isPreset?'❓':'💬'} ${escapeHtml(q.q)}</div>
+      <textarea id="eval-q-${q.id}" class="input" rows="3" placeholder="Tulis jawabanmu..." style="font-family:var(--font-body);resize:vertical;min-height:60px;line-height:1.6;"></textarea>
+      ${delBtn}
+    </div>`;
+  }).join('');
+
+  // ── Riwayat dikelompokkan per minggu ──
+  const entries = (em.entries||[]).slice().sort((a,b)=>(b._ts||0)-(a._ts||0));
+  const byWeek = {};
+  entries.forEach(e => {
+    const wk = e.weekKey || e.date || '?';
+    if(!byWeek[wk]) byWeek[wk] = [];
+    byWeek[wk].push(e);
+  });
+  const histHtml = Object.keys(byWeek).length === 0
+    ? `<div class="small muted" style="text-align:center;padding:20px 0;">Belum ada riwayat evaluasi. Isi evaluasi pertamamu di atas.</div>`
+    : Object.keys(byWeek).map(wk => {
+        const wEntries = byWeek[wk];
+        const entryCards = wEntries.map(e => {
+          const answers = e.answers || {};
+          const customAnswers = e.customAnswers || [];
+          const qRows = allQ.map(q => {
+            const txt = q.id.startsWith('eq')
+              ? (answers[q.id] || '')
+              : ((customAnswers.find(x=>x.qId===q.id)||{}).text || '');
+            if(!txt) return '';
+            return `<div style="margin-bottom:10px;">
+              <div style="font-size:10px;font-weight:700;color:rgba(200,168,75,0.7);margin-bottom:3px;">${escapeHtml(q.q)}</div>
+              <div style="font-size:12.5px;line-height:1.65;color:var(--bone);white-space:pre-wrap;word-break:break-word;">${escapeHtml(txt)}</div>
+            </div>`;
+          }).filter(Boolean).join('');
+          return `<div style="padding:12px;border-radius:10px;background:rgba(200,168,75,0.04);border:1px solid rgba(200,168,75,0.12);margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+              <span style="font-size:9.5px;color:rgba(200,168,75,0.5);font-weight:600;">📅 ${e.date||''} · ${e.ts||''}</span>
+              <button class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 7px;" onclick="deleteEvalEntry('${e.id}')">🗑</button>
+            </div>
+            ${qRows || '<div class="small muted">Tidak ada jawaban tersimpan.</div>'}
+          </div>`;
+        }).join('');
+        return `<div style="margin-bottom:16px;">
+          <div style="font-size:10px;font-weight:800;color:rgba(200,168,75,0.75);letter-spacing:0.8px;text-transform:uppercase;margin-bottom:8px;">📅 ${_evalWeekLabel(wk)}</div>
+          ${entryCards}
+        </div>`;
+      }).join('');
+
+  return `<div>
+    <div class="refleksi-section-title" style="margin-top:4px;">📋 EVALUASI MINGGUAN</div>
+    <div class="small muted" style="text-align:center;margin-bottom:20px;line-height:1.6;font-family:var(--font-body);">Tinjau mingguanmu secara jujur.<br>Riwayat tersimpan per minggu — bisa isi kapan saja.</div>
+
+    <div class="card glass-panel refleksi-journal-card" style="margin-bottom:14px;">
+      <div style="font-family:var(--font-display);font-weight:800;font-size:13px;color:rgba(200,168,75,0.9);margin-bottom:14px;">✍️ Evaluasi Sekarang</div>
+      ${formRows}
+      <div style="border-top:1px solid rgba(200,168,75,0.15);margin:14px 0;"></div>
+      <div style="font-family:var(--font-display);font-weight:800;font-size:11px;color:rgba(200,168,75,0.7);margin-bottom:8px;">➕ Tambah Pertanyaan Sendiri</div>
+      <div style="display:flex;gap:8px;align-items:flex-end;">
+        <textarea id="eval-new-q" class="input" rows="2" placeholder='Contoh: "Kebiasaan apa yang ingin aku bangun minggu depan?"' style="flex:1;resize:none;font-family:var(--font-display);font-weight:700;font-size:12px;line-height:1.5;"></textarea>
+        <button class="btn btn-secondary" style="flex-shrink:0;height:52px;padding:0 14px;font-size:18px;" onclick="addEvalCustomQuestion()">➕</button>
+      </div>
+      <button class="btn btn-secondary btn-block" style="margin-top:14px;font-family:var(--font-display);font-weight:700;letter-spacing:0.5px;" onclick="saveEvaluasiMingguan()">💾 Simpan Evaluasi &nbsp;(+15 EXP · +10 Mana)</button>
+    </div>
+
+    <div class="card glass-panel" style="border-color:rgba(200,168,75,0.2);padding:14px 16px;">
+      <div style="font-family:var(--font-display);font-weight:800;font-size:12px;color:rgba(200,168,75,0.8);margin-bottom:10px;letter-spacing:0.5px;">📜 RIWAYAT EVALUASI${entries.length>0?` <span style="font-weight:500;color:var(--muted);">(${entries.length} entri)</span>`:''}</div>
+      ${histHtml}
+    </div>
+  </div>`;
+}
+
+function saveEvaluasiMingguan(){
+  if(!state.evaluasiMingguan) state.evaluasiMingguan = {entries:[], customQuestions:[]};
+  const em = state.evaluasiMingguan;
+  const allQ = [..._EVAL_PRESET_QUESTIONS, ...(em.customQuestions||[])];
+
+  // Kumpulkan jawaban preset
+  const answers = {};
+  _EVAL_PRESET_QUESTIONS.forEach(q => {
+    const el = document.getElementById('eval-q-' + q.id);
+    if(el) answers[q.id] = el.value.trim();
+  });
+
+  // Kumpulkan jawaban kustom (hanya yang diisi)
+  const customAnswers = (em.customQuestions||[]).map(q => {
+    const el = document.getElementById('eval-q-' + q.id);
+    return { qId: q.id, text: el ? el.value.trim() : '' };
+  }).filter(x => x.text);
+
+  // Minimal satu jawaban diisi
+  const hasAny = Object.values(answers).some(v => v) || customAnswers.length > 0;
+  if(!hasAny){ showToast('Isi minimal satu jawaban dulu.', 'bad'); return; }
+
+  const now = new Date();
+  em.entries.unshift({
+    id        : uid('ev'),
+    weekKey   : weekKey(now),
+    answers,
+    customAnswers,
+    date      : todayStr(),
+    ts        : now.toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'}),
+    _ts       : now.getTime(),
+  });
+
+  gainExp(15);
+  gainMana(10, 'Evaluasi Mingguan');
+  showFloatingExp(15);
+  render(); save();
+  showToast('✅ Evaluasi tersimpan! +15 EXP · +10 Mana', 'ach');
+}
+
+function addEvalCustomQuestion(){
+  const el = document.getElementById('eval-new-q');
+  const q = el ? el.value.trim() : '';
+  if(!q){ showToast('Tulis pertanyaanmu dulu.', 'bad'); return; }
+  if(!state.evaluasiMingguan) state.evaluasiMingguan = {entries:[], customQuestions:[]};
+  state.evaluasiMingguan.customQuestions.push({ id: uid('ecq'), q });
+  el.value = '';
+  save(); render();
+}
+
+function deleteEvalCustomQuestion(id){
+  if(!state.evaluasiMingguan) return;
+  openConfirm('Hapus pertanyaan ini? Jawaban lama yang sudah tersimpan tetap ada di riwayat.', () => {
+    state.evaluasiMingguan.customQuestions = (state.evaluasiMingguan.customQuestions||[]).filter(q => q.id !== id);
+    save(); render();
+  });
+}
+
+function deleteEvalEntry(id){
+  if(!state.evaluasiMingguan) return;
+  openConfirm('Hapus entri evaluasi ini?', () => {
+    state.evaluasiMingguan.entries = (state.evaluasiMingguan.entries||[]).filter(e => e.id !== id);
+    save(); render();
+  });
+}
+
 function renderHistoryArchive(){
   ensureHistoryArchive(state);
   const chips = RIWAYAT_CATS.map(c=>{
@@ -8511,53 +8853,61 @@ const _WD_LABEL = {senin:'Senin',selasa:'Selasa',rabu:'Rabu',kamis:'Kamis',jumat
 
 function getTodayDayName(){ return _WD_DAYS[([0,1,2,3,4,5,6].map(i=>_WD_DAYS[[6,0,1,2,3,4,5][i]]))[new Date().getDay()]&&0] || _WD_DAYS[[6,0,1,2,3,4,5][new Date().getDay()]]; }
 
+// Mengembalikan objek {tasks, lastReset} untuk template aktif + hari tertentu
+function _wdGetDay(day){
+  const tpl = _wdActiveTemplate || 'pagi';
+  if(!state.weeklyDaySchedule[tpl]) state.weeklyDaySchedule[tpl] = {};
+  if(!state.weeklyDaySchedule[tpl][day]) state.weeklyDaySchedule[tpl][day] = {tasks:[], lastReset:''};
+  return state.weeklyDaySchedule[tpl][day];
+}
+function setWdTemplate(tpl){ _wdActiveTemplate = tpl; _wdExpanded = ''; render(); }
+
 function autoResetWeeklySchedule(){
   if(!state.weeklyDaySchedule) return;
   const today = todayStr();
   const dayName = _WD_DAYS[[6,0,1,2,3,4,5][new Date().getDay()]];
-  const day = state.weeklyDaySchedule[dayName];
-  if(day && day.lastReset !== today){
-    day.tasks.forEach(t=>{ t.done=false; t.failed=false; });
-    day.lastReset = today;
-    save();
-  }
+  // Reset centang hari ini di semua template jika belum di-reset hari ini
+  ['pagi','siang','custom'].forEach(tpl => {
+    const day = state.weeklyDaySchedule[tpl]?.[dayName];
+    if(day && day.lastReset !== today){
+      day.tasks.forEach(t=>{ t.done=false; t.failed=false; });
+      day.lastReset = today;
+    }
+  });
+  save();
 }
 
 function addDayTask(dayName){
-  if(!state.weeklyDaySchedule?.[dayName]) return;
   const timeEl = document.getElementById('wt-time-'+dayName);
   const labelEl = document.getElementById('wt-label-'+dayName);
   if(!labelEl) return;
   const label = labelEl.value.trim(); if(!label){ showToast('Isi nama kegiatan dulu.','bad'); return; }
   const time = timeEl ? timeEl.value.trim() : '';
-  state.weeklyDaySchedule[dayName].tasks.push({id:uid('wt'), time, label, done:false, failed:false});
+  _wdGetDay(dayName).tasks.push({id:uid('wt'), time, label, done:false, failed:false});
   save(); render();
 }
 
 function deleteDayTask(dayName, taskId){
-  if(!state.weeklyDaySchedule?.[dayName]) return;
-  state.weeklyDaySchedule[dayName].tasks = state.weeklyDaySchedule[dayName].tasks.filter(t=>t.id!==taskId);
+  const d = _wdGetDay(dayName);
+  d.tasks = d.tasks.filter(t=>t.id!==taskId);
   save(); render();
 }
 
 function updateDayTask(dayName, taskId, field, value){
-  if(!state.weeklyDaySchedule?.[dayName]) return;
-  const t = state.weeklyDaySchedule[dayName].tasks.find(x=>x.id===taskId);
+  const t = _wdGetDay(dayName).tasks.find(x=>x.id===taskId);
   if(t) t[field] = value;
   save();
 }
 
 function checkDayTask(dayName, taskId){
-  if(!state.weeklyDaySchedule?.[dayName]) return;
-  const t = state.weeklyDaySchedule[dayName].tasks.find(x=>x.id===taskId); if(!t) return;
-  if(t.done || t.failed) return; // terkunci setelah dipilih
+  const t = _wdGetDay(dayName).tasks.find(x=>x.id===taskId); if(!t) return;
+  if(t.done || t.failed) return;
   t.done = true;
   save(); render();
 }
 
 function failDayTask(dayName, taskId){
-  if(!state.weeklyDaySchedule?.[dayName]) return;
-  const t = state.weeklyDaySchedule[dayName].tasks.find(x=>x.id===taskId); if(!t) return;
+  const t = _wdGetDay(dayName).tasks.find(x=>x.id===taskId); if(!t) return;
   if(t.done || t.failed) return; // terkunci setelah dipilih
   t.failed = true;
   if(true){
@@ -8585,10 +8935,10 @@ function failDayTask(dayName, taskId){
 }
 
 function resetDaySchedule(dayName){
-  if(!state.weeklyDaySchedule?.[dayName]) return;
   openConfirm(`Reset centang hari ${_WD_LABEL[dayName]}?`, ()=>{
-    state.weeklyDaySchedule[dayName].tasks.forEach(t=>{ t.done=false; t.failed=false; });
-    state.weeklyDaySchedule[dayName].lastReset = todayStr();
+    const d = _wdGetDay(dayName);
+    d.tasks.forEach(t=>{ t.done=false; t.failed=false; });
+    d.lastReset = todayStr();
     save(); render();
   });
 }
@@ -8596,20 +8946,19 @@ function resetDaySchedule(dayName){
 // Samakan jadwal: salin daftar kegiatan (jam+nama) dari satu hari ke semua hari lain.
 // Centang (done/failed) TIDAK ikut disalin — setiap hari mulai dari status kosong/belum dicentang.
 function copyDayScheduleToAll(dayName){
-  if(!state.weeklyDaySchedule?.[dayName]) return;
-  const srcTasks = state.weeklyDaySchedule[dayName].tasks;
+  const srcTasks = _wdGetDay(dayName).tasks;
   if(!srcTasks.length){ showToast('Isi dulu jadwal hari ini sebelum disamakan.', 'bad'); return; }
   openConfirm(`Samakan jadwal semua hari dengan jadwal ${_WD_LABEL[dayName]}? Jadwal hari lain akan ditimpa (centang tidak ikut disalin).`, ()=>{
     _WD_DAYS.forEach(d=>{
       if(d===dayName) return;
-      if(!state.weeklyDaySchedule[d]) state.weeklyDaySchedule[d] = {tasks:[], lastReset:''};
-      state.weeklyDaySchedule[d].tasks = srcTasks.map(t=>({ id: uid('wt'), time: t.time, label: t.label, done:false, failed:false }));
+      _wdGetDay(d).tasks = srcTasks.map(t=>({ id: uid('wt'), time: t.time, label: t.label, done:false, failed:false }));
     });
     save(); render();
     showToast(`Jadwal ${_WD_LABEL[dayName]} berhasil disalin ke semua hari.`, 'good');
   });
 }
 
+let _wdActiveTemplate = 'pagi'; // template aktif: 'pagi' | 'siang' | 'custom'
 let _wdExpanded = '';
 let _wdEditing  = ''; // 'dayName:taskId'
 function toggleWdDay(day){ _wdExpanded = (_wdExpanded===day) ? '' : day; _wdEditing=''; render(); }
@@ -8688,7 +9037,7 @@ function renderTodayScheduleCard(){
 
   /* ── Roster header ── */
   const rosterCols = _WD_DAYS.map(day=>{
-    const tasks     = state.weeklyDaySchedule?.[day]?.tasks || [];
+    const tasks     = _wdGetDay(day).tasks;
     const isToday   = day === todayDay;
     const isActive  = day === activeDay;
     const hasFailed = tasks.some(t=>t.failed);
@@ -8713,7 +9062,7 @@ function renderTodayScheduleCard(){
   /* ── Panel hari aktif ── */
   const label   = _WD_LABEL[activeDay];
   const isToday = activeDay === todayDay;
-  const tasks   = state.weeklyDaySchedule?.[activeDay]?.tasks || [];
+  const tasks   = _wdGetDay(activeDay).tasks;
   const done    = tasks.filter(t=>t.done).length;
   const failed  = tasks.filter(t=>t.failed).length;
   const pct     = tasks.length ? Math.round((done/tasks.length)*100) : 0;
@@ -8751,9 +9100,16 @@ function renderWeeklyScheduleEditor(){
   autoResetWeeklySchedule();
   const todayDay = _WD_DAYS[[6,0,1,2,3,4,5][new Date().getDay()]];
 
+  /* ── Pilihan template shift ── */
+  const _WD_TPLS = [{id:'pagi',label:'☀️ Pagi'},{id:'siang',label:'🌅 Siang'},{id:'custom',label:'⚙️ Custom'}];
+  const tplTabs = _WD_TPLS.map(tpl=>{
+    const active = _wdActiveTemplate === tpl.id;
+    return `<button onclick="setWdTemplate('${tpl.id}')" style="flex:1;padding:7px 4px;border-radius:9px;border:1px solid ${active?'rgba(200,168,75,0.6)':'rgba(255,255,255,0.1)'};background:${active?'rgba(200,168,75,0.12)':'transparent'};color:${active?'rgba(200,168,75,1)':'rgba(255,255,255,0.45)'};font-family:var(--font-display);font-weight:700;font-size:11px;cursor:pointer;transition:all 0.2s;">${tpl.label}</button>`;
+  }).join('');
+
   /* ── Roster header ── */
   const rosterCols = _WD_DAYS.map(day=>{
-    const tasks  = state.weeklyDaySchedule?.[day]?.tasks || [];
+    const tasks  = _wdGetDay(day).tasks;
     const isToday  = day === todayDay;
     const isOpen   = _wdExpanded === day;
     const hasFailed = tasks.some(t=>t.failed);
@@ -8781,7 +9137,7 @@ function renderWeeklyScheduleEditor(){
     const day   = _wdExpanded;
     const label = _WD_LABEL[day];
     const isToday = day === todayDay;
-    const tasks = state.weeklyDaySchedule?.[day]?.tasks || [];
+    const tasks = _wdGetDay(day).tasks;
     const done  = tasks.filter(t=>t.done).length;
     const taskHTML = tasks.length
       ? tasks.map(t=>_wdTaskRow(day,t,false)).join('')
@@ -8813,6 +9169,7 @@ function renderWeeklyScheduleEditor(){
 
   return `<div class="section-title">📅 Jadwal Mingguan Per Hari</div>
   <div class="card" style="padding:14px 16px;">
+    <div style="display:flex;gap:5px;margin-bottom:10px;">${tplTabs}</div>
     <div style="display:flex;gap:5px;margin-bottom:${_wdExpanded?'0':'4px'};">${rosterCols}</div>
     ${panel}
   </div>`;
@@ -8974,6 +9331,7 @@ function deleteCardFromModal() {
     const c = (state.kanban.cards||[]).find(x => x.id === id);
     if(!c) return;
     openConfirm(`Hapus "${escapeHtml(c.title)}"?`, () => {
+        markDeleted('kanbanCards', id);
         state.kanban.cards = state.kanban.cards.filter(x => x.id !== id);
         closeModal('modal-kanban-edit'); render(); save();
     });
@@ -8991,14 +9349,35 @@ function init(){
   showWelcomeToast();
 
   // Firebase sync di background — kalau cloud lebih baru, refresh UI otomatis.
-  firebaseResolveOnLoad(loaded).then(resolved => {
-    if(!resolved) return;
+  firebaseResolveOnLoad(loaded).then(cloud => {
+    if(!cloud) return;
     const localTs  = (loaded && loaded.meta && loaded.meta.updatedAt) || 0;
-    const cloudTs  = (resolved.meta && resolved.meta.updatedAt) || 0;
-    if(cloudTs > localTs){
-      state = migrateState(deepMerge(DEFAULT_STATE(), resolved));
+    const cloudTs  = (cloud.meta && cloud.meta.updatedAt) || 0;
+    if(cloudTs !== localTs){
+      // Dulu: kalau cloud lebih baru, seluruh state lokal ditimpa total (last-write-wins per
+      // dokumen) — entri yang baru ditambah di device lain sebelum cloud sempat lebih baru,
+      // atau di device ini sebelum sempat ke-push, bisa hilang. Sekarang: gabungkan kedua sisi —
+      // field skalar (character/meta/stats) ikut versi yang timestamp-nya lebih baru secara utuh
+      // (supaya HP/EXP/level tidak campur dari 2 sumber), tapi koleksi entri (quest, transaksi,
+      // goal, habit, kanban, sedekah, target) di-union per-id supaya tidak ada yang terbuang.
+      // `cloud` dan `loaded` selalu dua objek berbeda di sini (lihat catatan di
+      // firebaseResolveOnLoad), jadi cabang manapun yang dipakai tetap benar-benar menggabungkan
+      // kedua sisi, bukan menggabungkan satu sisi dengan dirinya sendiri.
+      const merged = cloudTs > localTs ? mergeRemoteState(cloud, loaded) : mergeRemoteState(loaded, cloud);
+      // Rollover lokal sudah jalan di atas untuk hari ini — bawa penanda "sudah di-rollover"
+      // itu ke state hasil merge sebelum di-apply, supaya rollover() kedua tidak menghitung ulang
+      // penalti hari-berganti (HP/EXP/streak) yang sudah diterapkan sekali barusan.
+      const _rolledDate = state.meta.lastActiveDate;
+      const _rolledWeekKey = state.meta.lastWeekKey;
+      const _rolledMonthKey = state.meta.lastMonthKey;
+      state = migrateState(deepMerge(DEFAULT_STATE(), merged));
+      if(_rolledDate === todayStr()){
+        state.meta.lastActiveDate = _rolledDate;
+        state.meta.lastWeekKey = _rolledWeekKey;
+        state.meta.lastMonthKey = _rolledMonthKey;
+      }
       rollover(); recomputeLifeScore(); recordMomentumHistory(); render();
-      showToast('☁️ Data tersinkron dari cloud!', 'good');
+      if(cloudTs > localTs) showToast('☁️ Data tersinkron dari cloud!', 'good');
       save();
     }
     // Mulai real-time listener setelah load awal selesai
@@ -9957,7 +10336,7 @@ function resetNavGroupOrder() {
 (function() {
   var MAIN_TAB_GROUPS = {
     home:      { tabs: ['home'] },
-    quest:     { tabs: ['quests','goals','project','ritual','refleksi'] },
+    quest:     { tabs: ['quests','goals','project','ritual','refleksi','evaluasiMingguan'] },
     progres:   { tabs: ['stats','caracter','enlight'] },
     finansial: { tabs: ['boss'] },
     profil:    { tabs: ['profile','hall','lifeenc','realmenc','riwayat'] }
@@ -9965,7 +10344,7 @@ function resetNavGroupOrder() {
 
   var TAB_LABELS = {
     home:'Home', quests:'Quest', goals:'Goals', project:'Project',
-    ritual:'Ritual', refleksi:'Refleksi', stats:'Stats', caracter:'Character',
+    ritual:'Ritual', refleksi:'Refleksi', evaluasiMingguan:'Evaluasi', stats:'Stats', caracter:'Character',
     enlight:'Enlight', boss:'Finansial', profile:'Profile', hall:'Fame',
     lifeenc:'Life Enc', realmenc:'Realm', riwayat:'Riwayat'
   };
@@ -10042,4 +10421,4 @@ function resetNavGroupOrder() {
 </script>
 
 </body>
-</html
+</
