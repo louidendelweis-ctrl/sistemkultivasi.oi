@@ -3008,7 +3008,7 @@ const HOF_DEFS = [
   {id:'hof_goal25',  cat:'goals',   tier:'g', icon:'🏆', label:'25 Goal Selesai',        desc:'Menyelesaikan 25 goal',                   check:s=>(s.character.goalsCompleted||0)>=25},
   {id:'hof_goal50',  cat:'goals',   tier:'p', icon:'🏆', label:'50 Goal Selesai',        desc:'Menyelesaikan 50 goal',                   check:s=>(s.character.goalsCompleted||0)>=50},
   {id:'hof_goal100', cat:'goals',   tier:'l', icon:'⚜️', label:'100 Goal Selesai',       desc:'Menyelesaikan 100 goal — Legenda',        check:s=>(s.character.goalsCompleted||0)>=100},
-  // ── QUESTS ─────────────────────────────────────────────────────────────────
+  // ── QUESTS ──────────────────────────────────────────────────& �──────────────
   {id:'hof_q1',      cat:'quests',  tier:'b', icon:'🥉', label:'Quest Pertama Selesai',  desc:'Menyelesaikan quest pertama',             check:s=>(s.character.totalQuests||0)>=1},
   {id:'hof_q10',     cat:'quests',  tier:'b', icon:'🥉', label:'10 Quest Selesai',       desc:'Menyelesaikan 10 quest',                  check:s=>(s.character.totalQuests||0)>=10},
   {id:'hof_q50',     cat:'quests',  tier:'s', icon:'🥈', label:'50 Quest Selesai',       desc:'Menyelesaikan 50 quest',                  check:s=>(s.character.totalQuests||0)>=50},
@@ -3186,6 +3186,7 @@ function DEFAULT_SETTINGS(){
     nameHoloStyle: 'none',
     bgTheme: 'void',
     financeTargetSync: true,
+    financeEditSync: true,
     navGroupOrder: ['home','quest','progres','finansial','profil'],
     consequenceText: 'Kamu gagal dan energi (HP & Mana) benar-benar habis. Terima konsekuensinya: Push up 100x dan jangan makan 1 hari. Jangan bohongi diri sendiri.',
   };
@@ -3533,7 +3534,7 @@ function DEFAULT_STATE(){
     goals:[], habits:[], goalHistory:[], lifeTimeline:[], lifeMomentum:[],
     // Arsip permanen "Sejarah Riwayat" (tab Profil) — entri tiap kategori yang sudah lewat 30 hari
     // dipindahkan ke sini dari riwayat aktifnya masing-masing, tersimpan selamanya, tidak pernah dihapus.
-    historyArchive: { finansial:[], momentum:[], goal:[], sedekah:[], jurnal:[], refleksi:[], timeline:[], vitalitas:[] },
+    historyArchive: { finansial:[], momentum:[], goal:[], sedekah:[], jurnal:[], refleksi:[], timeline:[], vitalitas:[], evaluasi:[] },
     schedule: JSON.parse(JSON.stringify(DEFAULT_SCHEDULE)), settings: DEFAULT_SETTINGS(), customStats:[], achievementsUnlocked:[],
     kanban: { cards: [] }, completedTargets: [], sedekah: { entries:[], totalLifetime:0, dailyExpGained:0, lastExpDate:'' },
     hallOfFame: [],
@@ -3566,9 +3567,19 @@ function ensureCharHistory(s){
 // yang valid. Dipakai saat migrasi data lama & oleh fungsi pemindah arsip harian, sama seperti pola ensureCharHistory.
 function ensureHistoryArchive(s){
   if(!s.historyArchive) s.historyArchive = {};
-  ['finansial','momentum','goal','sedekah','jurnal','refleksi','timeline','vitalitas'].forEach(k=>{
+  ['finansial','momentum','goal','sedekah','jurnal','refleksi','timeline','vitalitas','evaluasi'].forEach(k=>{
     if(!Array.isArray(s.historyArchive[k])) s.historyArchive[k] = [];
   });
+  // De-dup refleksi: entri lama bisa dobel karena bug spread di saveJournal/saveRefleksiAnswer.
+  // Pertahankan entri pertama per kombinasi id+_sourceType, buang duplikat berikutnya.
+  if(Array.isArray(s.historyArchive.refleksi)){
+    const seen = new Set();
+    s.historyArchive.refleksi = s.historyArchive.refleksi.filter(e => {
+      const k = (e.id||'') + '|' + (e._sourceType||'');
+      if(seen.has(k)) return false;
+      seen.add(k); return true;
+    });
+  }
   return s.historyArchive;
 }
 // Pindahkan entri yang usianya sudah lewat 30 hari dari riwayat aktif ke historyArchive
@@ -3653,8 +3664,8 @@ function sweepHistoryArchive(s){
   if(s.character && Array.isArray(s.character.lifePrincipleHistory))
     s.character.lifePrincipleHistory = trimNewestFirst(s.character.lifePrincipleHistory, 'refleksi', e=>({...e, _sourceType:'principle'}));
 
-  // Timeline Kehidupan (push = terlama duluan)
-  if(Array.isArray(s.lifeTimeline)) s.lifeTimeline = trimOldestFirst(s.lifeTimeline, 'timeline');
+  // Timeline Kehidupan (unshift = terbaru duluan di index-0)
+  if(Array.isArray(s.lifeTimeline)) s.lifeTimeline = trimNewestFirst(s.lifeTimeline, 'timeline');
 
   // Vitalitas (HP/Mana log, push = terlama duluan) — jaring pengaman tambahan, normalnya sudah
   // langsung diarsipkan realtime tiap kali logHpChange/logManaChange dipanggil (lihat _trimVitalitasLog).
@@ -4486,7 +4497,7 @@ function rollover(){
   // → Firebase data dengan _localSeq lebih tinggi selalu menang di _isNewer(), menimpa
   // streak=1 yang baru saja diset. Sekarang save() dipanggil sebelum return agar state
   // first-open langsung persist + _localSeq naik + Firebase dapat push yang benar.
-  if(!state.meta.lastActiveDate){ state.meta.lastActiveDate = today; state.meta.lastWeekKey = weekKey(new Date()); state.meta.lastMonthKey = monthKey(new Date()); state.character.streak = Math.max(state.character.streak||0, 1); state.character.longestStreak = Math.max(state.character.longestStreak||0, state.character.streak); ensureCharHistory(state); if(!state.charHistory.streak.some(s=>s.ts===today)) state.charHistory.streak.push({ts:today, val:state.character.streak}); if(!state.charHistory.realm||!state.charHistory.realm.length){ const _fr=state.realms&&state.realms[state.character.realmIndex||0]; if(_fr) state.charHistory.realm.push({ts:today, val:_fr.nameID}); } state.meta.activityLog=state.meta.activityLog||{}; if(!state.meta.activityLog[today]) state.meta.activityLog[today]=1; save(); return; }
+  if(!state.meta.lastActiveDate){ state.meta.lastActiveDate = today; state.meta.lastWeekKey = weekKey(new Date()); state.meta.lastMonthKey = monthKey(new Date()); state.character.streak = (state.character.streak > 0) ? state.character.streak + 1 : 1; state.character.longestStreak = Math.max(state.character.longestStreak||0, state.character.streak); ensureCharHistory(state); if(!state.charHistory.streak.some(s=>s.ts===today)) state.charHistory.streak.push({ts:today, val:state.character.streak}); if(!state.charHistory.realm||!state.charHistory.realm.length){ const _fr=state.realms&&state.realms[state.character.realmIndex||0]; if(_fr) state.charHistory.realm.push({ts:today, val:_fr.nameID}); } state.meta.activityLog=state.meta.activityLog||{}; if(!state.meta.activityLog[today]) state.meta.activityLog[today]=1; save(); return; }
   const activeShift = getTodayActiveShift(); if(activeShift !== 'libur' && activeShift !== 'custom') state.character.shift = activeShift;
   if(state.meta.lastActiveDate === today) return;
 
@@ -4606,6 +4617,8 @@ function rollover(){
           addTimelineEvent('goal', 'Goal "' + g.title + '" gagal (lewat deadline)', '💀');
       }
   });
+  // Hapus semua goal yang sudah gagal dari daftar aktif — sudah tercatat di goalHistory.
+  state.goals = state.goals.filter(g => g.status !== 'failed');
 
   (state.kanban.cards || []).forEach(c => {
       if(c.col !== 'selesai' && c.dateTarget && c.dateTarget < today && !c.failed) {
@@ -4873,6 +4886,117 @@ function transferSaldo(){
   SFX.cashRegister();
   render(); save();
 }
+// ── EDIT & HAPUS TRANSAKSI FINANSIAL ─────────────────────────────────────────
+// Semua operasi edit/hapus langsung memodifikasi entri di financeLog DAN
+// historyArchive.finansial (keduanya adalah satu ledger yang sama, dengan sumber
+// berbeda). lifetimeIncome dikoreksi jika toggle financeEditSync aktif.
+
+function _findFinanceEntry(id){
+  // Cari di historyArchive dulu (entri baru), lalu financeLog legacy
+  const arc = (state.historyArchive && state.historyArchive.finansial) || [];
+  let e = arc.find(x => x.id === id);
+  if(!e) e = (state.financeLog||[]).find(x => x.id === id);
+  return e || null;
+}
+
+function openEditFinance(id){
+  const e = _findFinanceEntry(id);
+  if(!e){ showToast('Transaksi tidak ditemukan.', 'bad'); return; }
+  const isTransfer = e.type === 'transfer';
+  document.getElementById('ef-id').value = id;
+  document.getElementById('ef-is-transfer').value = isTransfer ? '1' : '';
+  document.getElementById('ef-body-main').style.display = isTransfer ? 'none' : '';
+  document.getElementById('ef-body-transfer').style.display = isTransfer ? '' : 'none';
+  if(!isTransfer){
+    const typeEl = document.getElementById('ef-type');
+    typeEl.value = e.type || 'in';
+    const akunEl = document.getElementById('ef-akun');
+    akunEl.value = e.akun || 'cash';
+    document.getElementById('ef-cat').value = e.cat || '';
+  }
+  document.getElementById('ef-amount').value = e.amount || '';
+  document.getElementById('ef-note').value = e.note || '';
+  const syncOn = state.settings && state.settings.financeEditSync !== false;
+  const infoEl = document.getElementById('ef-sync-info');
+  if(e.type === 'in' && !isTransfer){
+    infoEl.textContent = syncOn
+      ? '💡 Sinkron aktif — Total Pemasukan akan disesuaikan otomatis.'
+      : '⚠️ Sinkron nonaktif — Total Pemasukan tidak akan berubah.';
+  } else {
+    infoEl.textContent = '';
+  }
+  openModal('modal-edit-finance');
+}
+
+function saveEditFinance(){
+  const id = document.getElementById('ef-id').value;
+  const isTransfer = document.getElementById('ef-is-transfer').value === '1';
+  const e = _findFinanceEntry(id);
+  if(!e){ showToast('Transaksi tidak ditemukan.', 'bad'); return; }
+
+  const newAmount = parseInt(document.getElementById('ef-amount').value, 10);
+  if(!newAmount || newAmount <= 0){ document.getElementById('ef-amount').focus(); showToast('Jumlah tidak valid.', 'bad'); return; }
+  const newNote = document.getElementById('ef-note').value.trim();
+
+  const syncOn = state.settings && state.settings.financeEditSync !== false;
+
+  if(!isTransfer){
+    const newType = document.getElementById('ef-type').value;
+    const newAkun = document.getElementById('ef-akun').value || 'cash';
+    const newCat  = document.getElementById('ef-cat').value.trim() || 'Lainnya';
+
+    // Koreksi lifetimeIncome: batalkan efek lama, terapkan efek baru
+    if(syncOn){
+      if(e.type === 'in') state.character.lifetimeIncome = Math.max(0, (state.character.lifetimeIncome||0) - e.amount);
+      if(newType === 'in') state.character.lifetimeIncome = (state.character.lifetimeIncome||0) + newAmount;
+    }
+
+    // Update entri di tempat yang ada
+    e.type   = newType;
+    e.akun   = newAkun;
+    e.cat    = newCat;
+    e.amount = newAmount;
+    e.note   = newNote;
+  } else {
+    // Transfer: hanya amount & note
+    e.amount = newAmount;
+    e.note   = newNote;
+  }
+
+  closeModal('modal-edit-finance');
+  checkAchievements(); render(); save();
+  showToast('✅ Transaksi diperbarui.', 'ach');
+}
+
+function deleteFinanceEntry(id){
+  const e = _findFinanceEntry(id);
+  if(!e){ showToast('Transaksi tidak ditemukan.', 'bad'); return; }
+  openConfirm('Hapus transaksi ini? Tindakan tidak dapat dibatalkan.', () => {
+    const syncOn = state.settings && state.settings.financeEditSync !== false;
+    // Koreksi lifetimeIncome jika entri adalah pemasukan
+    if(syncOn && e.type === 'in'){
+      state.character.lifetimeIncome = Math.max(0, (state.character.lifetimeIncome||0) - e.amount);
+    }
+    // Hapus dari historyArchive
+    ensureHistoryArchive(state);
+    state.historyArchive.finansial = (state.historyArchive.finansial||[]).filter(x => x.id !== id);
+    // Hapus dari financeLog (legacy)
+    markDeleted('financeLog', id);
+    state.financeLog = (state.financeLog||[]).filter(x => x.id !== id);
+    checkAchievements(); render(); save();
+    showToast('🗑 Transaksi dihapus.', 'ach');
+  });
+}
+
+// Hapus dari riwayat Goal Finansial Tercapai
+function deleteCompletedTarget(id){
+  openConfirm('Hapus riwayat target ini?', () => {
+    state.completedTargets = (state.completedTargets||[]).filter(t => t.id !== id);
+    render(); save();
+    showToast('🗑 Riwayat target dihapus.', 'ach');
+  });
+}
+
 function swapTransferDirection(){
   const dariEl = document.getElementById('ts-dari'); const keEl = document.getElementById('ts-ke');
   const d = dariEl.value; dariEl.value = keEl.value; keEl.value = d;
@@ -5162,6 +5286,16 @@ function submitGoalProgress(){
   closeModal('modal-update-goal'); render(); save();
 }
 function deleteGoalConfirm(id){ const g = state.goals.find(x=>x.id===id); if(!g) return; openConfirm('Hapus goal "'+escapeHtml(g.title)+'"?', ()=>{ markDeleted('goals', id); state.goals = state.goals.filter(x=>x.id!==id); render(); save(); }); }
+function deleteGoalHistory(id){
+  const h = (state.goalHistory||[]).find(x=>x.id===id);
+  if(!h) return;
+  openConfirm('Hapus riwayat goal "'+escapeHtml(h.title)+'"?', ()=>{
+    state.goalHistory = (state.goalHistory||[]).filter(x=>x.id!==id);
+    if(state.historyArchive && Array.isArray(state.historyArchive.goal))
+      state.historyArchive.goal = state.historyArchive.goal.filter(x=>x.id!==id);
+    render(); save();
+  });
+}
 
 function getCurrentTimeBlockInfo() {
     const shift = getTodayActiveShift() === 'libur' ? state.character.shift : getTodayActiveShift();
@@ -5738,7 +5872,7 @@ function toggleWeeklyExpand(day) { _expandedWeeklyDay = _expandedWeeklyDay === d
 function renderWeeklyShiftCalendar() {
     if(!state.settings.showWeeklyCalendar) return '';
     const map = ['minggu','senin','selasa','rabu','kamis','jumat','sabtu']; const labelMap = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
-    const SHIFT_BADGE = { pagi: { label:'☀️ Pagi', color:'var(--cyan)' }, siang: { label:'🌅 Siang', color:'var(--gold)' }, libur: { label:'🌙 Libur', color:'var(--muted)'}, custom: { label:'⚙️ Custom', color:'var(--orange)'} };
+    const SHIFT_BADGE = { pagi: { label:'☀️ Pagi', color:'var(--cyan)' }, siang: { label:'🌅 Siang', color:'var(--gold)' }, libur: { label:'🌙 Libur', color:'var(--muted)'}, custom: { label:'⚙️ Normal', color:'var(--orange)'} };
     const cells = map.map((day, i) => {
         const shift = state.weeklyShiftPlan?.[day] || 'libur'; const badge = SHIFT_BADGE[shift];
         const schedule = state.schedule?.[shift] || [];
@@ -6371,7 +6505,10 @@ function renderGoalHistory(){
           ${statusChip}
           <span class="goal-history-chip gh-date" style="background:rgba(52,211,153,0.1);color:var(--jade);border-color:rgba(52,211,153,0.25);">📅 ${createdDate}</span>
         </div>
-        <button class="btn btn-ghost btn-sm" style="margin-top:8px; font-size:11px; padding:4px 10px;" onclick="openGoalDetail('${h.id}')">🔍 Lihat Detail</button>
+        <div style="display:flex;gap:6px;margin-top:8px;align-items:center;">
+          <button class="btn btn-ghost btn-sm" style="font-size:11px; padding:4px 10px;" onclick="openGoalDetail('${h.id}')">🔍 Lihat Detail</button>
+          <button class="btn btn-ghost btn-sm" style="font-size:11px; padding:4px 10px; color:var(--crimson);" onclick="deleteGoalHistory('${h.id}')">🗑 Hapus</button>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -6465,9 +6602,14 @@ function renderBoss(){
     const _catTextColors = {'Gaji/Upah':'var(--cyan)','Freelance':'var(--arise-bright)','Bisnis':'var(--gold-soft)','Investasi':'var(--jade)','Makan':'var(--orange)','Transport':'#8aaeff','Tagihan':'#d080ff','Belanja':'#ffcc60','Hiburan':'#ff80a0','Kesehatan':'#50dc96','Pendidikan':'#60c8ff','Lainnya':'var(--muted)'};
     const _akunLabel = {cash:'💵 Cash', saldo:'🏦 Saldo'};
     function _logItemHtml(l){
+        const eid = escapeAttr(l.id||'');
+        const editBtns = l.id ? `<span style="display:flex;gap:3px;margin-left:6px;flex-shrink:0;">
+          <button class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 6px;line-height:1;" onclick="openEditFinance('${eid}')" title="Edit">✏️</button>
+          <button class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 6px;line-height:1;color:var(--crimson);" onclick="deleteFinanceEntry('${eid}')" title="Hapus">🗑</button>
+        </span>` : '';
         if(l.type === 'transfer'){
             const dariLbl = _akunLabel[l.dari] || l.dari; const keLbl = _akunLabel[l.ke] || l.ke;
-            return `<div class="log-item"><span class="muted" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;"><span style="font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:6px;background:rgba(150,150,180,0.15);color:var(--muted);font-family:var(--font-system);letter-spacing:0.3px;white-space:nowrap;">🔄 Transfer</span> ${dariLbl} → ${keLbl} · ${l.date}${l.note?' · '+escapeHtml(l.note):''}</span><span class="log-amount" style="color:var(--muted);">${formatRupiah(l.amount)}</span></div>`;
+            return `<div class="log-item" style="align-items:flex-start;"><span class="muted" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;flex:1;"><span style="font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:6px;background:rgba(150,150,180,0.15);color:var(--muted);font-family:var(--font-system);letter-spacing:0.3px;white-space:nowrap;">🔄 Transfer</span> ${dariLbl} → ${keLbl} · ${l.date}${l.note?' · '+escapeHtml(l.note):''}</span><span style="display:flex;align-items:center;gap:4px;flex-shrink:0;"><span class="log-amount" style="color:var(--muted);">${formatRupiah(l.amount)}</span>${editBtns}</span></div>`;
         }
         const isOut = l.type === 'out';
         const isSedekah = isOut && l.note && l.note.startsWith('Sedekah:');
@@ -6476,7 +6618,7 @@ function renderBoss(){
         const catChip = l.cat ? `<span style="font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:6px;background:${catBg};color:${catCol};font-family:var(--font-system);letter-spacing:0.3px;white-space:nowrap;">${escapeHtml(l.cat)}</span> ` : '';
         const akunChip = `<span style="font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:6px;background:rgba(255,255,255,0.06);color:var(--muted);font-family:var(--font-system);letter-spacing:0.3px;white-space:nowrap;">${_akunLabel[l.akun||'cash']}</span> `;
         const amtColor = isSedekah ? 'var(--gold)' : isOut ? 'var(--crimson)' : 'var(--jade)';
-        return `<div class="log-item"><span class="muted" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">${catChip}${akunChip}${l.date}${l.note?' · '+escapeHtml(l.note):''}</span><span class="log-amount" style="color:${amtColor}">${isOut?'-':'+'}${formatRupiah(l.amount)}</span></div>`;
+        return `<div class="log-item" style="align-items:flex-start;"><span class="muted" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;flex:1;">${catChip}${akunChip}${l.date}${l.note?' · '+escapeHtml(l.note):''}</span><span style="display:flex;align-items:center;gap:4px;flex-shrink:0;"><span class="log-amount" style="color:${amtColor}">${isOut?'-':'+'}${formatRupiah(l.amount)}</span>${editBtns}</span></div>`;
     }
     // Gunakan _getAllFinanceEntries() agar riwayat transaksi mencakup semua entri (termasuk
     // yang sudah diarchive), bukan hanya financeLog aktif (maks 100 entri terbaru).
@@ -6508,7 +6650,7 @@ function renderBoss(){
     const _secMomentum = `<div class="section-title">📈 Financial Momentum</div><div class="card glass-panel"><div class="chart-container"><canvas id="financialMomentumChart"></canvas></div><div id="fm-point-info" class="small muted" style="text-align:center;margin-top:10px;min-height:18px;">Tekan titik pada grafik untuk melihat detail transaksi.</div></div>`;
     const _secDaoChart = `<div class="section-title">Tren Momentum Pemasukan (7 Hari)</div><div class="card glass-panel"><div class="chart-container"><canvas id="daoChart"></canvas></div></div>`;
     const _secTransLog = `<div class="section-title">📋 Riwayat Transaksi Terbaru</div><div class="card">${logHtml}</div>`;
-    const _secTargetHistory = `<div class="section-title">🏆 Riwayat Target Tercapai</div><div class="card">${(state.completedTargets||[]).length ? (state.completedTargets||[]).map(t=>`<div class="target-history-item"><div><div style="font-weight:700;color:var(--jade);font-family:var(--font-system);font-size:13px;">✅ ${escapeHtml(t.name)}</div><div class="small muted">${t.completedAt} · +${(t.reward||0).toLocaleString()} EXP</div></div><div style="color:var(--jade);font-weight:700;font-family:var(--font-system);">${formatRupiah(t.maxHp)}</div></div>`).join('') : `<div class="small muted" style="text-align:center;padding:12px 0;">Belum ada target yang selesai</div>`}</div>`;
+    const _secTargetHistory = `<div class="section-title">🏆 Riwayat Target Tercapai</div><div class="card">${(state.completedTargets||[]).length ? (state.completedTargets||[]).map(t=>`<div class="target-history-item"><div><div style="font-weight:700;color:var(--jade);font-family:var(--font-system);font-size:13px;">✅ ${escapeHtml(t.name)}</div><div class="small muted">${t.completedAt} · +${(t.reward||0).toLocaleString()} EXP</div></div><div style="display:flex;align-items:center;gap:8px;"><span style="color:var(--jade);font-weight:700;font-family:var(--font-system);">${formatRupiah(t.maxHp)}</span>${t.id?`<button class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 6px;color:var(--crimson);" onclick="deleteCompletedTarget('${escapeAttr(t.id)}')">🗑</button>`:''}</div></div>`).join('') : `<div class="small muted" style="text-align:center;padding:12px 0;">Belum ada target yang selesai</div>`}</div>`;
     const html = [
       `<div data-sec-tab="boss" data-sec-id="target-finansial">${_secTarget}</div>`,
       `<div data-sec-tab="boss" data-sec-id="income-expense">${_secIncome}</div>`,
@@ -6908,7 +7050,8 @@ function saveJournal(){
   }
   const now = new Date(); const ts = now.toLocaleString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
   const date = now.toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric'});
-  const _rfJournal = {id:uid('rf'), date, content, ts, pinnedHome:false, _ts:Date.now()};
+  // _archived:true dipasang sejak awal supaya sweepHistoryArchive tidak menyalin ulang nanti
+  const _rfJournal = {id:uid('rf'), date, content, ts, pinnedHome:false, _ts:Date.now(), _archived:true};
   state.refleksi.journals.push(_rfJournal);
   _riwayatArchivePush('refleksi', {..._rfJournal, _sourceType:'journal'});
   gainMana(10, 'Menulis Jurnal');
@@ -6968,7 +7111,8 @@ function saveRefleksiAnswer(qId){
   const ts = now.toLocaleString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
   const date = now.toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric'});
   if(!Array.isArray(q.answers)) q.answers = [];
-  const _rfAnswer = {id:uid('ra'), text:answer, ts, date, pinnedProfile:false, _ts:now.getTime()};
+  // _archived:true dipasang sejak awal supaya sweepHistoryArchive tidak menyalin ulang nanti
+  const _rfAnswer = {id:uid('ra'), text:answer, ts, date, pinnedProfile:false, _ts:now.getTime(), _archived:true};
   q.answers.push(_rfAnswer);
   _riwayatArchivePush('refleksi', {..._rfAnswer, _sourceType:'answer', questionId:q.id, questionText:q.q||''});
   if(q.answers.length > 50) q.answers = q.answers.slice(-50);
@@ -7311,6 +7455,7 @@ const RIWAYAT_CATS = [
   {key:'sedekah',   icon:'🌟', label:'Sedekah'},
   {key:'jurnal',    icon:'📓', label:'Jurnal'},
   {key:'refleksi',  icon:'🪞', label:'Refleksi'},
+  {key:'evaluasi',  icon:'📋', label:'Evaluasi'},
   {key:'timeline',  icon:'📆', label:'Timeline'},
   {key:'vitalitas', icon:'❤️', label:'Vitalitas'},
   {key:'karakter',  icon:'📊', label:'Karakter'},
@@ -7363,7 +7508,11 @@ function _riwayatEntryKey(cat, e){
   if(cat==='goal')      return e.id || (e.completedAt+'|'+(e.title||''));
   if(cat==='jurnal')    return e.date || '';
   if(cat==='refleksi')  return e.id || (e._ts+'|'+(e._sourceType||''));
+  if(cat==='evaluasi')  return e.id || (e.date+'|'+(e.weekKey||''));
   if(cat==='timeline')  return e.id || e.ts || (e.date+'|'+(e.desc||''));
+  // Vitalitas: pakai ts|_vType sebagai kunci stabil — tidak bergantung pada keberadaan _archived
+  // supaya key antara entri aktif (hpEventLog) dan salinan di historyArchive selalu cocok.
+  if(cat==='vitalitas') return String(e.ts||'') + '|' + (e._vType||'');
   return e.id || JSON.stringify(e);
 }
 
@@ -7399,6 +7548,15 @@ function deleteFromPermanen(cat, keys){
     if(state.character){
       state.character.lifePrincipleHistory = (state.character.lifePrincipleHistory||[]).filter(h=>!ks.has(_riwayatEntryKey('refleksi',h)));
     }
+  } else if(cat==='evaluasi'){
+    if(state.evaluasiMingguan){
+      state.evaluasiMingguan.entries = (state.evaluasiMingguan.entries||[]).filter(e=>!ks.has(_riwayatEntryKey('evaluasi',e)));
+    }
+  } else if(cat==='vitalitas'){
+    // Hapus entri yang cocok dari hpEventLog & manaEventLog (entri lama tanpa _archived
+    // masih muncul di tampilan aktif via _riwayatVitalitasList — perlu dibersihkan juga).
+    state.hpEventLog   = (state.hpEventLog  ||[]).filter(e=>!ks.has(_riwayatEntryKey('vitalitas', e)));
+    state.manaEventLog = (state.manaEventLog||[]).filter(e=>!ks.has(_riwayatEntryKey('vitalitas', e)));
   } else if(cat==='timeline'){
     state.lifeTimeline = (state.lifeTimeline||[]).filter(e=>!ks.has(_riwayatEntryKey('timeline',e)));
   }
@@ -7488,6 +7646,7 @@ function _riwayatEntryJsDate(cat, e){
   try{
     if(cat==='goal') return e.completedAt ? new Date(e.completedAt+'T00:00:00') : null;
     if(cat==='refleksi') return e._ts ? new Date(e._ts) : null;
+    if(cat==='evaluasi') return e._ts ? new Date(e._ts) : (e.date ? new Date(e.date+'T00:00:00') : null);
     if(cat==='timeline') return e.ts ? new Date(e.ts) : (e.date ? new Date(e.date+'T00:00:00') : null);
     if(cat==='vitalitas') return e.ts ? new Date(e.ts) : (e.date ? new Date(e.date+'T00:00:00') : null);
     if(cat==='karakter') return _parseCharTs(e.ts);
@@ -7589,6 +7748,26 @@ function _riwayatEntryLine(cat, e){
       <div style="font-size:12px;font-weight:700;color:${k.color};white-space:nowrap;">${escapeHtml(String(valText))}</div>
     </div>`;
   }
+  if(cat==='evaluasi'){
+    const allQ = [..._EVAL_PRESET_QUESTIONS, ...((state.evaluasiMingguan&&state.evaluasiMingguan.customQuestions)||[])];
+    const answers = e.answers || {};
+    const customAnswers = e.customAnswers || [];
+    const wkLabel = _evalWeekLabel(e.weekKey || e.date || '');
+    const qRows = allQ.map(q => {
+      const txt = q.id.startsWith('eq')
+        ? (answers[q.id] || '')
+        : ((customAnswers.find(x=>x.qId===q.id)||{}).text || '');
+      if(!txt) return '';
+      return `<div style="margin-bottom:8px;">
+        <div style="font-size:10px;font-weight:700;color:rgba(200,168,75,0.7);margin-bottom:2px;">${escapeHtml(q.q)}</div>
+        <div style="font-size:12px;line-height:1.6;color:var(--bone);white-space:pre-wrap;word-break:break-word;">${escapeHtml(txt)}</div>
+      </div>`;
+    }).filter(Boolean).join('');
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--border);">
+      <div style="font-size:10px;font-weight:700;color:rgba(200,168,75,0.65);letter-spacing:0.5px;margin-bottom:6px;">📋 ${escapeHtml(wkLabel)} · ${w}</div>
+      ${qRows || '<div style="font-size:11px;color:var(--muted);">Tidak ada jawaban tersimpan.</div>'}
+    </div>`;
+  }
   // timeline
   return `<div style="padding:8px 0;border-bottom:1px solid var(--border);">
     <div style="font-size:11px;color:var(--muted);">${w}</div>
@@ -7611,6 +7790,7 @@ function _riwayatMonthSummary(cat, entries){
     const total = entries.reduce((a,e)=>a+Number(e.nominal||0),0);
     return `${entries.length} kali sedekah · Total Rp${total.toLocaleString('id-ID')}`;
   }
+  if(cat==='evaluasi') return `${entries.length} entri evaluasi`;
   if(cat==='jurnal') return `${entries.length} hari menulis jurnal`;
   if(cat==='refleksi'){
     const jml = entries.filter(e=>e._sourceType!=='answer').length, jwb = entries.filter(e=>e._sourceType==='answer').length;
@@ -7767,6 +7947,10 @@ function saveEvaluasiMingguan(){
     _ts       : now.getTime(),
   });
 
+  // Sinkron realtime ke Sejarah Riwayat Permanen
+  ensureHistoryArchive(state);
+  _riwayatArchivePush('evaluasi', em.entries[0]);
+
   gainExp(15);
   gainMana(10, 'Evaluasi Mingguan');
   showFloatingExp(15);
@@ -7796,6 +7980,9 @@ function deleteEvalEntry(id){
   if(!state.evaluasiMingguan) return;
   openConfirm('Hapus entri evaluasi ini?', () => {
     state.evaluasiMingguan.entries = (state.evaluasiMingguan.entries||[]).filter(e => e.id !== id);
+    // Sinkron hapus dari historyArchive.evaluasi
+    ensureHistoryArchive(state);
+    state.historyArchive.evaluasi = (state.historyArchive.evaluasi||[]).filter(e => e.id !== id);
     save(); render();
   });
 }
@@ -7908,7 +8095,7 @@ function renderProfile(){
              ${shiftBtn(day, 'pagi', '☀️', 'Pagi')}
              ${shiftBtn(day, 'siang', '🌅', 'Siang')}
              ${shiftBtn(day, 'libur', '🌙', 'Libur')}
-             ${shiftBtn(day, 'custom', '⚙️', 'Custom')}
+             ${shiftBtn(day, 'custom', '⚙️', 'Normal')}
           </div>
       </div>
   `).join('');
@@ -7919,7 +8106,7 @@ function renderProfile(){
   const _pActivity = `<div class="section-title">Riwayat Aktivitas & Performa</div><div class="card"><div class="row-between small"><span class="muted">Quest Berhasil</span><span style="color:var(--jade)">${c.totalQuests||0}</span></div><div class="row-between small mt-10"><span class="muted">Quest Gagal</span><span style="color:var(--crimson)">${c.failedQuests||0}</span></div><div class="row-between small mt-10" style="border-top:1px solid rgba(255,255,255,0.05); padding-top:10px;"><span class="muted">Goal Tercapai</span><span style="color:var(--cyan)">${c.goalsCompleted||0}</span></div><div class="row-between small mt-10"><span class="muted">Goal Gagal/Terlewat</span><span style="color:var(--crimson)">${c.failedGoals||0}</span></div><div class="row-between small mt-10" style="border-top:1px solid rgba(255,255,255,0.05); padding-top:10px;"><span class="muted">Target Finansial Tembus</span><span style="color:var(--gold)">${c.bossesDefeated||0}</span></div><div class="row-between small mt-10"><span class="muted">Project Terlewat</span><span style="color:var(--crimson)">${c.failedProjects||0}</span></div><div class="row-between small mt-10"><span class="muted">Streak Terpanjang</span><span>${c.longestStreak||0} hari</span></div></div>`;
   const _pTimeline = `<div class="section-title">📜 Timeline Kehidupan</div><div class="card" style="padding:14px 16px;">${renderLifeTimeline()}</div>`;
   const _pRealm = `<div class="section-title">Cultivation Realms Tracker</div><div class="card">${realmHtml}</div>`;
-  const _pShift = `<div class="section-title">Manajemen Shift Mingguan</div><div class="card"><div class="small muted mb-14">Atur roster mingguan Anda di sini. Jadwal akan terganti otomatis mengikuti hari.</div>${shiftPlanHtml}<div style="height:1px; background:var(--border); margin:16px 0;"></div><div class="shift-toggle"><div class="shift-opt ${c.shift==='pagi'?'active':''}" onclick="setShift('pagi')">Edit Jadwal Pagi</div><div class="shift-opt ${c.shift==='siang'?'active':''}" onclick="setShift('siang')">Edit Jadwal Siang</div><div class="shift-opt ${c.shift==='custom'?'active':''}" onclick="setShift('custom')">Edit Custom</div></div><div class="mt-10">${schedHtml}</div><button class="btn btn-ghost btn-block mt-10" onclick="addScheduleBlock('${c.shift}')">+ Tambah Blok Waktu</button><button class="btn btn-ghost btn-block mt-10" onclick="resetSchedule('${c.shift}')">Reset Jadwal ke Default</button>
+  const _pShift = `<div class="section-title">Manajemen Shift Mingguan</div><div class="card"><div class="small muted mb-14">Atur roster mingguan Anda di sini. Jadwal akan terganti otomatis mengikuti hari.</div>${shiftPlanHtml}<div style="height:1px; background:var(--border); margin:16px 0;"></div><div class="shift-toggle"><div class="shift-opt ${c.shift==='pagi'?'active':''}" onclick="setShift('pagi')">Edit Jadwal Pagi</div><div class="shift-opt ${c.shift==='siang'?'active':''}" onclick="setShift('siang')">Edit Jadwal Siang</div><div class="shift-opt ${c.shift==='custom'?'active':''}" onclick="setShift('custom')">Edit Normal</div></div><div class="mt-10">${schedHtml}</div><button class="btn btn-ghost btn-block mt-10" onclick="addScheduleBlock('${c.shift}')">+ Tambah Blok Waktu</button><button class="btn btn-ghost btn-block mt-10" onclick="resetSchedule('${c.shift}')">Reset Jadwal ke Default</button>
     <div style="height:1px;background:var(--border);margin:16px 0;"></div>
     <div style="font-family:var(--font-system);font-size:10px;font-weight:800;color:var(--gold-soft);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px;">📦 Apa Itu Time Boxing?</div>
     <div style="font-size:11.5px;color:var(--muted);line-height:1.6;font-family:var(--font-body);">Time Boxing = batas waktu fokus intensif per sesi (bukan durasi blok). Contoh: blok <strong>Belajar 13:00–17:00</strong> bisa diatur Time Box <strong>2 jam</strong> — artinya kamu fokus 2 jam lalu istirahat, bukan terus-menerus 4 jam.<br><span style="font-size:10px;color:var(--muted-2);">Isi kolom "📦 Time Box" di tiap baris blok di atas.</span></div>
@@ -8493,6 +8680,13 @@ function renderSettingsModal(){
         </label>
         <input type="checkbox" ${(s.financeTargetSync!==false)?'checked':''} onchange="setSetting('financeTargetSync',this.checked)">
       </div>
+      <div class="toggle-row" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
+        <label style="display:flex;flex-direction:column;gap:2px;">
+          <span>Sinkron Saldo saat Edit/Hapus</span>
+          <span style="font-size:10.5px;color:var(--muted);font-weight:400;">Aktif: mengedit/menghapus transaksi pemasukan akan menyesuaikan Total Pemasukan (lifetimeIncome) secara otomatis.</span>
+        </label>
+        <input type="checkbox" ${(s.financeEditSync!==false)?'checked':''} onchange="setSetting('financeEditSync',this.checked)">
+      </div>
     </div></details>
     <details class="settings-section"><summary>💾 Manajemen Data & Reset</summary><div class="settings-body">
       <div class="settings-btn-row"><button class="btn btn-primary" onclick="exportData()" style="flex:1;">📤 Export JSON</button><label class="btn btn-secondary" style="flex:1; cursor:pointer; text-align:center;">📥 Import JSON<input type="file" accept=".json" style="display:none;" onchange="importData(event)"></label></div>
@@ -8647,6 +8841,22 @@ function buildModals() {
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">${getCategorySuggestions().map(c=>`<button type="button" class="btn btn-ghost btn-sm" style="font-size:10.5px;padding:3px 10px;" onclick="fillCatChip('${escapeHtml(c).replace(/'/g,"\\'")}')">${escapeHtml(c)}</button>`).join('')}</div>
     </div>
     <div class="field"><label>Jumlah (Rp)</label><input type="number" id="bi-amount" placeholder="100000" inputmode="numeric" class="input"></div><div class="field"><label>Catatan (opsional)</label><input type="text" id="bi-note" placeholder="Hasil proyek, target tercapai, dll" class="input"></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-log-income')">Batal</button><button class="btn btn-primary" onclick="addFinanceTransaction()">Catat</button></div></div></div>
+  <div class="modal-overlay" id="modal-edit-finance"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">✏️ Edit Transaksi</div>
+    <input type="hidden" id="ef-id">
+    <input type="hidden" id="ef-is-transfer">
+    <div id="ef-body-main">
+      <div class="field"><label>Jenis Transaksi</label><select id="ef-type" class="input"><option value="in">Pemasukan (+)</option><option value="out">Pengeluaran (-)</option></select></div>
+      <div class="field"><label>Kantong</label><select id="ef-akun" class="input"><option value="cash">💵 Cash</option><option value="saldo">🏦 Saldo</option></select></div>
+      <div class="field"><label>Kategori</label><input type="text" id="ef-cat" placeholder="Kategori" class="input"></div>
+    </div>
+    <div id="ef-body-transfer" style="display:none;">
+      <div class="small muted" style="margin-bottom:10px;line-height:1.5;">Transfer: hanya jumlah dan catatan yang bisa diubah. Arah transfer tidak dapat diedit.</div>
+    </div>
+    <div class="field"><label>Jumlah (Rp)</label><input type="number" id="ef-amount" placeholder="100000" inputmode="numeric" class="input"></div>
+    <div class="field"><label>Catatan (opsional)</label><input type="text" id="ef-note" placeholder="Catatan..." class="input"></div>
+    <div class="small muted" id="ef-sync-info" style="margin-bottom:10px;line-height:1.5;"></div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-edit-finance')">Batal</button><button class="btn btn-primary" onclick="saveEditFinance()">Simpan Perubahan</button></div>
+  </div></div>
   <div class="modal-overlay" id="modal-transfer-saldo"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">🔄 Pindah Saldo</div>
     <div class="small muted" style="margin:-6px 0 12px;line-height:1.5;">Memindahkan uang antar kantong. Tidak dihitung sebagai pemasukan/pengeluaran — Total Uang tidak berubah.</div>
     <div class="field"><label>Dari</label><select id="ts-dari" class="input"><option value="cash">💵 Cash</option><option value="saldo">🏦 Saldo</option></select></div>
@@ -9101,7 +9311,7 @@ function renderWeeklyScheduleEditor(){
   const todayDay = _WD_DAYS[[6,0,1,2,3,4,5][new Date().getDay()]];
 
   /* ── Pilihan template shift ── */
-  const _WD_TPLS = [{id:'pagi',label:'☀️ Pagi'},{id:'siang',label:'🌅 Siang'},{id:'custom',label:'⚙️ Custom'}];
+  const _WD_TPLS = [{id:'pagi',label:'☀️ Pagi'},{id:'siang',label:'🌅 Siang'},{id:'custom',label:'⚙️ Normal'}];
   const tplTabs = _WD_TPLS.map(tpl=>{
     const active = _wdActiveTemplate === tpl.id;
     return `<button onclick="setWdTemplate('${tpl.id}')" style="flex:1;padding:7px 4px;border-radius:9px;border:1px solid ${active?'rgba(200,168,75,0.6)':'rgba(255,255,255,0.1)'};background:${active?'rgba(200,168,75,0.12)':'transparent'};color:${active?'rgba(200,168,75,1)':'rgba(255,255,255,0.45)'};font-family:var(--font-display);font-weight:700;font-size:11px;cursor:pointer;transition:all 0.2s;">${tpl.label}</button>`;
@@ -9370,11 +9580,19 @@ function init(){
       const _rolledDate = state.meta.lastActiveDate;
       const _rolledWeekKey = state.meta.lastWeekKey;
       const _rolledMonthKey = state.meta.lastMonthKey;
+      // Simpan streak yg sudah dihitung rollover lokal — jangan sampai ditimpa cloud
+      const _rolledStreak = state.character.streak || 0;
+      const _rolledLongest = state.character.longestStreak || 0;
       state = migrateState(deepMerge(DEFAULT_STATE(), merged));
       if(_rolledDate === todayStr()){
         state.meta.lastActiveDate = _rolledDate;
         state.meta.lastWeekKey = _rolledWeekKey;
         state.meta.lastMonthKey = _rolledMonthKey;
+        // Pastikan streak lokal (sudah di-rollover) tidak ditimpa data cloud yang lebih lama
+        if(_rolledStreak > (state.character.streak || 0)){
+          state.character.streak = _rolledStreak;
+          state.character.longestStreak = Math.max(state.character.longestStreak || 0, _rolledLongest);
+        }
       }
       rollover(); recomputeLifeScore(); recordMomentumHistory(); render();
       if(cloudTs > localTs) showToast('☁️ Data tersinkron dari cloud!', 'good');
