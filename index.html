@@ -723,26 +723,54 @@ a{color:var(--cyan);}
 .kanban-cards { flex: 1; min-height: 200px; display: flex; flex-direction: column; gap: 10px; }
 .kanban-card { background: linear-gradient(145deg, rgba(255,255,255,0.05), rgba(0,0,0,0.5)); border: 1px solid var(--border-strong); border-left: 4px solid var(--cyan); padding: 12px; border-radius: 10px; color: var(--bone); cursor: grab; position: relative; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
 .kanban-add-btn { margin-top: 12px; padding: 10px; background: rgba(255,255,255,0.03); border: 1px dashed var(--border-strong); color: var(--muted); border-radius: 8px; cursor: pointer; font-family: var(--font-system); font-weight: 700; letter-spacing: 1px;}
-.blueprint-section { margin-top: 32px; padding-top: 0; }
-.blueprint-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
-.blueprint-title { font-family: var(--font-display); font-size: 15px; font-weight: 700; color: var(--gold); letter-spacing: 0.5px; }
-.blueprint-list { display: flex; flex-direction: column; gap: 10px; }
-.blueprint-item { background: linear-gradient(135deg, rgba(255,255,255,0.04), rgba(0,0,0,0.3)); border: 1px solid var(--border); border-left: 4px solid rgba(255,255,255,0.15); border-radius: 10px; padding: 12px 14px; display: flex; align-items: flex-start; gap: 12px; transition: border-color 0.2s, background 0.2s; }
-.blueprint-item.status-building { border-left-color: var(--cyan); background: linear-gradient(135deg, rgba(0,229,255,0.05), rgba(0,0,0,0.3)); }
-.blueprint-item.status-done { border-left-color: var(--jade); opacity: 0.72; }
-.blueprint-item.status-planning { border-left-color: var(--gold); }
-.blueprint-num { width: 26px; height: 26px; min-width: 26px; border-radius: 50%; background: rgba(255,255,255,0.07); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: var(--muted); }
-.blueprint-item.status-done .blueprint-num { background: rgba(52,211,153,0.15); color: var(--jade); }
-.blueprint-item.status-building .blueprint-num { background: rgba(0,229,255,0.15); color: var(--cyan); }
-.blueprint-item.status-planning .blueprint-num { background: rgba(251,191,36,0.12); color: var(--gold); }
-.blueprint-body { flex: 1; min-width: 0; }
-.blueprint-label { font-weight: 700; font-size: 13px; color: var(--bone); }
-.blueprint-item.status-done .blueprint-label { text-decoration: line-through; color: var(--muted); }
-.blueprint-desc { font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.5; }
-.blueprint-status-badge { display: inline-block; font-size: 10px; margin-top: 6px; padding: 2px 8px; border-radius: 20px; background: rgba(255,255,255,0.07); border: 1px solid var(--border-strong); }
-.blueprint-actions { display: flex; gap: 5px; flex-shrink: 0; }
-.blueprint-add-btn { margin-top: 14px; width: 100%; padding: 10px; background: rgba(255,255,255,0.02); border: 1px dashed var(--border-strong); color: var(--muted); border-radius: 8px; cursor: pointer; font-family: var(--font-system); font-weight: 700; letter-spacing: 1px; }
-.blueprint-empty { text-align: center; padding: 28px 16px; color: var(--muted); font-size: 12px; border: 1px dashed var(--border); border-radius: 10px; line-height: 1.7; }
+/* ═══ BULLETIN BOARD — PAPAN PROJEK TERPADU ═══ */
+.bp-board { background:linear-gradient(145deg,#2d1f0a,#1c1308,#251a09); border:2px solid rgba(160,110,35,0.35); border-radius:16px; padding:18px 14px 14px; position:relative; box-shadow:inset 0 2px 24px rgba(0,0,0,0.55),0 6px 24px rgba(0,0,0,0.45); overflow:hidden; }
+.bp-board::before { content:''; position:absolute; inset:0; border-radius:14px; background:repeating-linear-gradient(0deg,transparent,transparent 28px,rgba(255,255,255,0.012) 28px,rgba(255,255,255,0.012) 29px),repeating-linear-gradient(90deg,transparent,transparent 28px,rgba(255,255,255,0.012) 28px,rgba(255,255,255,0.012) 29px); pointer-events:none; }
+.bp-board-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; position:relative; z-index:1; }
+.bp-board-title { font-family:var(--font-display); font-size:14px; font-weight:900; color:#c8a850; letter-spacing:1.5px; text-shadow:0 1px 4px rgba(0,0,0,0.6); }
+.bp-summary { margin-bottom:14px; padding:8px 12px; background:rgba(0,0,0,0.3); border-radius:8px; border:1px solid rgba(160,110,35,0.25); position:relative; z-index:1; }
+.bp-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; position:relative; z-index:1; }
+.bp-card-wrap { display:flex; flex-direction:column; align-items:center; }
+.bp-pin { width:15px; height:15px; background:radial-gradient(circle at 38% 32%,#ff8080,#c0392b,#8b0000); border-radius:50%; box-shadow:0 2px 6px rgba(0,0,0,0.7),inset 0 1px 2px rgba(255,255,255,0.35); position:relative; z-index:3; margin-bottom:-7px; flex-shrink:0; }
+.bp-card { background:linear-gradient(160deg,#f5eed8,#ede5c8,#e6ddb8); border-radius:3px; padding:14px 11px 10px; width:100%; box-sizing:border-box; box-shadow:2px 6px 16px rgba(0,0,0,0.55),0 1px 3px rgba(0,0,0,0.25); position:relative; color:#2a1a05; transition:transform 0.2s; }
+.bp-card.status-planning { transform:rotate(-1.2deg); }
+.bp-card.status-building { transform:rotate(0.5deg); border-top:3px solid #0ea5e9; }
+.bp-card.status-review { transform:rotate(-0.7deg); border-top:3px solid #a855f7; }
+.bp-card.status-done { transform:rotate(-0.6deg); }
+.bp-card-title { font-size:11.5px; font-weight:900; color:#1a0e00; margin-bottom:4px; line-height:1.3; font-family:var(--font-display); }
+.bp-card-desc { font-size:9.5px; color:#6b4f1a; margin-bottom:5px; line-height:1.45; }
+.bp-chip { display:inline-block; font-size:8.5px; font-weight:800; padding:2px 7px; border-radius:20px; margin-bottom:6px; letter-spacing:0.4px; }
+.bp-chip.planning { background:rgba(180,130,10,0.18); color:#7a5500; border:1px solid rgba(180,130,10,0.35); }
+.bp-chip.building { background:rgba(14,165,233,0.18); color:#0369a1; border:1px solid rgba(14,165,233,0.35); }
+.bp-chip.review { background:rgba(168,85,247,0.15); color:#7e22ce; border:1px solid rgba(168,85,247,0.3); }
+.bp-chip.done { background:rgba(22,163,74,0.18); color:#166534; border:1px solid rgba(22,163,74,0.35); }
+.bp-divider { height:1px; background:rgba(100,74,20,0.18); margin:6px 0; }
+.bp-checkins-label { font-size:8.5px; font-weight:800; color:#7a5500; margin-bottom:4px; letter-spacing:0.5px; }
+.bp-checkins { display:flex; gap:3px; flex-wrap:wrap; margin-bottom:5px; }
+.bp-day { width:17px; height:17px; border-radius:3px; display:flex; align-items:center; justify-content:center; font-size:8px; font-weight:800; border:1px solid rgba(100,74,20,0.2); }
+.bp-day.ok { background:rgba(22,163,74,0.25); color:#15803d; border-color:rgba(22,163,74,0.4); }
+.bp-day.fail { background:rgba(220,38,38,0.2); color:#b91c1c; border-color:rgba(220,38,38,0.35); }
+.bp-day.today-empty { border:1.5px solid #0ea5e9; background:rgba(14,165,233,0.1); color:#0369a1; }
+.bp-day.empty { background:rgba(100,74,20,0.08); color:rgba(100,74,20,0.3); }
+.bp-progress-bar { height:4px; background:rgba(100,74,20,0.15); border-radius:3px; margin:5px 0 4px; overflow:hidden; }
+.bp-progress-fill { height:100%; border-radius:3px; background:linear-gradient(90deg,#0ea5e9,#22c55e); transition:width 0.4s; }
+.bp-deadline { font-size:9px; color:#7a5500; margin-top:3px; }
+.bp-deadline.overdue { color:#dc2626; font-weight:800; }
+.bp-btn-row { display:flex; gap:3px; margin-top:6px; }
+.bp-btn-row button { flex:1; padding:5px 2px; border-radius:4px; border:none; font-size:9px; font-weight:800; cursor:pointer; }
+.bp-btn-ok { background:linear-gradient(90deg,#16a34a,#15803d); color:#fff; }
+.bp-btn-fail { background:linear-gradient(90deg,#dc2626,#b91c1c); color:#fff; }
+.bp-btn-edit { background:rgba(100,74,20,0.15); color:#5a3e0a; }
+.bp-btn-next { background:rgba(14,165,233,0.18); color:#0369a1; }
+.bp-btn-del { background:rgba(220,38,38,0.1); color:#991b1b; }
+.bp-done-overlay { position:absolute; inset:0; border-radius:3px; background:rgba(10,18,8,0.78); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; z-index:2; }
+.bp-stamp { border:2.5px solid #22c55e; border-radius:5px; padding:5px 11px; text-align:center; transform:rotate(-5deg); }
+.bp-stamp-title { font-size:9px; font-weight:900; color:#22c55e; letter-spacing:2px; font-family:var(--font-display); }
+.bp-stamp-exp { font-size:8.5px; color:rgba(34,197,94,0.85); margin-top:1px; font-weight:700; }
+.bp-stamp-days { font-size:8px; color:rgba(34,197,94,0.65); }
+.bp-add-btn { margin-top:14px; width:100%; padding:12px; background:rgba(160,110,35,0.08); border:1.5px dashed rgba(160,110,35,0.35); color:rgba(200,168,80,0.75); border-radius:10px; cursor:pointer; font-family:var(--font-system); font-weight:800; letter-spacing:1px; font-size:11.5px; box-sizing:border-box; }
+.bp-empty-board { text-align:center; padding:40px 12px; color:rgba(200,168,80,0.4); font-size:11.5px; line-height:1.8; }
+.bp-today-tag { font-size:8px; font-weight:900; color:#0ea5e9; background:rgba(14,165,233,0.12); border:1px solid rgba(14,165,233,0.3); border-radius:3px; padding:1px 4px; margin-left:3px; }
 
 .chart-container { position: relative; width: 100%; height: 200px; margin-top: 14px; }
 .commerce-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
@@ -1661,7 +1689,7 @@ a{color:var(--cyan);}
 <div id="toast-container"></div>
 
 <script>
-let state = null; let saveTimer = null; let daoChart = null; let financialMomentumChart = null; let lifeMomentumChart = null; let lifeMomentumRange = 'weekly'; let _sectionMgrTab = 'home'; let heatmapView = 'monthly'; let _ltExpanded = {};
+let state = null; let saveTimer = null; let daoChart = null; let financialMomentumChart = null; let lifeMomentumChart = null; let _finTradingRange = '30H'; let lifeMomentumRange = 'weekly'; let _sectionMgrTab = 'home'; let heatmapView = 'monthly'; let _ltExpanded = {};
 // Navigasi Heatmap Kehidupan: Bulanan bisa mundur/maju bulan, Tahunan bisa mundur/maju tahun kalender penuh (Jan-Des).
 let heatmapMonthYear = new Date().getFullYear(); let heatmapMonthMonth = new Date().getMonth();
 let heatmapYearYear = new Date().getFullYear();
@@ -3227,7 +3255,7 @@ const SECTION_DEFS = {
     { id:'target-finansial',   label:'🎯 Target Finansial Aktif' },
     { id:'income-expense',     label:'💰 Pemasukan & Pengeluaran' },
     { id:'future-prediction',  label:'🔮 Prediksi Tabungan' },
-    { id:'financial-momentum', label:'📈 Financial Momentum Chart' },
+    { id:'financial-momentum', label:'📊 Grafik Saldo' },
     { id:'dao-chart',          label:'📊 Tren Pemasukan 7 Hari' },
     { id:'transaction-log',    label:'📋 Riwayat Transaksi Terbaru' },
     { id:'target-history',     label:'🏆 Riwayat Target Tercapai' },
@@ -3255,16 +3283,16 @@ const SECTION_DEFS = {
     { id:'ritual-sedekah', label:'🌟 Sedekah & Amal' },
   ],
   project: [
-    { id:'project-analytics', label:'📊 Analitik & Grafik Projek' },
-    { id:'project-kanban',    label:'📋 Papan Pengetahuan (Kanban)' },
-    { id:'project-blueprint', label:'📐 Blueprint & Rencana Besar' },
+    { id:'project-analytics', label:'📊 Analitik' },
+    { id:'project-kanban',    label:'📌 Papan Projek' },
+    { id:'project-blueprint', label:'🏆 Riwayat Selesai' },
   ],
   refleksi: [
     { id:'refleksi-journal',   label:'📔 Jurnaling Bebas & Riwayat' },
     { id:'refleksi-questions', label:'✦ Pertanyaan Refleksi Diri' },
   ],
-  caracter: [
-    { id:'caracter-full', label:'⚡ Karakter & Momentum' },
+  character: [
+    { id:'character-full', label:'⚡ Karakter & Momentum' },
   ],
   realmenc: [
     { id:'realmenc-full', label:'🌌 Ensiklopedia Realm' },
@@ -3343,13 +3371,13 @@ function renderSectionMgrModal() {
   const _SMG = {
     home:      { icon:'🏠', label:'Home',     tabs:['home'] },
     quest:     { icon:'⚔️', label:'Quest',    tabs:['quests','goals','project','ritual','refleksi','evaluasiMingguan'] },
-    progres:   { icon:'📊', label:'Progres',  tabs:['stats','caracter','enlight'] },
+    progres:   { icon:'📊', label:'Progres',  tabs:['stats','character','enlight'] },
     finansial: { icon:'💰', label:'Finansial',tabs:['boss'] },
     profil:    { icon:'👤', label:'Profil',   tabs:['profile','hall','lifeenc','realmenc'] },
   };
   const _SMG_TAB_LABELS = {
     home:'Home', quests:'Quest', goals:'Goals', project:'Project',
-    ritual:'Ritual', refleksi:'Refleksi', evaluasiMingguan:'Evaluasi', stats:'Stats', caracter:'Character',
+    ritual:'Ritual', refleksi:'Refleksi', evaluasiMingguan:'Evaluasi', stats:'Stats', character:'Character',
     enlight:'Enlight', boss:'Finansial', profile:'Profile', hall:'Fame',
     lifeenc:'Life Enc', realmenc:'Realm',
   };
@@ -3371,7 +3399,7 @@ function renderSectionMgrModal() {
     ['','— Tab Asli —'],
     ['home','🏠 Home'], ['quests','⚡ Quest'], ['goals','🎯 Goals'],
     ['project','📋 Project'], ['ritual','🕌 Ritual'], ['refleksi','✦ Refleksi'], ['evaluasiMingguan','📋 Evaluasi'],
-    ['stats','📊 Stats'], ['caracter','⚡ Character'], ['enlight','💡 Enlight'],
+    ['stats','📊 Stats'], ['character','⚡ Character'], ['enlight','💡 Enlight'],
     ['boss','💰 Finansial'], ['profile','👤 Profile'], ['hall','👑 Fame'],
     ['lifeenc','📖 Life Enc'], ['realmenc','🌌 Realm'],
   ];
@@ -3534,7 +3562,7 @@ function DEFAULT_STATE(){
     goals:[], habits:[], goalHistory:[], lifeTimeline:[], lifeMomentum:[],
     // Arsip permanen "Sejarah Riwayat" (tab Profil) — entri tiap kategori yang sudah lewat 30 hari
     // dipindahkan ke sini dari riwayat aktifnya masing-masing, tersimpan selamanya, tidak pernah dihapus.
-    historyArchive: { finansial:[], momentum:[], goal:[], sedekah:[], jurnal:[], refleksi:[], timeline:[], vitalitas:[], evaluasi:[] },
+    historyArchive: { finansial:[], momentum:[], goal:[], sedekah:[], jurnal:[], refleksi:[], timeline:[], vitalitas:[], evaluasi:[], projek:[] },
     schedule: JSON.parse(JSON.stringify(DEFAULT_SCHEDULE)), settings: DEFAULT_SETTINGS(), customStats:[], achievementsUnlocked:[],
     kanban: { cards: [] }, completedTargets: [], sedekah: { entries:[], totalLifetime:0, dailyExpGained:0, lastExpDate:'' },
     hallOfFame: [],
@@ -3567,7 +3595,7 @@ function ensureCharHistory(s){
 // yang valid. Dipakai saat migrasi data lama & oleh fungsi pemindah arsip harian, sama seperti pola ensureCharHistory.
 function ensureHistoryArchive(s){
   if(!s.historyArchive) s.historyArchive = {};
-  ['finansial','momentum','goal','sedekah','jurnal','refleksi','timeline','vitalitas','evaluasi'].forEach(k=>{
+  ['finansial','momentum','goal','sedekah','jurnal','refleksi','timeline','vitalitas','evaluasi','projek'].forEach(k=>{
     if(!Array.isArray(s.historyArchive[k])) s.historyArchive[k] = [];
   });
   // De-dup refleksi: entri lama bisa dobel karena bug spread di saveJournal/saveRefleksiAnswer.
@@ -4302,6 +4330,8 @@ function failQuest(id){
 
     q.status='failed';
     state.questFailLog = state.questFailLog || {}; state.questFailLog[todayStr()] = (state.questFailLog[todayStr()]||0)+1;
+    const _failExpMult = state.settings.expMultiplier || 1.0;
+    const _actualPenalty = penalty > 0 ? Math.round(penalty * _failExpMult) : 0;
     if(penalty > 0) gainExp(-penalty);
     bumpStat('discipline', -3);
 
@@ -4324,6 +4354,7 @@ function failQuest(id){
     }
     state.character.hp = Math.max(0, state.character.hp - hpLoss);
     if(hpLoss > 0) logHpChange(-hpLoss, `Gagal Quest: ${q.title}`);
+    if(manaDrained > 0) logManaChange(-manaDrained, `Gagal Quest: ${q.title}`);
     checkConsequenceTrigger();
     if (state.character.hp <= 0) {
         if(isHeavenTrampling()){
@@ -4337,10 +4368,10 @@ function failQuest(id){
         }
     } else if(manaWasUsed) {
         const hpPart = hpLoss > 0 ? `, HP -${hpLoss}` : '';
-        const expPart = penalty > 0 ? `, EXP -${penalty}` : '';
+        const expPart = _actualPenalty > 0 ? `, EXP -${_actualPenalty}` : '';
         showToast(`🛡️ Tameng Mana! Mana -${manaDrained}${hpPart}${expPart}`,'bad');
     } else {
-        if(penalty > 0) showToast(`Quest Gagal! HP -${hpLoss} & EXP -${penalty}`,'bad');
+        if(_actualPenalty > 0) showToast(`Quest Gagal! HP -${hpLoss} & EXP -${_actualPenalty}`,'bad');
         else showToast(`Quest Gagal! HP -${hpLoss}`,'bad');
     }
     SFX.error(); render(); save();
@@ -4531,8 +4562,9 @@ function rollover(){
               }
               // EXP loss: 20% dari EXP yang dibutuhkan untuk level saat ini
               const htExpLoss = Math.floor(expNeeded(state.character.level) * 0.2);
+              const _actualHtExpLoss = Math.round(htExpLoss * (state.settings.expMultiplier || 1.0));
               gainExp(-htExpLoss);
-              showToast(`⚠️ HEAVEN TRAMPLING PUNISHMENT! HP -50%, Level -1, EXP -${htExpLoss.toLocaleString()} (${missedCount} quest terlewat)`, 'bad');
+              showToast(`⚠️ HEAVEN TRAMPLING PUNISHMENT! HP -50%, Level -1, EXP -${_actualHtExpLoss.toLocaleString()} (${missedCount} quest terlewat)`, 'bad');
               addActivityLog(`HT Punishment: ${missedCount} quest terlewat — HP -50%, Level -1`);
               SFX.error();
               // HP = 0 → Qi Deviation (turun -3 LV)
@@ -4568,10 +4600,11 @@ function rollover(){
               checkConsequenceTrigger();
               if (state.character.level > 20) {
                   const penalty = missedCount * 50 * Math.max(1, state.character.level / 10);
+                  const _actualRolloverPenalty = Math.round(penalty * (state.settings.expMultiplier || 1.0));
                   gainExp(-penalty);
                   showToast(manaWasUsedAny
-                      ? `🛡️ Tameng Mana menyerap! Mana -${totalManaDrained}, HP -${totalHpLoss} & EXP -${penalty} (${missedCount} Quest terlewat)`
-                      : `Disiplin Mengendur: HP -${totalHpLoss} & EXP -${penalty} (${missedCount} Quest terlewat)`, 'bad');
+                      ? `🛡️ Tameng Mana menyerap! Mana -${totalManaDrained}, HP -${totalHpLoss} & EXP -${_actualRolloverPenalty} (${missedCount} Quest terlewat)`
+                      : `Disiplin Mengendur: HP -${totalHpLoss} & EXP -${_actualRolloverPenalty} (${missedCount} Quest terlewat)`, 'bad');
               } else {
                   showToast(manaWasUsedAny
                       ? `🛡️ Tameng Mana menyerap! Mana -${totalManaDrained}, HP -${totalHpLoss} (${missedCount} Quest terlewat)`
@@ -4742,6 +4775,7 @@ function logSpiritual(key, isSuccess, isCustom = false){
   } else {
       if(item.wajib){
         state.spiritual.exp = Math.max(0, state.spiritual.exp - 10);
+        const _ritualExpLoss = Math.round(50 * (state.settings.expMultiplier || 1.0));
         gainExp(-50);
         // BUGFIX: dulu Mana & HP selalu dipotong BERSAMAAN (-40 Mana DAN -3 HP tanpa syarat),
         // jadi Mana tidak benar-benar berfungsi sebagai tameng — HP tetap kena walau Mana penuh.
@@ -4765,8 +4799,8 @@ function logSpiritual(key, isSuccess, isCustom = false){
         checkConsequenceTrigger();
         bumpStat('discipline', -1);
         showToast(_manaDrained > 0
-          ? `Gagal ${item.label}: -50 EXP, -${_ritualHpLoss} HP, -${_manaDrained} Mana, -10 Spiritual EXP`
-          : `Gagal ${item.label}: -50 EXP, -${_ritualHpLoss} HP (Mana habis!), -10 Spiritual EXP`, 'bad');
+          ? `Gagal ${item.label}: -${_ritualExpLoss} EXP, -${_ritualHpLoss} HP, -${_manaDrained} Mana, -10 Spiritual EXP`
+          : `Gagal ${item.label}: -${_ritualExpLoss} EXP, -${_ritualHpLoss} HP (Mana habis!), -10 Spiritual EXP`, 'bad');
       } else {
         const penalty = Math.round(item.exp * 0.5);
         state.spiritual.exp = Math.max(0, state.spiritual.exp - penalty);
@@ -4779,14 +4813,29 @@ function logSpiritual(key, isSuccess, isCustom = false){
 }
 
 function addCustomRitual() {
-    const title = prompt("Nama Ritual Kustom (contoh: Baca Buku, Jurnal):");
-    if(!title) return;
-    const exp = parseInt(prompt("Reward EXP Spiritual (misal: 10):")) || 10;
-    state.customRituals.push({id:uid('cr'), label:title, exp:exp, icon:'✨'});
+    const nameEl = document.getElementById('acr-name');
+    const expEl  = document.getElementById('acr-exp');
+    const iconEl = document.getElementById('acr-icon');
+    if(nameEl) nameEl.value = '';
+    if(expEl)  expEl.value  = '10';
+    if(iconEl) iconEl.value = '✨';
+    openModal('modal-add-custom-ritual');
+}
+function submitAddCustomRitual() {
+    const name = (document.getElementById('acr-name').value || '').trim();
+    if(!name){ document.getElementById('acr-name').focus(); return; }
+    const exp  = Math.max(1, parseInt(document.getElementById('acr-exp').value) || 10);
+    const icon = (document.getElementById('acr-icon').value || '').trim() || '✨';
+    state.customRituals.push({id:uid('cr'), label:name, exp:exp, icon:icon});
+    closeModal('modal-add-custom-ritual');
     render(); save();
 }
 function deleteCustomRitual(id) {
-    if(confirm("Hapus ritual kustom ini?")) { markDeleted('customRituals', id); state.customRituals = state.customRituals.filter(x => x.id !== id); render(); save(); }
+    openConfirm('Hapus ritual kustom ini? Tindakan tidak dapat dibatalkan.', () => {
+        markDeleted('customRituals', id);
+        state.customRituals = state.customRituals.filter(x => x.id !== id);
+        render(); save();
+    });
 }
 
 function habitConsecutiveDays(h, fromDate) {
@@ -5072,7 +5121,7 @@ function getCategorySuggestions(){
 function getFinancialRank(){
   const income  = state.character.lifetimeIncome || 0;
   const expense = getTotalExpense();
-  const saldo   = income - expense;
+  const saldo   = getTotalUang();
   const savingsRate = income > 0 ? saldo / income : 0;
 
   const RANKS = [
@@ -5154,11 +5203,11 @@ function updateBossTarget(){
 }
 
 function deleteBossTarget(id) {
-    if(confirm('Hapus Target Finansial ini?')) {
+    openConfirm('Hapus Target Finansial ini? Tindakan tidak dapat dibatalkan.', () => {
         markDeleted('targets', id);
         state.targets = state.targets.filter(t => t.id !== id);
         render(); save();
-    }
+    });
 }
 
 let _editingTargetId = null;
@@ -5905,9 +5954,11 @@ function addSedekah(evt){
   
   // lifetimeIncome TIDAK dikurangi di sini — sedekah hanya dicatat sebagai transaksi 'out'
   // di financeLog. Mengurangi lifetimeIncome sekaligus mencatat 'out' menyebabkan double-deduct.
-  const _sedekahFin = {id: uid('fin'), date: today, amount: nominal, note: 'Sedekah: ' + document.getElementById('sedekah-note').value.trim(), type: 'out', akun: 'cash'};
+  const _sedekahAkun = (document.getElementById('sedekah-akun') || {}).value || 'cash';
+  const _sedekahFin = {id: uid('fin'), date: today, amount: nominal, note: 'Sedekah: ' + document.getElementById('sedekah-note').value.trim(), type: 'out', akun: _sedekahAkun};
   state.financeLog.unshift(_sedekahFin);
   _riwayatArchivePush('finansial', _sedekahFin);
+  if(state.settings.financeTargetSync !== false) applyExpenseToTargets(nominal);
 
   if(expGained > 0){
     state.spiritual.exp = (state.spiritual.exp || 0) + expGained;
@@ -5918,7 +5969,7 @@ function addSedekah(evt){
   }
   const _sedekahFxX = evt && evt.clientX ? evt.clientX : (window.innerWidth/2);
   const _sedekahFxY = evt && evt.clientY ? evt.clientY : (window.innerHeight/2);
-  document.getElementById('sedekah-nominal').value = ''; document.getElementById('sedekah-note').value = ''; SFX.coin(); spawnSedekahRewardFX(_sedekahFxX, _sedekahFxY, expGained, nominal); render(); save();
+  document.getElementById('sedekah-nominal').value = ''; document.getElementById('sedekah-note').value = ''; const _akunEl = document.getElementById('sedekah-akun'); if(_akunEl) _akunEl.value = 'cash'; SFX.coin(); spawnSedekahRewardFX(_sedekahFxX, _sedekahFxY, expGained, nominal); render(); save();
 }
 
 function render3Rules(){
@@ -6057,7 +6108,7 @@ function render(){
     renderRecoveryBanner(); renderHpZeroBanner(); renderConsequencePopup(); renderNav(); renderBottomNav(); updateMoodChip();
     const main = document.getElementById('main'); const tab = state.ui && state.ui.tab ? state.ui.tab : 'home';
     if(_rvRaf){ cancelAnimationFrame(_rvRaf); _rvRaf = null; } // cancel old FX before re-render
-    if(tab==='home') main.innerHTML = renderHome(); else if(tab==='quests') main.innerHTML = renderQuests(); else if(tab==='goals') main.innerHTML = renderGoals(); else if(tab==='stats') main.innerHTML = renderStats(); else if(tab==='boss') main.innerHTML = renderBoss(); else if(tab==='ritual') main.innerHTML = renderRitual(); else if(tab==='profile') main.innerHTML = renderProfile(); else if(tab==='project') main.innerHTML = renderProjectKanban(); else if(tab==='enlight') main.innerHTML = renderStatisticsTable(); else if(tab==='realmenc') main.innerHTML = renderRealmEncyclopedia(); else if(tab==='lifeenc') main.innerHTML = renderLifeEncyclopedia(); else if(tab==='hall') main.innerHTML = renderHallOfFame(); else if(tab==='caracter') main.innerHTML = renderCharacterMomentumTab(); else if(tab==='refleksi') main.innerHTML = renderRefleksi(); else if(tab==='evaluasiMingguan') main.innerHTML = renderEvaluasiMingguan(); else if(tab==='riwayat') main.innerHTML = renderHistoryArchive();
+    if(tab==='home') main.innerHTML = renderHome(); else if(tab==='quests') main.innerHTML = renderQuests(); else if(tab==='goals') main.innerHTML = renderGoals(); else if(tab==='stats') main.innerHTML = renderStats(); else if(tab==='boss') main.innerHTML = renderBoss(); else if(tab==='ritual') main.innerHTML = renderRitual(); else if(tab==='profile') main.innerHTML = renderProfile(); else if(tab==='project') main.innerHTML = renderProjectKanban(); else if(tab==='enlight') main.innerHTML = renderStatisticsTable(); else if(tab==='realmenc') main.innerHTML = renderRealmEncyclopedia(); else if(tab==='lifeenc') main.innerHTML = renderLifeEncyclopedia(); else if(tab==='hall') main.innerHTML = renderHallOfFame(); else if(tab==='character') main.innerHTML = renderCharacterMomentumTab(); else if(tab==='refleksi') main.innerHTML = renderRefleksi(); else if(tab==='evaluasiMingguan') main.innerHTML = renderEvaluasiMingguan(); else if(tab==='riwayat') main.innerHTML = renderHistoryArchive();
     if(tab==='project') setTimeout(initProjectCharts, 60);
     else if(tab==='goals') setTimeout(initGoalCharts, 60);
     else if(tab==='stats') setTimeout(initStatsChart, 60);
@@ -6142,7 +6193,7 @@ function renderRitual(){
     <div class="card" style="border-top:3px solid var(--gold);">
       <div class="small muted mb-14" style="text-align:center;">Total Seumur Hidup: <b style="color:var(--gold);">Rp ${(state.sedekah?.totalLifetime||0).toLocaleString()}</b></div>
       <div class="form-row"><input id="sedekah-nominal" type="number" class="input" placeholder="Nominal (Rp)"><input id="sedekah-date" type="date" class="input" value="${today}"></div>
-      <input id="sedekah-note" type="text" class="input mt-10" placeholder="Catatan/Tujuan (opsional)...">
+      <div class="form-row mt-10"><input id="sedekah-note" type="text" class="input" placeholder="Catatan/Tujuan (opsional)..."><select id="sedekah-akun" class="input" style="max-width:130px;"><option value="cash">💵 Cash</option><option value="saldo">🏦 Saldo</option></select></div>
       <button class="btn btn-gold btn-block mt-10" onclick="addSedekah(event)">Catat Sedekah</button>
       <table class="stats-table" style="margin-top:1rem;"><thead><tr><th>Waktu</th><th>Nominal</th><th>EXP</th><th>Catatan</th></tr></thead><tbody>${sedekahRows}</tbody></table>
     </div>
@@ -6647,7 +6698,17 @@ function renderBoss(){
     const _cashBal = getCashBalance(); const _saldoBal = getSaldoAccountBalance();
     const _secIncome = `<div class="card boss-card glass-panel" style="background: linear-gradient(135deg, rgba(240,185,59,0.05), transparent);"><div class="boss-name" style="font-family:var(--font-display);font-weight:800;display:flex;justify-content:center;align-items:center;gap:8px;"><span style="font-size:28px;">💰</span> Pemasukan & Pengeluaran</div><div class="commerce-metric" style="margin-bottom:10px;"><div class="lbl">Total Uang (Cash + Saldo)</div><div class="val highlight" style="font-size:22px; color:${saldo>=0?'var(--gold)':'var(--crimson)'};">${formatRupiah(saldo)}</div></div><div class="commerce-grid"><div class="commerce-metric"><div class="lbl">💵 Cash</div><div class="val" style="color:var(--bone);">${formatRupiah(_cashBal)}</div></div><div class="commerce-metric"><div class="lbl">🏦 Saldo</div><div class="val" style="color:var(--bone);">${formatRupiah(_saldoBal)}</div></div></div><div class="commerce-grid mt-10"><div class="commerce-metric"><div class="lbl">Total Pemasukan</div><div class="val" style="color:var(--jade);">${formatRupiah(state.character.lifetimeIncome||0)}</div></div><div class="commerce-metric" style="border-color: rgba(255,71,104,0.3);"><div class="lbl">Pengeluaran</div><div class="val" style="color:var(--crimson);">${formatRupiah(pengeluaran)}</div></div></div><div style="display:flex;gap:8px;margin-top:14px;"><button class="btn btn-gold" style="flex:1;" onclick="openModal('modal-log-income')">Catat Transaksi</button><button class="btn btn-secondary" style="flex:1;" onclick="openModal('modal-transfer-saldo')">🔄 Pindah Saldo</button></div></div>`;
     const _secFuturePrediction = `<div class="section-title">🔮 Prediksi Tabungan</div><div class="card glass-panel" style="border-top:3px solid var(--arise-bright);"><div class="small muted" style="margin-bottom:12px;">Berdasarkan rata-rata harian ${_dailyAvg>=0?'+':''}${formatRupiah(_dailyAvg)}/hari (${_daysSince} hari sejak mulai)</div><div class="commerce-grid" style="grid-template-columns:1fr 1fr 1fr;gap:8px;"><div class="commerce-metric"><div class="lbl">30 Hari</div><div class="val" style="color:${_pColor(_p30)};font-size:13px;">${formatRupiah(_p30)}</div></div><div class="commerce-metric"><div class="lbl">1 Tahun</div><div class="val" style="color:${_pColor(_p1y)};font-size:13px;">${formatRupiah(_p1y)}</div></div><div class="commerce-metric"><div class="lbl">5 Tahun</div><div class="val" style="color:${_pColor(_p5y)};font-size:13px;">${formatRupiah(_p5y)}</div></div></div></div>`;
-    const _secMomentum = `<div class="section-title">📈 Financial Momentum</div><div class="card glass-panel"><div class="chart-container"><canvas id="financialMomentumChart"></canvas></div><div id="fm-point-info" class="small muted" style="text-align:center;margin-top:10px;min-height:18px;">Tekan titik pada grafik untuk melihat detail transaksi.</div></div>`;
+    const _finRng = _finTradingRange || '30H';
+    const _secMomentum = `<div class="section-title">📊 Grafik Saldo Berjalan</div>
+    <div class="card glass-panel">
+      <div style="display:flex;gap:6px;margin-bottom:12px;">
+        <button class="chip ${_finRng==='7H'?'active':''}" onclick="setFinTradingRange('7H')">7 Hari</button>
+        <button class="chip ${_finRng==='30H'?'active':''}" onclick="setFinTradingRange('30H')">30 Hari</button>
+        <button class="chip ${_finRng==='All'?'active':''}" onclick="setFinTradingRange('All')">All Time</button>
+      </div>
+      <div class="chart-container" style="height:180px;position:relative;"><canvas id="financialMomentumChart"></canvas></div>
+      <div id="fm-point-info" style="text-align:center;margin-top:10px;min-height:36px;font-size:11px;color:var(--muted);">Tekan titik pada grafik untuk melihat detail transaksi.</div>
+    </div>`;
     const _secDaoChart = `<div class="section-title">Tren Momentum Pemasukan (7 Hari)</div><div class="card glass-panel"><div class="chart-container"><canvas id="daoChart"></canvas></div></div>`;
     const _secTransLog = `<div class="section-title">📋 Riwayat Transaksi Terbaru</div><div class="card">${logHtml}</div>`;
     const _secTargetHistory = `<div class="section-title">🏆 Riwayat Target Tercapai</div><div class="card">${(state.completedTargets||[]).length ? (state.completedTargets||[]).map(t=>`<div class="target-history-item"><div><div style="font-weight:700;color:var(--jade);font-family:var(--font-system);font-size:13px;">✅ ${escapeHtml(t.name)}</div><div class="small muted">${t.completedAt} · +${(t.reward||0).toLocaleString()} EXP</div></div><div style="display:flex;align-items:center;gap:8px;"><span style="color:var(--jade);font-weight:700;font-family:var(--font-system);">${formatRupiah(t.maxHp)}</span>${t.id?`<button class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 6px;color:var(--crimson);" onclick="deleteCompletedTarget('${escapeAttr(t.id)}')">🗑</button>`:''}</div></div>`).join('') : `<div class="small muted" style="text-align:center;padding:12px 0;">Belum ada target yang selesai</div>`}</div>`;
@@ -6664,67 +6725,170 @@ function renderBoss(){
 }
 // ── FINANCIAL MOMENTUM — grafik tambahan (kurva pemasukan, kurva pengeluaran, tren harian).
 // Menggunakan data state.financeLog yang sudah ada, tidak membuat sistem finansial baru.
+// ── GRAFIK TRADING: saldo berjalan per transaksi, segmen hijau/merah ─────────
 function initFinancialMomentumChart() {
-    if(typeof Chart === 'undefined') { const c=document.getElementById('financialMomentumChart'); if(c){ const p=c.parentElement; p.innerHTML='<div class="small muted" style="text-align:center;padding:20px;">📊 Grafik tidak tersedia (perlu koneksi internet)</div>'; } return; }
-    const ctx = document.getElementById('financialMomentumChart'); if(!ctx) return; if(financialMomentumChart) financialMomentumChart.destroy();
+    if(typeof Chart === 'undefined') {
+        const c = document.getElementById('financialMomentumChart');
+        if(c) c.parentElement.innerHTML = '<div class="small muted" style="text-align:center;padding:20px;">📊 Grafik tidak tersedia (perlu koneksi internet)</div>';
+        return;
+    }
+    const ctx = document.getElementById('financialMomentumChart');
+    if(!ctx) return;
+    if(financialMomentumChart) { financialMomentumChart.destroy(); financialMomentumChart = null; }
 
-    const DAYS = 14;
-    const dayKeys = []; const dayLabels = [];
-    for(let i=DAYS-1; i>=0; i--) { let d = new Date(); d.setDate(d.getDate() - i); dayKeys.push(d.toLocaleDateString('en-CA')); dayLabels.push(d.toLocaleDateString('id-ID', {day:'numeric', month:'short'})); }
+    // Ambil semua transaksi (in/out), abaikan transfer, sort ascending
+    const allTx = _getAllFinanceEntries()
+        .filter(e => e.type !== 'transfer' && e.amount > 0 && e.date)
+        .sort((a, b) => {
+            if(a.date !== b.date) return a.date < b.date ? -1 : 1;
+            const ta = a.createdAt || a.id || '', tb = b.createdAt || b.id || '';
+            return ta < tb ? -1 : 1;
+        });
 
-    const perDay = {}; dayKeys.forEach(k => perDay[k] = { in: 0, out: 0, inNotes: [], outNotes: [] });
-    (state.financeLog||[]).forEach(l => {
-        if(!perDay[l.date]) return;
-        if(l.type === 'transfer') return;
-        if(l.type === 'out') { perDay[l.date].out += l.amount; perDay[l.date].outNotes.push(l.note || 'Tanpa kategori'); }
-        else { perDay[l.date].in += l.amount; perDay[l.date].inNotes.push(l.note || 'Tanpa kategori'); }
+    // Filter rentang waktu
+    const rng = _finTradingRange || '30H';
+    let filtered = allTx;
+    if(rng === '7H' || rng === '30H') {
+        const days = rng === '7H' ? 7 : 30;
+        const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
+        const cutStr = cutoff.toLocaleDateString('en-CA');
+        filtered = allTx.filter(e => e.date >= cutStr);
+    }
+
+    // Hitung saldo awal sebelum rentang (untuk '7H'/'30H' mode)
+    let initBalance = 0;
+    if(rng !== 'All') {
+        const cutStr = filtered.length > 0 ? filtered[0].date : '';
+        allTx.forEach(e => {
+            if(cutStr && e.date < cutStr) {
+                initBalance += e.type === 'in' ? e.amount : -e.amount;
+            }
+        });
+    }
+
+    if(filtered.length === 0) {
+        ctx.parentElement.innerHTML = '<div class="small muted" style="text-align:center;padding:30px;line-height:1.8;">Belum ada transaksi pada periode ini.<br><small>Coba pilih "All Time".</small></div>';
+        return;
+    }
+
+    // Hitung saldo berjalan per transaksi
+    let running = initBalance;
+    const points = filtered.map(e => {
+        running += e.type === 'in' ? e.amount : -e.amount;
+        return { saldo: running, entry: e };
     });
 
-    const incomeData = dayKeys.map(k => perDay[k].in);
-    const expenseData = dayKeys.map(k => -perDay[k].out);
-    const trendData = dayKeys.map(k => perDay[k].in - perDay[k].out);
+    const dataY  = points.map(p => p.saldo);
+    const labels = points.map(p => {
+        try { return new Date(p.entry.date + 'T00:00:00').toLocaleDateString('id-ID', {day:'numeric', month:'short'}); }
+        catch(e) { return p.entry.date; }
+    });
 
-    Chart.defaults.color = '#9492AC'; Chart.defaults.font.family = "'Rajdhani', sans-serif";
+    // Warna segmen & titik (hijau=naik, merah=turun)
+    const segColor = ctx2 => {
+        const i = ctx2.p0DataIndex, a = dataY[i], b = dataY[i + 1];
+        return b > a ? '#34D399' : b < a ? '#FF4768' : '#9492AC';
+    };
+    const ptColors = dataY.map((v, i) => {
+        if(i === 0) return v >= 0 ? '#34D399' : '#FF4768';
+        return v > dataY[i-1] ? '#34D399' : v < dataY[i-1] ? '#FF4768' : '#9492AC';
+    });
+
+    Chart.defaults.color = '#9492AC';
+    Chart.defaults.font.family = "'Rajdhani', sans-serif";
+
     financialMomentumChart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: dayLabels,
-            datasets: [
-                { label: 'Pemasukan', data: incomeData, borderColor: '#34D399', backgroundColor: 'rgba(52,211,153,0.12)', borderWidth: 2, tension: 0.35, fill: true, pointBackgroundColor: '#34D399', pointBorderColor: '#fff', pointRadius: 4, pointHoverRadius: 6 },
-                { label: 'Pengeluaran', data: expenseData, borderColor: '#FF4768', backgroundColor: 'rgba(255,71,104,0.10)', borderWidth: 2, tension: 0.35, fill: true, pointBackgroundColor: '#FF4768', pointBorderColor: '#fff', pointRadius: 4, pointHoverRadius: 6 },
-                { label: 'Tren Harian (Net)', data: trendData, borderColor: '#F0B93B', backgroundColor: 'transparent', borderWidth: 2, borderDash: [5,4], tension: 0.35, fill: false, pointBackgroundColor: '#F0B93B', pointBorderColor: '#fff', pointRadius: 3, pointHoverRadius: 5 }
-            ]
+            labels,
+            datasets: [{
+                label: 'Saldo Berjalan',
+                data: dataY,
+                borderColor: '#9492AC',
+                segment: { borderColor: segColor },
+                backgroundColor: chartCtx => {
+                    const chart = chartCtx.chart;
+                    const { ctx: c2, chartArea } = chart;
+                    if(!chartArea) return 'rgba(52,211,153,0.06)';
+                    const g = c2.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+                    g.addColorStop(0, 'rgba(52,211,153,0.18)');
+                    g.addColorStop(0.6, 'rgba(52,211,153,0.04)');
+                    g.addColorStop(1, 'rgba(255,71,104,0.06)');
+                    return g;
+                },
+                fill: 'origin',
+                tension: 0.3,
+                borderWidth: 2,
+                pointBackgroundColor: ptColors,
+                pointBorderColor: ptColors,
+                pointBorderWidth: 1.5,
+                pointRadius: dataY.length > 60 ? 2 : 4,
+                pointHoverRadius: 7,
+            }]
         },
         options: {
-            responsive: true, maintainAspectRatio: false,
+            responsive: true,
+            maintainAspectRatio: false,
             scales: {
-                y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { callback: function(value) { if(Math.abs(value) >= 1000000) return (value / 1000000).toFixed(1) + 'M'; if(Math.abs(value) >= 1000) return (value / 1000).toFixed(1) + 'K'; return value; }, font:{size:10} } },
-                x: { grid: { display: false }, ticks: { font:{size:9}, maxRotation:0, autoSkip:true, maxTicksLimit:7 } }
+                y: {
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    ticks: {
+                        callback: v => {
+                            const a = Math.abs(v);
+                            if(a >= 1000000) return (v/1000000).toFixed(1)+'M';
+                            if(a >= 1000) return (v/1000).toFixed(0)+'K';
+                            return v;
+                        },
+                        font: { size: 9 }
+                    }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { font:{size:9}, maxRotation:0, autoSkip:true, maxTicksLimit:8 }
+                }
             },
             plugins: {
-                legend: { display: true, position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
-                tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${c.datasetIndex===1 ? '-'+formatRupiah(Math.abs(c.raw)) : (c.datasetIndex===0 ? '+' : (c.raw>=0?'+':'-'))+formatRupiah(Math.abs(c.raw))}` } }
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        title: items => labels[items[0].dataIndex],
+                        label: item => {
+                            const p = points[item.dataIndex];
+                            const sign = p.entry.type === 'in' ? '+' : '-';
+                            return [
+                                `Saldo: ${formatRupiah(item.raw)}`,
+                                `${sign}${formatRupiah(p.entry.amount)} · ${p.entry.note||'(tanpa catatan)'}`
+                            ];
+                        }
+                    }
+                }
             },
             onClick: (evt, elements) => {
-                const infoEl = document.getElementById('fm-point-info'); if(!infoEl) return;
-                if(!elements || !elements.length) return;
-                const el = elements[0];
-                const dayKey = dayKeys[el.index];
-                const info = perDay[dayKey];
-                const dateLabel = dayLabels[el.index];
-                let nominal, kategori, colorVar;
-                if(el.datasetIndex === 0){ nominal = info.in; kategori = info.inNotes.length ? info.inNotes.join(', ') : '-'; colorVar = 'var(--jade)'; nominal = '+' + formatRupiah(nominal); }
-                else if(el.datasetIndex === 1){ nominal = info.out; kategori = info.outNotes.length ? info.outNotes.join(', ') : '-'; colorVar = 'var(--crimson)'; nominal = '-' + formatRupiah(nominal); }
-                else { const net = info.in - info.out; kategori = 'Net Harian (Pemasukan - Pengeluaran)'; colorVar = net >= 0 ? 'var(--jade)' : 'var(--crimson)'; nominal = (net >= 0 ? '+' : '-') + formatRupiah(Math.abs(net)); }
-                infoEl.innerHTML = `<span style="font-weight:800;font-size:16px;color:${colorVar};">${nominal}</span><br><span style="color:var(--bone);">${escapeHtml(kategori)}</span><br><span class="muted">${dateLabel}</span>`;
+                const infoEl = document.getElementById('fm-point-info');
+                if(!infoEl || !elements || !elements.length) return;
+                const idx = elements[0].index;
+                const p = points[idx];
+                const isIn = p.entry.type === 'in';
+                const color = isIn ? 'var(--jade)' : 'var(--crimson)';
+                const sign  = isIn ? '+' : '−';
+                infoEl.innerHTML = `
+                  <span style="font-weight:800;font-size:17px;color:${color};">${sign}${formatRupiah(p.entry.amount)}</span>
+                  &nbsp;<span style="font-size:10px;color:var(--muted);">${p.entry.date}</span><br>
+                  <span style="color:var(--bone);font-size:11px;">${escapeHtml(p.entry.note||'Tanpa catatan')}</span><br>
+                  <span style="font-size:10px;color:var(--muted);">Saldo setelah: <b style="color:${p.saldo>=0?'var(--jade)':'var(--crimson)'};">${formatRupiah(p.saldo)}</b></span>`;
             }
         }
     });
 }
+
+function setFinTradingRange(r) {
+    _finTradingRange = r;
+    render();
+}
 function initDaoChart() {
     if(typeof Chart === 'undefined') { const c=document.getElementById('daoChart'); if(c){ const p=c.parentElement; p.innerHTML='<div class="small muted" style="text-align:center;padding:20px;">📊 Grafik tidak tersedia (perlu koneksi internet)</div>'; } return; }
     const ctx = document.getElementById('daoChart'); if(!ctx) return; if(daoChart) daoChart.destroy();
-    const dailyIncome = {}; (state.financeLog||[]).forEach(l => { if(l.type === 'in') { if(!dailyIncome[l.date]) dailyIncome[l.date] = 0; dailyIncome[l.date] += l.amount; }});
+    const dailyIncome = {}; _getAllFinanceEntries().forEach(l => { if(l.type === 'in') { if(!dailyIncome[l.date]) dailyIncome[l.date] = 0; dailyIncome[l.date] += l.amount; }});
     const labels = []; const data = []; for(let i=6; i>=0; i--) { let d = new Date(); d.setDate(d.getDate() - i); labels.push(d.toLocaleDateString('id-ID', {weekday:'short'})); data.push(dailyIncome[d.toLocaleDateString('en-CA')] || 0); }
     Chart.defaults.color = '#9492AC'; Chart.defaults.font.family = "'Rajdhani', sans-serif";
     daoChart = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [{ label: 'Pemasukan (Rp)', data: data, borderColor: '#F0B93B', backgroundColor: 'rgba(240, 185, 59, 0.15)', borderWidth: 2, tension: 0.4, fill: true, pointBackgroundColor: '#F0B93B', pointBorderColor: '#fff' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { callback: function(value) { if(value >= 1000000) return (value / 1000000).toFixed(1) + 'M'; if(value >= 1000) return (value / 1000).toFixed(1) + 'K'; return value; }, font:{size:10} } }, x: { grid: { display: false } } }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => formatRupiah(ctx.raw) } } } } });
@@ -6827,99 +6991,242 @@ function initStatsChart(){
 }
 
 function renderProjectKanban() {
-    const cols = [ { id: 'mau_dipelajari', title: '📚 Mau Dipelajari', color:'var(--muted)' }, { id: 'sedang_dipelajari', title: '🔥 Sedang Dipelajari', color:'var(--cyan)' }, { id: 'direview', title: '🔍 Direview / Diulang', color:'var(--gold)' }, { id: 'selesai', title: '✅ Selesai & Diterapkan', color:'var(--arise)' } ];
-    const chartsHtml = `<div class="section-title" style="margin-top:0;">📊 Analitik Projek & Pengetahuan</div>
+    const today = todayStr();
+
+    // ── Analitik (tetap sama, hanya judul disesuaikan) ──────────────────────────
+    const chartsHtml = `
+    <div class="section-title" style="margin-top:0;">📊 Analitik Projek & Pengetahuan</div>
     <div class="card" style="padding:12px;margin-bottom:10px;">
-      <div class="card-title" style="margin-bottom:6px;">📈 Tren Progres Harian (14 Hari)</div>
+      <div class="card-title" style="margin-bottom:6px;">📈 Tren Check-in Harian (14 Hari)</div>
       <div style="position:relative;width:100%;height:120px;"><canvas id="projectLineChart"></canvas></div>
     </div>
-    <div class="card" style="padding:10px;display:flex;flex-direction:column;margin-bottom:8px;">
-      <div class="card-title" style="margin-bottom:6px;font-size:11px;">Proporsi Projek</div>
+    <div class="card" style="padding:10px;margin-bottom:8px;">
+      <div class="card-title" style="margin-bottom:6px;font-size:11px;">Proporsi Status Projek</div>
       <div style="position:relative;width:100%;height:100px;"><canvas id="projectBarChart"></canvas></div>
     </div>
-    <div class="card" style="padding:10px;display:flex;flex-direction:column;margin-bottom:14px;">
-      <div class="card-title" style="margin-bottom:6px;font-size:11px;">Status Projek</div>
+    <div class="card" style="padding:10px;margin-bottom:14px;">
+      <div class="card-title" style="margin-bottom:6px;font-size:11px;">Distribusi Projek & Blueprint</div>
       <div style="position:relative;width:100%;height:100px;"><canvas id="projectPieChart"></canvas></div>
     </div>`;
-    let kanbanHtml = `<div class="section-title">Papan Pengetahuan & Projek</div><div class="small muted" style="margin-bottom:14px;">Drag & Drop kartu. Kelola tahapan belajar/projek Anda di sini. Klik kartu untuk edit detail.</div><div class="kanban-board">`;
-    cols.forEach(col => {
-        const cards = (state.kanban.cards || []).filter(c => c.col === col.id);
-        let cardsHtml = cards.map(c => `<div class="kanban-card" draggable="true" ondragstart="kDragStart(event, '${c.id}')" ondragend="kDragEnd(event)" onclick="openEditCard('${c.id}')">
-            <div style="font-weight:700; margin-bottom:6px;">${escapeHtml(c.title)}</div>
-            <div style="display:flex; justify-content:space-between; font-size:10px; margin-bottom:8px;"><span class="pill" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2);">${escapeHtml(c.type)}</span><span style="color:var(--muted);">${escapeHtml(c.dateTarget)}</span></div>
-            ${c.progress > 0 ? `<div class="stat-track" style="margin-bottom:6px;"><div class="stat-fill" style="width:${c.progress}%; background:${col.color};"></div></div>` : ''}
-            <div style="display:flex; gap:6px; margin-top:8px;">
-               <button class="btn btn-secondary btn-sm" style="flex:1; padding:4px;" onclick="event.stopPropagation(); addProjectProgress('${c.id}')">+ Progress</button>
+
+    // ── Data aktif & selesai ────────────────────────────────────────────────────
+    const activeCards = (state.kanban.cards || []).filter(c => c.col !== 'selesai');
+    const doneCards   = (state.kanban.cards || []).filter(c => c.col === 'selesai');
+    const activeBp    = (state.kanban.blueprint || []).filter(b => b.status !== 'done');
+    const doneBp      = (state.kanban.blueprint || []).filter(b => b.status === 'done');
+
+    const totalAll    = activeCards.length + doneCards.length + activeBp.length + doneBp.length;
+    const totalDone   = doneCards.length + doneBp.length;
+    const boardPct    = totalAll > 0 ? Math.round((totalDone / totalAll) * 100) : 0;
+
+    // ── Ringkasan papan ─────────────────────────────────────────────────────────
+    const summaryHtml = totalAll > 0 ? `
+      <div class="bp-summary">
+        <div class="row-between small" style="margin-bottom:5px;">
+          <span style="color:rgba(200,168,80,0.7);font-weight:800;font-size:9.5px;letter-spacing:1px;">TOTAL PROGRES</span>
+          <span style="font-weight:800;color:#c8a850;font-size:10.5px;">${totalDone}/${totalAll} Selesai · ${boardPct}%</span>
+        </div>
+        <div style="height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;">
+          <div style="height:100%;width:${boardPct}%;background:linear-gradient(90deg,#c8a850,#22c55e);border-radius:3px;transition:width 0.5s;"></div>
+        </div>
+        <div style="margin-top:4px;font-size:9.5px;color:rgba(200,168,80,0.55);">
+          ${activeCards.length} projek · ${activeBp.length} blueprint aktif · ${totalDone} selesai
+        </div>
+      </div>` : '';
+
+    // ── Helper: kartu pin untuk kanban card ─────────────────────────────────────
+    function _kanbanPinCard(c) {
+        const colMap = {
+            mau_dipelajari:   { label:'📋 Perencanaan', cls:'planning' },
+            sedang_dipelajari:{ label:'🔨 Berjalan',    cls:'building' },
+            direview:         { label:'🔍 Review',       cls:'review'   },
+        };
+        const sm = colMap[c.col] || colMap.mau_dipelajari;
+        const checkins = c.dailyCheckins || [];
+        const todayEntry = checkins.find(x => x.date === today);
+        const shownCheckins = checkins.slice(-10);
+        const totalDays = (c.dateStart && c.dateTarget) ? Math.max(1, diffDays(c.dateStart, c.dateTarget)) : 0;
+        const incr = totalDays > 0 ? +(100 / totalDays).toFixed(1) : 10;
+        const successDays = checkins.filter(x => x.ok).length;
+        const prog = Math.min(100, Math.round(c.progress || 0));
+        const ri = Math.max(0, state.character.realmIndex || 0);
+        const expPrev = Math.max(100, Math.round(successDays * 20 * (1 + ri * 0.15)));
+        const isOverdue = c.dateTarget && c.dateTarget < today;
+
+        const dotHtml = shownCheckins.map(x =>
+            x.ok ? `<div class="bp-day ok" title="${x.date}">✓</div>`
+                 : `<div class="bp-day fail" title="${x.date}">✗</div>`
+        ).join('') + (!todayEntry ? `<div class="bp-day today-empty">?</div>` : '');
+
+        return `<div class="bp-card-wrap">
+          <div class="bp-pin"></div>
+          <div class="bp-card status-${sm.cls}">
+            <div class="bp-chip ${sm.cls}">${sm.label}</div>
+            <div class="bp-card-title">${escapeHtml(c.title)}</div>
+            ${c.type ? `<div class="bp-card-desc">📦 ${escapeHtml(c.type)}</div>` : ''}
+            ${c.dateTarget ? `<div class="bp-deadline ${isOverdue?'overdue':''}">
+              ${isOverdue?'⚠️ Terlambat':'📅'} ${c.dateTarget}
+              ${!isOverdue?`<span style="font-size:8.5px;color:#0ea5e9;"> · ${diffDays(today,c.dateTarget)} hari lagi</span>`:''}
+            </div>` : ''}
+            <div class="bp-progress-bar"><div class="bp-progress-fill" style="width:${prog}%"></div></div>
+            <div style="font-size:8.5px;color:#7a5500;margin-bottom:4px;">${prog}% · +${incr}%/hari · preview: +${expPrev} EXP</div>
+            <div class="bp-divider"></div>
+            <div class="bp-checkins-label">PROGRES HARIAN${!todayEntry?` <span class="bp-today-tag">HARI INI</span>`:''}</div>
+            <div class="bp-checkins">${dotHtml}</div>
+            <div class="bp-btn-row">
+              <button class="bp-btn-ok" onclick="checkKanbanDay('${c.id}',true)" ${todayEntry&&todayEntry.ok?'style="opacity:0.5;"':''}>
+                ${todayEntry&&todayEntry.ok?'✓ Tercatat':'✓ Berhasil'}
+              </button>
+              <button class="bp-btn-fail" onclick="checkKanbanDay('${c.id}',false)" ${todayEntry&&!todayEntry.ok?'style="opacity:0.5;"':''}>
+                ${todayEntry&&!todayEntry.ok?'✗ Tercatat':'✗ Gagal'}
+              </button>
             </div>
-            </div>`).join('');
-        kanbanHtml += `<div class="kanban-col" data-col="${col.id}" ondragover="kDragOver(event)" ondragleave="kDragLeave(event)" ondrop="kDrop(event, '${col.id}')"><div class="kanban-col-title"><span style="color:${col.color}">${col.title}</span> <span style="color:var(--muted); font-size:12px;">${cards.length}</span></div><div class="kanban-cards" id="col-${col.id}">${cardsHtml}</div><button class="kanban-add-btn" onclick="openAddCard('${col.id}')">+ Tambah Projek</button></div>`;
+            <div class="bp-btn-row">
+              <button class="bp-btn-edit" onclick="openEditCard('${c.id}')">✏️ Edit</button>
+              <button class="bp-btn-next" onclick="cycleKanbanStatus('${c.id}')">↻ Status</button>
+              <button class="bp-btn-del" onclick="deleteKanbanCard('${c.id}')">🗑</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // ── Helper: kartu pin untuk blueprint ───────────────────────────────────────
+    function _bpPinCard(item) {
+        const chipMap = { planning:'📋 Perencanaan', building:'🔨 Building' };
+        const chipCls = item.status || 'planning';
+        const checkins = item.dailyCheckins || [];
+        const todayEntry = checkins.find(x => x.date === today);
+        const shownCheckins = checkins.slice(-10);
+        const totalDays = (item.dateStart && item.deadline) ? Math.max(1, diffDays(item.dateStart, item.deadline)) : 0;
+        const incr = totalDays > 0 ? +(100 / totalDays).toFixed(1) : 10;
+        const successDays = checkins.filter(x => x.ok).length;
+        const prog = Math.min(100, Math.round(item.progress || (totalDays > 0 ? successDays * (100/totalDays) : 0)));
+        const ri = Math.max(0, state.character.realmIndex || 0);
+        const expPrev = Math.max(200, Math.round(successDays * 20 * (1 + ri * 0.15)));
+        const isOverdue = item.deadline && item.deadline < today;
+
+        const dotHtml = shownCheckins.map(x =>
+            x.ok ? `<div class="bp-day ok" title="${x.date}">✓</div>`
+                 : `<div class="bp-day fail" title="${x.date}">✗</div>`
+        ).join('') + (!todayEntry ? `<div class="bp-day today-empty">?</div>` : '');
+
+        return `<div class="bp-card-wrap">
+          <div class="bp-pin"></div>
+          <div class="bp-card status-${chipCls}">
+            <div class="bp-chip ${chipCls}">${chipMap[chipCls]||'📋'} <span style="font-size:7.5px;opacity:0.65;">blueprint</span></div>
+            <div class="bp-card-title">${escapeHtml(item.label)}</div>
+            ${item.desc ? `<div class="bp-card-desc">${escapeHtml(item.desc)}</div>` : ''}
+            ${item.deadline ? `<div class="bp-deadline ${isOverdue?'overdue':''}">
+              ${isOverdue?'⚠️ Overdue':'📅'} ${item.deadline}
+              ${!isOverdue?`<span style="font-size:8.5px;color:#0ea5e9;"> · ${diffDays(today,item.deadline)} hari lagi</span>`:''}
+            </div>` : ''}
+            <div class="bp-progress-bar"><div class="bp-progress-fill" style="width:${prog}%"></div></div>
+            <div style="font-size:8.5px;color:#7a5500;margin-bottom:4px;">${prog}% · +${incr}%/hari · preview: +${expPrev} EXP</div>
+            <div class="bp-divider"></div>
+            <div class="bp-checkins-label">PROGRES HARIAN${!todayEntry?` <span class="bp-today-tag">HARI INI</span>`:''}</div>
+            <div class="bp-checkins">${dotHtml}</div>
+            <div class="bp-btn-row">
+              <button class="bp-btn-ok" onclick="checkBlueprintDay('${item.id}',true)" ${todayEntry&&todayEntry.ok?'style="opacity:0.5;"':''}>
+                ${todayEntry&&todayEntry.ok?'✓ Tercatat':'✓ Berhasil'}
+              </button>
+              <button class="bp-btn-fail" onclick="checkBlueprintDay('${item.id}',false)" ${todayEntry&&!todayEntry.ok?'style="opacity:0.5;"':''}>
+                ${todayEntry&&!todayEntry.ok?'✗ Tercatat':'✗ Gagal'}
+              </button>
+            </div>
+            <div class="bp-btn-row">
+              <button class="bp-btn-edit" onclick="openBlueprintModal('${item.id}')">✏️ Edit</button>
+              <button class="bp-btn-next" onclick="cycleBlueprintStatus('${item.id}')">↻ Status</button>
+              <button class="bp-btn-del" onclick="deleteBlueprintItem('${item.id}')">🗑</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // ── Gabung & urutkan aktif (terbaru duluan) ────────────────────────────────
+    const allActive = [
+        ...activeCards.map(c  => ({ type:'kanban', data:c,    ts: c.createdAt || 0 })),
+        ...activeBp.map(b     => ({ type:'bp',     data:b,    ts: b.createdAt || 0 }))
+    ].sort((a, b) => b.ts - a.ts);
+
+    const boardGrid = allActive.length === 0
+        ? `<div class="bp-empty-board">📌 Papan masih kosong.<br>
+           <small style="font-size:10px;opacity:0.7;">Tempel projek atau blueprint baru di sini.</small></div>`
+        : `<div class="bp-grid">${allActive.map(x =>
+            x.type === 'kanban' ? _kanbanPinCard(x.data) : _bpPinCard(x.data)
+          ).join('')}</div>`;
+
+    // ── Papan pin ────────────────────────────────────────────────────────────────
+    const boardHtml = `
+      <div class="bp-board">
+        <div class="bp-board-header">
+          <span class="bp-board-title">📌 PAPAN PROJEK</span>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-primary btn-sm" style="font-size:10px;padding:5px 10px;" onclick="openAddCard('mau_dipelajari')">+ Projek</button>
+            <button class="btn btn-secondary btn-sm" style="font-size:10px;padding:5px 10px;" onclick="openBlueprintModal()">+ Blueprint</button>
+          </div>
+        </div>
+        ${summaryHtml}
+        ${boardGrid}
+      </div>`;
+
+    // ── Riwayat selesai ─────────────────────────────────────────────────────────
+    function _riwayatItem(icon, title, sub, expGained, deleteBtn) {
+        return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.04);">
+          <div style="font-size:20px;">${icon}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:700;font-size:12px;color:var(--bone);">${escapeHtml(title)}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px;">${sub}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0;">
+            <div style="font-size:11px;font-weight:800;color:var(--gold);">+${expGained} EXP</div>
+            ${deleteBtn}
+          </div>
+        </div>`;
+    }
+
+    const ri = Math.max(0, state.character.realmIndex || 0);
+    const mult = 1 + ri * 0.15;
+
+    const doneCardItems = doneCards.map(c => {
+        const ok = (c.dailyCheckins||[]).filter(x=>x.ok).length;
+        const tot = (c.dailyCheckins||[]).length;
+        const exp = c.expGained || Math.max(100, Math.round(ok * 20 * mult));
+        return _riwayatItem('🏆', c.title,
+            `📦 ${c.type||'Projek'} · ✅ ${c.completedAt||'-'} · ✓ ${ok}/${tot} hari`,
+            exp,
+            `<button class="btn btn-ghost btn-sm" style="font-size:9px;margin-top:3px;color:var(--crimson);" onclick="deleteKanbanCard('${c.id}')">🗑 Hapus</button>`
+        );
     });
-    kanbanHtml += `</div>`;
+
+    const doneBpItems = doneBp.map(b => {
+        const ok = (b.dailyCheckins||[]).filter(x=>x.ok).length;
+        const tot = (b.dailyCheckins||[]).length;
+        const exp = b.expGained || Math.max(200, Math.round(ok * 20 * mult));
+        return _riwayatItem('📐', b.label,
+            `Blueprint · ✅ ${b.completedAt||'-'} · ✓ ${ok}/${tot} hari`,
+            exp,
+            `<button class="btn btn-ghost btn-sm" style="font-size:9px;margin-top:3px;color:var(--crimson);" onclick="deleteBlueprintItem('${b.id}')">🗑 Hapus</button>`
+        );
+    });
+
+    const allDone = [...doneCardItems, ...doneBpItems];
+    const riwayatHtml = `
+      <div class="section-title" style="margin-top:4px;">🏆 Riwayat Projek Selesai <span class="small muted" style="font-weight:600;">${allDone.length} item</span></div>
+      <div class="card">
+        ${allDone.length === 0
+          ? `<div class="empty-state"><span class="big">🏅</span><br>Belum ada projek selesai.<br>
+             <span style="font-size:10px;opacity:0.6;">Tandai projek selesai dari papan untuk dicatat di sini.</span></div>`
+          : allDone.join('')
+        }
+      </div>`;
+
     return `<div data-sec-tab="project" data-sec-id="project-analytics">${chartsHtml}</div>`
-         + `<div data-sec-tab="project" data-sec-id="project-kanban">${kanbanHtml}</div>`
-         + `<div data-sec-tab="project" data-sec-id="project-blueprint">${renderBlueprintSection()}</div>`;
+         + `<div data-sec-tab="project" data-sec-id="project-kanban">${boardHtml}</div>`
+         + `<div data-sec-tab="project" data-sec-id="project-blueprint">${riwayatHtml}</div>`;
 }
 
 function renderBlueprintSection() {
-    const bp = state.kanban.blueprint || [];
-    const STATUS = {
-        'planning': { label: '📋 Perencanaan', cls: 'status-planning' },
-        'building': { label: '🔨 Sedang Dibangun', cls: 'status-building' },
-        'done':     { label: '✅ Selesai', cls: 'status-done' }
-    };
-    const PRIORITY = {
-        'high':   { label: '🔴 Tinggi', color: 'var(--crimson)' },
-        'medium': { label: '🟡 Sedang', color: 'var(--gold)' },
-        'low':    { label: '🟢 Rendah', color: 'var(--jade)' }
-    };
-    const totalBp = bp.length;
-    const doneBp = bp.filter(x=>x.status==='done').length;
-    const buildingBp = bp.filter(x=>x.status==='building').length;
-    const pct = totalBp > 0 ? Math.round((doneBp/totalBp)*100) : 0;
-    const today = todayStr();
-
-    const summaryHtml = totalBp > 0 ? `<div style="margin-bottom:14px;padding:10px 12px;background:rgba(255,255,255,0.03);border-radius:10px;border:1px solid var(--border);">
-        <div class="row-between small" style="margin-bottom:6px;"><span style="color:var(--muted);font-weight:700;letter-spacing:0.5px;">PROGRES BLUEPRINT</span><span style="font-weight:800;color:var(--arise-bright);">${doneBp}/${totalBp} Selesai · ${pct}%</span></div>
-        <div style="height:6px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--arise),var(--cyan));border-radius:4px;"></div></div>
-        <div class="small muted" style="margin-top:5px;">${buildingBp>0?`🔨 ${buildingBp} berjalan · `:''}${totalBp-doneBp-buildingBp} belum dimulai</div>
-    </div>` : '';
-
-    const itemsHtml = bp.length === 0
-        ? `<div class="blueprint-empty">📐 Belum ada blueprint.<br><small>Tambahkan tahapan / fase rencana besar Anda sebagai peta jalan.</small></div>`
-        : bp.map((item, i) => {
-            const sm = STATUS[item.status] || STATUS['planning'];
-            const pr = PRIORITY[item.priority] || PRIORITY['medium'];
-            const isOverdue = item.deadline && item.deadline < today && item.status !== 'done';
-            const deadlineHtml = item.deadline ? `<span style="font-size:10px;font-weight:700;color:${isOverdue?'var(--crimson)':'var(--muted)'};">${isOverdue?'⚠️ Overdue: ':'📅 '}${item.deadline}</span>` : '';
-            const dateStartHtml = item.dateStart ? `<span style="font-size:10px;color:var(--muted);">🚀 ${item.dateStart}</span>` : '';
-            const priorityHtml = item.priority && item.priority !== 'medium' ? `<span style="font-size:9.5px;font-weight:800;color:${pr.color};">${pr.label}</span>` : '';
-            return `<div class="blueprint-item ${sm.cls}">
-              <div class="blueprint-num">${i + 1}</div>
-              <div class="blueprint-body">
-                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px;">
-                  <div class="blueprint-label">${escapeHtml(item.label)}</div>${priorityHtml}
-                </div>
-                ${item.desc ? `<div class="blueprint-desc">${escapeHtml(item.desc)}</div>` : ''}
-                ${(dateStartHtml||deadlineHtml) ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:3px;">${dateStartHtml}${deadlineHtml}</div>` : ''}
-                ${item.notes ? `<div style="font-size:10.5px;color:var(--muted-2);margin-top:3px;font-style:italic;">📝 ${escapeHtml(item.notes)}</div>` : ''}
-                <span class="blueprint-status-badge" style="margin-top:5px;display:inline-block;">${sm.label}</span>
-              </div>
-              <div class="blueprint-actions" style="flex-direction:column;gap:4px;">
-                <button class="btn btn-ghost btn-sm" onclick="openBlueprintModal('${item.id}')" title="Edit" style="font-size:13px;">✏️</button>
-                <button class="btn btn-secondary btn-sm" onclick="cycleBlueprintStatus('${item.id}')" title="Ganti Status">↻</button>
-                <button class="btn btn-ghost btn-sm" onclick="deleteBlueprintItem('${item.id}')" title="Hapus">✕</button>
-              </div>
-            </div>`;
-          }).join('');
-    return `<div class="blueprint-section">
-      <div class="blueprint-header"><div>
-        <div class="blueprint-title">📐 Blueprint Projek</div>
-        <div class="small muted" style="margin-top:3px;">✏️ edit · ↻ ganti status (selesai = +200 EXP) · ✕ hapus</div>
-      </div></div>
-      ${summaryHtml}
-      <div class="blueprint-list">${itemsHtml}</div>
-      <button class="blueprint-add-btn" onclick="openBlueprintModal()">+ Tambah Tahapan Blueprint</button>
-    </div>`;
+    return ''; // Sudah digabung ke renderProjectKanban sebagai papan pin terpadu
 }
 
 // ═══════════════════════════════════
@@ -6945,21 +7252,104 @@ function getProjectDeadlineDays(card){
 }
 
 function addProjectProgress(id) {
-    const c = state.kanban.cards.find(x=>x.id===id); if(!c) return;
-    c.progress = Math.min(100, c.progress + 10);
-    state.projectProgressLog = state.projectProgressLog || {}; state.projectProgressLog[todayStr()] = (state.projectProgressLog[todayStr()]||0)+1;
-    gainExp(10); 
-    if(c.progress === 100 && c.col !== 'selesai') {
-        c.col = 'selesai';
-        c.completedAt = todayStr();
-        const deadlineDays = getProjectDeadlineDays(c);
-        const expGain = getProjectExpReward(deadlineDays);
-        gainExp(expGain);
-        showToast('Project Selesai! +'+expGain+' EXP', 'ach');
-        SFX.success();
-    } else {
-        SFX.click();
+    const c = (state.kanban.cards||[]).find(x=>x.id===id); if(!c) return;
+    c.progress = Math.min(100, (c.progress||0) + 10);
+    state.projectProgressLog = state.projectProgressLog || {};
+    state.projectProgressLog[todayStr()] = (state.projectProgressLog[todayStr()]||0)+1;
+    gainExp(10);
+    if(c.progress >= 100 && c.col !== 'selesai') {
+        cycleKanbanStatus(id); return;
     }
+    SFX.click(); render(); save();
+}
+
+// ── Check-in harian kanban card ────────────────────────────────────────────────
+function checkKanbanDay(id, ok) {
+    const c = (state.kanban.cards||[]).find(x=>x.id===id);
+    if(!c || c.col==='selesai') return;
+    if(!Array.isArray(c.dailyCheckins)) c.dailyCheckins = [];
+    const today = todayStr();
+    const existing = c.dailyCheckins.find(x=>x.date===today);
+    if(existing) {
+        if(existing.ok === ok) { render(); return; }
+        existing.ok = ok;
+    } else {
+        c.dailyCheckins.push({date:today, ok});
+        if(ok) {
+            const totalDays = (c.dateStart && c.dateTarget)
+                ? Math.max(1, diffDays(c.dateStart, c.dateTarget)) : 10;
+            c.progress = Math.min(100, Math.round((c.progress||0) + (100/totalDays)));
+            if(c.progress >= 100 && c.col !== 'selesai') { cycleKanbanStatus(id); return; }
+        }
+    }
+    showToast(ok?'✅ Check-in berhasil!':'❌ Hari gagal dicatat.', ok?'ach':'bad');
+    ok ? SFX.click() : SFX.error();
+    render(); save();
+}
+
+// ── Ganti status kanban card (planning→building→review→selesai) ───────────────
+function cycleKanbanStatus(id) {
+    const c = (state.kanban.cards||[]).find(x=>x.id===id);
+    if(!c) return;
+    const order = ['mau_dipelajari','sedang_dipelajari','direview','selesai'];
+    const next = order[(order.indexOf(c.col)+1) % order.length];
+    if(next === 'selesai') {
+        if(!Array.isArray(c.dailyCheckins)) c.dailyCheckins = [];
+        const successDays = c.dailyCheckins.filter(x=>x.ok).length;
+        const ri = Math.max(0, state.character.realmIndex||0);
+        const expGain = Math.max(100, Math.round(successDays * 20 * (1 + ri*0.15)));
+        c.expGained = expGain; c.col = 'selesai';
+        c.completedAt = todayStr(); c.progress = 100;
+        gainExp(expGain);
+        // Sync ke riwayat permanen
+        ensureHistoryArchive(state);
+        if(!Array.isArray(state.historyArchive.projek)) state.historyArchive.projek = [];
+        if(!state.historyArchive.projek.find(x=>x.id===c.id))
+            state.historyArchive.projek.push({id:c.id, title:c.title, type:c.type||'Projek',
+                completedAt:c.completedAt, expGained:expGain, successDays,
+                _sourceType:'kanban', _archived:true});
+        addTimelineEvent('projek', `Projek "${c.title}" selesai!`, '📌');
+        showToast(`🏆 MISSION COMPLETE! +${expGain} EXP`, 'ach');
+        SFX.levelUp();
+    } else {
+        c.col = next; SFX.click();
+    }
+    render(); save();
+}
+
+// ── Hapus kanban card ─────────────────────────────────────────────────────────
+function deleteKanbanCard(id) {
+    const c = (state.kanban.cards||[]).find(x=>x.id===id);
+    if(!c) return;
+    openConfirm(`Hapus projek "${escapeHtml(c.title)}"?`, ()=>{
+        markDeleted('kanbanCards', id);
+        state.kanban.cards = state.kanban.cards.filter(x=>x.id!==id);
+        if(Array.isArray(state.historyArchive?.projek))
+            state.historyArchive.projek = state.historyArchive.projek.filter(x=>x.id!==id);
+        render(); save();
+    });
+}
+
+// ── Check-in harian blueprint ─────────────────────────────────────────────────
+function checkBlueprintDay(id, ok) {
+    const item = (state.kanban.blueprint||[]).find(x=>x.id===id);
+    if(!item || item.status==='done') return;
+    if(!Array.isArray(item.dailyCheckins)) item.dailyCheckins = [];
+    const today = todayStr();
+    const existing = item.dailyCheckins.find(x=>x.date===today);
+    if(existing) {
+        if(existing.ok === ok) { render(); return; }
+        existing.ok = ok;
+    } else {
+        item.dailyCheckins.push({date:today, ok});
+        if(ok) {
+            const totalDays = (item.dateStart && item.deadline)
+                ? Math.max(1, diffDays(item.dateStart, item.deadline)) : 10;
+            item.progress = Math.min(100, Math.round((item.progress||0) + (100/totalDays)));
+        }
+    }
+    showToast(ok?'✅ Check-in berhasil!':'❌ Hari gagal dicatat.', ok?'ach':'bad');
+    ok ? SFX.click() : SFX.error();
     render(); save();
 }
 
@@ -7007,8 +7397,8 @@ function submitBlueprintItem() {
         if(idx >= 0) state.kanban.blueprint[idx] = {...state.kanban.blueprint[idx], ...data};
         showToast('Tahapan diperbarui! ✓', 'ach');
     } else {
-        state.kanban.blueprint.push({id: 'bp_' + Date.now(), ...data});
-        showToast('Tahapan ditambahkan! ✓', 'ach');
+        state.kanban.blueprint.push({id:'bp_'+Date.now(), dailyCheckins:[], progress:0, createdAt:Date.now(), ...data});
+        showToast('Blueprint ditambahkan! ✓', 'ach');
     }
     closeModal('modal-blueprint'); render(); save(); SFX.success();
 }
@@ -7019,8 +7409,22 @@ function cycleBlueprintStatus(id) {
     const prevStatus = item.status;
     item.status = order[(order.indexOf(item.status) + 1) % order.length];
     if(item.status === 'done' && prevStatus !== 'done') {
-        gainExp(200);
-        showToast('📐 Tahapan Blueprint Selesai! +200 EXP 🏆', 'ach');
+        if(!Array.isArray(item.dailyCheckins)) item.dailyCheckins = [];
+        item.completedAt = todayStr();
+        const successDays = item.dailyCheckins.filter(c=>c.ok).length;
+        const ri = Math.max(0, state.character.realmIndex||0);
+        const expGain = Math.max(200, Math.round(successDays * 20 * (1 + ri*0.15)));
+        item.expGained = expGain;
+        gainExp(expGain);
+        // Sync ke riwayat permanen
+        ensureHistoryArchive(state);
+        if(!Array.isArray(state.historyArchive.projek)) state.historyArchive.projek = [];
+        if(!state.historyArchive.projek.find(x=>x.id===item.id))
+            state.historyArchive.projek.push({id:item.id, title:item.label, type:'Blueprint',
+                completedAt:item.completedAt, expGained:expGain, successDays,
+                _sourceType:'blueprint', _archived:true});
+        addTimelineEvent('projek', `Blueprint "${item.label}" selesai!`, '📐');
+        showToast(`📐 MISSION COMPLETE! +${expGain} EXP 🏆`, 'ach');
         SFX.levelUp();
     } else {
         SFX.click();
@@ -7028,8 +7432,14 @@ function cycleBlueprintStatus(id) {
     render(); save();
 }
 function deleteBlueprintItem(id) {
-    state.kanban.blueprint = (state.kanban.blueprint || []).filter(x => x.id !== id);
-    render(); save(); SFX.click();
+    const item = (state.kanban.blueprint||[]).find(x=>x.id===id);
+    if(!item) return;
+    openConfirm(`Hapus "${escapeHtml(item.label||item.id)}"?`, ()=>{
+        state.kanban.blueprint = state.kanban.blueprint.filter(x=>x.id!==id);
+        if(Array.isArray(state.historyArchive?.projek))
+            state.historyArchive.projek = state.historyArchive.projek.filter(x=>x.id!==id);
+        render(); save(); SFX.click();
+    });
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -7452,6 +7862,7 @@ const RIWAYAT_CATS = [
   {key:'finansial', icon:'💰', label:'Finansial'},
   {key:'momentum',  icon:'📈', label:'Momentum'},
   {key:'goal',      icon:'🏆', label:'Goal'},
+  {key:'projek',    icon:'📌', label:'Projek'},
   {key:'sedekah',   icon:'🌟', label:'Sedekah'},
   {key:'jurnal',    icon:'📓', label:'Jurnal'},
   {key:'refleksi',  icon:'🪞', label:'Refleksi'},
@@ -7510,6 +7921,7 @@ function _riwayatEntryKey(cat, e){
   if(cat==='refleksi')  return e.id || (e._ts+'|'+(e._sourceType||''));
   if(cat==='evaluasi')  return e.id || (e.date+'|'+(e.weekKey||''));
   if(cat==='timeline')  return e.id || e.ts || (e.date+'|'+(e.desc||''));
+  if(cat==='projek')    return e.id || (e.completedAt+'|'+(e.title||''));
   // Vitalitas: pakai ts|_vType sebagai kunci stabil — tidak bergantung pada keberadaan _archived
   // supaya key antara entri aktif (hpEventLog) dan salinan di historyArchive selalu cocok.
   if(cat==='vitalitas') return String(e.ts||'') + '|' + (e._vType||'');
@@ -8455,7 +8867,7 @@ function generateWeeklyInsights() {
 
   // Fallback: pemasukan jika insights masih kosong
   if(insights.length===0){
-    const incThis=(state.financeLog||[]).filter(l=>l.type==='in'&&l.date>=weekAgoStr).reduce((s,l)=>s+l.amount,0);
+    const incThis=_getAllFinanceEntries().filter(l=>l.type==='in'&&l.date>=weekAgoStr).reduce((s,l)=>s+l.amount,0);
     if(incThis>0) insights.push({icon:'💰',text:`Pemasukan minggu ini: <b>${typeof formatRupiah==='function'?formatRupiah(incThis):incThis}</b>`,col:'var(--gold)'});
     else insights.push({icon:'📅',text:'Belum cukup data minggu ini — terus catat aktivitasmu!',col:'var(--muted)'});
   }
@@ -8482,7 +8894,7 @@ function renderStatisticsTable() {
     const today = new Date(); const weekAgo = new Date(today - 7*86400000); const twoWeeksAgo = new Date(today - 14*86400000);
     const cutOffStr = weekAgo.toLocaleDateString('en-CA'); const twoWeeksAgoStr = twoWeeksAgo.toLocaleDateString('en-CA');
     for (const [date, count] of Object.entries(state.meta.activityLog || {})) { if(date >= cutOffStr) weeklyActivity += count; else if(date >= twoWeeksAgoStr) lastWeeklyActivity += count; }
-    (state.financeLog||[]).forEach(l => { if(l.date >= cutOffStr) weeklyIncome += l.amount; else if(l.date >= twoWeeksAgoStr) lastWeeklyIncome += l.amount; });
+    _getAllFinanceEntries().forEach(l => { if(l.type !== 'transfer' && l.type === 'in' && l.date >= cutOffStr) weeklyIncome += l.amount; else if(l.type !== 'transfer' && l.type === 'in' && l.date >= twoWeeksAgoStr) lastWeeklyIncome += l.amount; });
     const sedekahThisWeek = (state.sedekah?.entries||[]).filter(e=>e.date>=cutOffStr).reduce((s,e)=>s+(e.nominal||0),0); const sedekahLastWeek = (state.sedekah?.entries||[]).filter(e=>e.date>=twoWeeksAgoStr && e.date<cutOffStr).reduce((s,e)=>s+(e.nominal||0),0);
     const habitRate = calcHabitRateWeek(7); const habitRateLast = calcHabitRateWeek(14, 7);
     function delta(a, b){ if(a > b) return '<span style="color:var(--jade)">▲</span>'; if(a < b) return '<span style="color:var(--crimson)">▼</span>'; return '<span style="color:var(--muted)">—</span>'; }
@@ -8874,6 +9286,8 @@ function buildModals() {
   <div class="modal-overlay" id="modal-add-stat"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">Tambah Stat Kustom</div><div class="field"><label>Nama Stat</label><input type="text" id="as-label" placeholder="Contoh: Kreativitas" class="input"></div><div class="field"><label>Kategori</label><select id="as-group" class="input"><option value="Body">💪 Body</option><option value="Mind">🧠 Mind</option><option value="Social">💬 Social</option><option value="Soul">🌌 Soul</option><option value="Finansial">💰 Finansial</option><option value="Custom" selected>✨ Custom</option></select></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-add-stat')">Batal</button><button class="btn btn-primary" onclick="addCustomStat()">Tambah</button></div></div></div>
   <div class="modal-overlay" id="modal-add-heaven-quest"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title" id="modal-add-heaven-quest-title" style="color:var(--gold-soft);">🌉 Tambah Heaven Quest</div><div class="field"><label>Nama Quest</label><input type="text" id="hq-title" placeholder="Contoh: Capai 10 juta dalam sebulan" class="input"></div><div class="field"><label>Target / Deskripsi</label><textarea id="hq-target" placeholder="Detail target yang harus dicapai..." class="input" rows="3"></textarea></div><div class="field"><label>Reward EXP</label><input type="number" id="hq-exp" placeholder="Contoh: 500000" inputmode="numeric" class="input" min="1"></div><div class="field"><label>Deadline (opsional)</label><input type="date" id="hq-deadline" class="input"></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-add-heaven-quest')">Batal</button><button class="btn btn-gold" onclick="addHeavenQuest()">Simpan</button></div></div></div>
   <div class="modal-overlay" id="modal-add-habit"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">Tambah Habit Baru</div><div class="field"><label>Nama Habit</label><input type="text" id="ah-title" placeholder="Contoh: Minum air 2 Liter" class="input"></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-add-habit')">Batal</button><button class="btn btn-primary" onclick="addHabit()">Simpan Habit</button></div></div></div>
+
+  <div class="modal-overlay" id="modal-add-custom-ritual"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">✨ Tambah Ritual Kustom</div><div class="field"><label>Nama Ritual</label><input type="text" id="acr-name" placeholder="Contoh: Baca Buku, Jurnal Harian" class="input" onkeydown="if(event.key==='Enter')submitAddCustomRitual()"></div><div class="field"><label>Ikon (emoji)</label><input type="text" id="acr-icon" placeholder="✨" class="input" maxlength="4" style="font-size:1.4em;width:80px;"></div><div class="field"><label>Reward EXP Spiritual</label><input type="number" id="acr-exp" placeholder="10" inputmode="numeric" class="input" min="1" max="9999"></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-add-custom-ritual')">Batal</button><button class="btn btn-primary" onclick="submitAddCustomRitual()">Simpan Ritual</button></div></div></div>
 
   <div class="modal-overlay" id="modal-lihat-penuh">
     <div class="modal-sheet" style="max-height:88vh;display:flex;flex-direction:column;">
@@ -9723,7 +10137,7 @@ function injectMovedSections(currentTab) {
     stats: renderStats, boss: renderBoss, profile: renderProfile,
     enlight: renderStatisticsTable, ritual: renderRitual,
     project: renderProjectKanban, refleksi: renderRefleksi,
-    caracter: renderCharacterMomentumTab, realmenc: renderRealmEncyclopedia,
+    character: renderCharacterMomentumTab, realmenc: renderRealmEncyclopedia,
     lifeenc: renderLifeEncyclopedia, hall: renderHallOfFame,
   };
   let anyInjected = false;
@@ -9753,7 +10167,7 @@ function injectMovedSections(currentTab) {
           badge.style.cssText = 'font-size:10px;color:var(--arise);margin-bottom:6px;padding:0 4px;';
           const tabLabel = {
             home:'Home', quests:'Quest', goals:'Goals', project:'Project',
-            ritual:'Ritual', refleksi:'Refleksi', stats:'Stats', caracter:'Character',
+            ritual:'Ritual', refleksi:'Refleksi', stats:'Stats', character:'Character',
             enlight:'Enlight', boss:'Finansial', profile:'Profile', hall:'Fame',
             lifeenc:'Life Enc', realmenc:'Realm',
           };
@@ -9901,7 +10315,8 @@ function calcMomentumPoints() {
 
   // — Aktivitas finansial positif (pemasukan 7 hari terakhir, max 8 pts) —
   const week = 7 * 24 * 3600 * 1000;
-  const recentIncome = (state.financeLog || []).filter(e => e.type === 'income' && e.ts && (Date.now() - e.ts) < week);
+  const weekAgoStr = new Date(Date.now() - week).toLocaleDateString('en-CA');
+  const recentIncome = _getAllFinanceEntries().filter(e => e.type === 'in' && e.date >= weekAgoStr);
   pts += Math.min(8, recentIncome.length * 2);
 
   // — Decay: jika lama tidak aktif —
@@ -10036,7 +10451,8 @@ function renderCharacterMomentumTab() {
   const goalPts = goalsC >= 10 ? 10 : goalsC >= 5 ? 7 : goalsC >= 1 ? 4 : 0;
 
   const week = 7 * 24 * 3600 * 1000;
-  const recentIncome = (state.financeLog || []).filter(e => e.type === 'income' && e.ts && (Date.now() - e.ts) < week);
+  const weekAgoStr = new Date(Date.now() - week).toLocaleDateString('en-CA');
+  const recentIncome = _getAllFinanceEntries().filter(e => e.type === 'in' && e.date >= weekAgoStr);
   const financePts = Math.min(8, recentIncome.length * 2);
 
   const factors = [
@@ -10145,7 +10561,7 @@ function getHeatmapDayScore(dateStr) {
   score += (state.meta.activityLog || {})[dateStr] || 0;
   (state.habits || []).forEach(h => { if (h.log && h.log[dateStr]) score += 1; });
   (state.goalHistory || []).forEach(g => { if (g.completedAt === dateStr && g.status !== 'failed') score += 3; });
-  (state.financeLog || []).forEach(e => { if (e.date === dateStr && e.type === 'in') score += 2; });
+  _getAllFinanceEntries().forEach(e => { if (e.date === dateStr && e.type === 'in') score += 2; });
   // Hitung hari login: lastActiveDate (hari ini) atau ada entri streak di charHistory
   if (state.meta.lastActiveDate === dateStr) score = Math.max(score, 2);
   else if (((state.charHistory||{}).streak||[]).some(s => s.ts === dateStr)) score = Math.max(score, 2);
@@ -10555,14 +10971,14 @@ function resetNavGroupOrder() {
   var MAIN_TAB_GROUPS = {
     home:      { tabs: ['home'] },
     quest:     { tabs: ['quests','goals','project','ritual','refleksi','evaluasiMingguan'] },
-    progres:   { tabs: ['stats','caracter','enlight'] },
+    progres:   { tabs: ['stats','character','enlight'] },
     finansial: { tabs: ['boss'] },
     profil:    { tabs: ['profile','hall','lifeenc','realmenc','riwayat'] }
   };
 
   var TAB_LABELS = {
     home:'Home', quests:'Quest', goals:'Goals', project:'Project',
-    ritual:'Ritual', refleksi:'Refleksi', evaluasiMingguan:'Evaluasi', stats:'Stats', caracter:'Character',
+    ritual:'Ritual', refleksi:'Refleksi', evaluasiMingguan:'Evaluasi', stats:'Stats', character:'Character',
     enlight:'Enlight', boss:'Finansial', profile:'Profile', hall:'Fame',
     lifeenc:'Life Enc', realmenc:'Realm', riwayat:'Riwayat'
   };
@@ -10639,4 +11055,4 @@ function resetNavGroupOrder() {
 </script>
 
 </body>
-</
+</html>
