@@ -772,6 +772,42 @@ a{color:var(--cyan);}
 .bp-empty-board { text-align:center; padding:40px 12px; color:rgba(200,168,80,0.4); font-size:11.5px; line-height:1.8; }
 .bp-today-tag { font-size:8px; font-weight:900; color:#0ea5e9; background:rgba(14,165,233,0.12); border:1px solid rgba(14,165,233,0.3); border-radius:3px; padding:1px 4px; margin-left:3px; }
 
+/* ── BLUEPRINT card variant (biru gelap, kertas teknis) ── */
+.bp-pin.bp-pin-blue { background:radial-gradient(circle at 38% 32%,#60a5fa,#2563eb,#1e3a8a); }
+.bp-card.bp-blueprint {
+  background: linear-gradient(160deg,#0d1f35,#0a1929,#0e2340);
+  color: #b8d4f0;
+  border-radius: 3px;
+  /* grid watermark seperti kertas blueprint asli */
+  background-image:
+    linear-gradient(160deg,#0d1f35,#0a1929,#0e2340),
+    repeating-linear-gradient(0deg,transparent,transparent 18px,rgba(59,130,246,0.07) 18px,rgba(59,130,246,0.07) 19px),
+    repeating-linear-gradient(90deg,transparent,transparent 18px,rgba(59,130,246,0.07) 18px,rgba(59,130,246,0.07) 19px);
+  background-blend-mode: normal, normal, normal;
+  border: 1px solid rgba(59,130,246,0.25);
+  box-shadow: 2px 6px 18px rgba(0,0,20,0.7), 0 0 0 1px rgba(59,130,246,0.12), inset 0 1px 0 rgba(147,197,253,0.08);
+}
+.bp-card.bp-blueprint .bp-card-title { color:#e0efff; }
+.bp-card.bp-blueprint .bp-card-desc  { color:#7eb8e8; }
+.bp-card.bp-blueprint .bp-chip.planning { background:rgba(59,130,246,0.18); color:#93c5fd; border-color:rgba(59,130,246,0.4); }
+.bp-card.bp-blueprint .bp-chip.building { background:rgba(14,165,233,0.18); color:#7dd3fc; border-color:rgba(14,165,233,0.4); }
+.bp-card.bp-blueprint .bp-chip.review   { background:rgba(168,85,247,0.18); color:#c4b5fd; border-color:rgba(168,85,247,0.4); }
+.bp-card.bp-blueprint .bp-chip.done     { background:rgba(52,211,153,0.18); color:#6ee7b7; border-color:rgba(52,211,153,0.4); }
+.bp-card.bp-blueprint .bp-divider       { background:rgba(59,130,246,0.2); }
+.bp-card.bp-blueprint .bp-checkins-label{ color:#7eb8e8; }
+.bp-card.bp-blueprint .bp-deadline      { color:#7eb8e8; }
+.bp-card.bp-blueprint .bp-deadline.overdue { color:#f87171; }
+.bp-card.bp-blueprint .bp-progress-bar  { background:rgba(59,130,246,0.15); }
+.bp-card.bp-blueprint .bp-progress-fill { background:linear-gradient(90deg,#3b82f6,#06b6d4); }
+.bp-card.bp-blueprint > div[style*="color:#7a5500"] { color:#6ba3cc !important; }
+.bp-card.bp-blueprint .bp-btn-edit { background:rgba(59,130,246,0.18); color:#93c5fd; }
+.bp-card.bp-blueprint .bp-btn-next { background:rgba(6,182,212,0.18); color:#67e8f9; }
+.bp-card.bp-blueprint .bp-btn-del  { background:rgba(239,68,68,0.12); color:#fca5a5; }
+.bp-card.bp-blueprint .bp-day      { border-color:rgba(59,130,246,0.25); color:#7eb8e8; background:rgba(59,130,246,0.07); }
+.bp-card.bp-blueprint .bp-day.ok   { background:rgba(52,211,153,0.2); color:#6ee7b7; border-color:rgba(52,211,153,0.4); }
+.bp-card.bp-blueprint .bp-day.fail { background:rgba(239,68,68,0.18); color:#fca5a5; border-color:rgba(239,68,68,0.35); }
+.bp-card.bp-blueprint .bp-day.today-empty { border-color:#60a5fa; background:rgba(96,165,250,0.12); color:#93c5fd; }
+
 .chart-container { position: relative; width: 100%; height: 200px; margin-top: 14px; }
 .commerce-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
 .commerce-metric { background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 12px; padding: 14px; text-align: center; }
@@ -3205,7 +3241,7 @@ function DEFAULT_SETTINGS(){
     researchQuestLimit: 3, sedekahExpPerRibu: 1, sedekahMaxExpPerDay: 50, language: 'id',
     showWeeklyCalendar: true, showEisenhowerMatrix: true, show3Rules: true,
     showBackgroundAnim: true,
-    dailyExpCap: 9999999, dailyExpCapEnabled: false, difficultyExp: {...DIFFICULTY_EXP}, comboBonusStep: 0.05, comboBonusCap: 5, streakBonusStep: 0.02, streakBonusCap: 30, realmBonusStep: 0.04, realmBonusCap: 16, customExpEnabled: true,
+    difficultyExp: {...DIFFICULTY_EXP}, comboBonusStep: 0.05, comboBonusCap: 5, streakBonusStep: 0.02, streakBonusCap: 30, realmBonusStep: 0.04, realmBonusCap: 16, customExpEnabled: true,
     showExpCalculator: true,
     showLifePrinciple: true,
     showRefleksiHome: true, showRefleksiProfile: true,
@@ -3548,7 +3584,7 @@ function resetSectionConfig(tab) {
 
 function DEFAULT_STATE(){
   return {
-    meta:{ lastActiveDate:null, lastWeekKey:null, lastMonthKey:null, completedTodayCount:0, levelCurve:1, startDate: todayStr(), activityLog: {}, activityNotes: {}, dailyExpEarned:0, dailyExpLog:{}, habitsDeleted:0, hardQuestsToday:0, totalHardQuestsCompleted:0 },
+    meta:{ lastActiveDate:null, lastWeekKey:null, lastMonthKey:null, completedTodayCount:0, levelCurve:1, startDate: todayStr(), activityLog: {}, activityNotes: {}, dailyExpLog:{}, habitsDeleted:0, hardQuestsToday:0, totalHardQuestsCompleted:0 },
     ui:{ tab:'home', questFilter:'all' },
     character:{ name:'Jian Haikal', age:22, job:'Pejuang', shift:'pagi', avatarColor: 'linear-gradient(135deg,var(--arise),var(--cyan))', level:1, exp:0, hp: 100, maxHp: 100, mana: 200, maxMana: 200, consequencePending:false, realmIndex:0, realmEnergy:0, lifeScore:0, streak:0, longestStreak:0, failStreak:0, recoveryMode:false, lifetimeIncome:0, bossesDefeated:0, goalsCompleted:0, totalQuests:0, failedQuests:0, failedGoals:0, failedProjects:0, heavenBridges: 0, equippedTitle:'The Beginner', equippedMedal:'', titlesUnlocked:['The Beginner'], lifePrinciple:'Disiplin mengalahkan motivasi.', lifePrincipleHistory:[], },
     _realmMigratedV2:false,
@@ -3722,7 +3758,7 @@ function _riwayatArchiveUpsert(cat, dateField, entry){
 function migrateState(s){
   ensureTombstones(s);
   if(!Array.isArray(s.goals)) s.goals = []; if(!Array.isArray(s.habits)) s.habits = []; if(!s.meta.activityLog) s.meta.activityLog = {}; if(!s.meta.activityNotes) s.meta.activityNotes = {}; if(!Array.isArray(s.goalHistory)) s.goalHistory = []; if(!Array.isArray(s.lifeTimeline)) s.lifeTimeline = []; if(!Array.isArray(s.lifeMomentum)) s.lifeMomentum = [];
-  if(typeof s.meta.dailyExpEarned !== 'number') s.meta.dailyExpEarned = 0; if(!s.meta.dailyExpLog) s.meta.dailyExpLog = {};
+  if(!s.meta.dailyExpLog) s.meta.dailyExpLog = {};
   if(!s.schedule || !s.schedule.pagi) s.schedule = JSON.parse(JSON.stringify(DEFAULT_SCHEDULE));
   if(!s._realmMigratedV2){ s.character.realmIndex = s.character.realmIndex || 0; s._realmMigratedV2 = true; }
   s.realms = DEFAULT_REALMS.map(r => ({...r}));
@@ -3835,7 +3871,6 @@ function migrateState(s){
 
   if(!s.settings) s.settings = DEFAULT_SETTINGS();
   const ds = DEFAULT_SETTINGS(); Object.keys(ds).forEach(k => { if(!(k in s.settings)) s.settings[k] = ds[k]; });
-  if(s.settings.dailyExpCap < 9999999) s.settings.dailyExpCap = 9999999;
   if(!s.completedBlocks) s.completedBlocks = {};
   if(!s.dailyJournal) s.dailyJournal = {};
   if(!s.moodLog) s.moodLog = {};
@@ -4107,10 +4142,8 @@ function gainExp(amount){
     const c = state.character; const mult = state.settings.expMultiplier || 1.0; amount = Math.round(amount * mult);
     if(amount > 0 && state.spiritual?.sunnahBonusDate === todayStr()) amount = Math.round(amount * 1.1);
     if (amount > 0) {
-        if (state.settings.dailyExpCapEnabled === true && state.meta.dailyExpEarned >= state.settings.dailyExpCap) { showToast('Batas EXP harian (' + state.settings.dailyExpCap + ') telah tercapai!', 'muted'); return; }
-        const allowedExp = state.settings.dailyExpCapEnabled === true ? Math.min(amount, state.settings.dailyExpCap - state.meta.dailyExpEarned) : amount;
-        state.meta.dailyExpEarned += allowedExp; c.exp += allowedExp;
-        (state.meta.dailyExpLog=state.meta.dailyExpLog||{})[todayStr()] = ((state.meta.dailyExpLog||{})[todayStr()]||0) + allowedExp;
+        c.exp += amount;
+        (state.meta.dailyExpLog=state.meta.dailyExpLog||{})[todayStr()] = ((state.meta.dailyExpLog||{})[todayStr()]||0) + amount;
     } else {
         const oldLevel = c.level;
         c.exp += amount;
@@ -4363,8 +4396,9 @@ function failQuest(id){
             showToast(`☠️ QI DEVIATION! HP Habis di Heaven Trampling — Level -3, EXP terkuras!`, 'bad');
         } else {
             const hpZeroPenalty = getHpZeroExpPenalty();
+            const _actualHpZeroPenalty = Math.round(hpZeroPenalty * (state.settings.expMultiplier || 1.0));
             gainExp(-hpZeroPenalty);
-            showToast(`Energi Anda Habis. Selesaikan Quest untuk Memulihkan HP. (-${hpZeroPenalty} EXP)`, 'bad');
+            showToast(`Energi Anda Habis. Selesaikan Quest untuk Memulihkan HP. (-${_actualHpZeroPenalty} EXP)`, 'bad');
         }
     } else if(manaWasUsed) {
         const hpPart = hpLoss > 0 ? `, HP -${hpLoss}` : '';
@@ -4555,15 +4589,17 @@ function rollover(){
               const htHpLoss = Math.floor(state.character.maxHp * 0.5);
               state.character.hp = Math.max(0, state.character.hp - htHpLoss);
               logHpChange(-htHpLoss, `Heaven Trampling Punishment: ${missedCount} quest terlewat`);
-              // Kehilangan 1 LV — level global turun, realm ikut sync otomatis via gainExp
+              // Kehilangan 1 LV — drop tepat -1, tidak lewat gainExp agar tidak trigger cascade level-down tambahan
               if(isHeavenTrampling()){
                   state.character.level = Math.max(1, state.character.level - 1);
                   state.character.exp = 0;
               }
-              // EXP loss: 20% dari EXP yang dibutuhkan untuk level saat ini
+              // EXP loss: 20% dari EXP yang dibutuhkan untuk level saat ini.
+              // Dipotong langsung ke c.exp (bukan via gainExp) agar tidak memicu level-down kedua.
               const htExpLoss = Math.floor(expNeeded(state.character.level) * 0.2);
               const _actualHtExpLoss = Math.round(htExpLoss * (state.settings.expMultiplier || 1.0));
-              gainExp(-htExpLoss);
+              state.character.exp = Math.max(0, state.character.exp - _actualHtExpLoss);
+              syncRealmWithLevel(state);
               showToast(`⚠️ HEAVEN TRAMPLING PUNISHMENT! HP -50%, Level -1, EXP -${_actualHtExpLoss.toLocaleString()} (${missedCount} quest terlewat)`, 'bad');
               addActivityLog(`HT Punishment: ${missedCount} quest terlewat — HP -50%, Level -1`);
               SFX.error();
@@ -4613,8 +4649,9 @@ function rollover(){
               if (state.character.hp <= 0) {
                   state.character.hp = 0;
                   const hpZeroPenalty = getHpZeroExpPenalty();
+                  const _actualHpZeroPenalty = Math.round(hpZeroPenalty * (state.settings.expMultiplier || 1.0));
                   gainExp(-hpZeroPenalty);
-                  showToast(`Energi Anda Habis. Selesaikan Quest untuk Memulihkan HP. (-${hpZeroPenalty} EXP)`, 'bad');
+                  showToast(`Energi Anda Habis. Selesaikan Quest untuk Memulihkan HP. (-${_actualHpZeroPenalty} EXP)`, 'bad');
               }
           }
           state.character.failedQuests = (state.character.failedQuests||0) + missedCount;
@@ -4669,7 +4706,7 @@ function rollover(){
   if(state.character.streak > 0){ ensureCharHistory(state); const _stD=todayStr(); if(!state.charHistory.streak.length||state.charHistory.streak[state.charHistory.streak.length-1].ts!==_stD) state.charHistory.streak.push({ts:_stD, val:state.character.streak}); }
 
   (state.quests || []).forEach(q => { if(q.type==='daily'){ q.status='pending'; q.completionsToday = 0; } });
-  state.meta.completedTodayCount = 0; state.meta.dailyExpEarned = 0; state.meta.hardQuestsToday = 0;
+  state.meta.completedTodayCount = 0; state.meta.hardQuestsToday = 0;
   // Reset HT quest completion tracking setiap hari
   state.character.htQuestCompletedToday = {};
   if(!state.spiritual.dailyLog) state.spiritual.dailyLog = {}; state.spiritual.dailyLog[today] = {};
@@ -4764,7 +4801,7 @@ function logSpiritual(key, isSuccess, isCustom = false){
 
   if(isSuccess) {
       state.spiritual.exp += item.exp; bumpStat('spirituality',2);
-      gainMana(MANA_GAIN_BY_DIFFICULTY.normal, `Ritual: ${item.label}`);
+      gainMana(item.wajib ? MANA_GAIN_BY_DIFFICULTY.hard : MANA_GAIN_BY_DIFFICULTY.normal, `Ritual: ${item.label}`);
       if(item.sunnah) state.spiritual.sunnahBonusDate = today;
       let leveled=false;
       while(state.spiritual.exp >= spiritualNeeded(state.spiritual.level)){ state.spiritual.exp -= spiritualNeeded(state.spiritual.level); state.spiritual.level += 1; leveled = true; }
@@ -6145,26 +6182,6 @@ function renderRitual(){
   const wajibActions = SPIRITUAL_ACTIONS.filter(a => a.wajib);
   const sunnahActions = SPIRITUAL_ACTIONS.filter(a => a.sunnah);
 
-  function ritualBtn(item, isCustom=false){
-    const logData = state.spiritual.dailyLog?.[today]?.[item.id||item.key];
-    if(logData){
-      const ok = logData==='success';
-      return `<div class="spirit-btn" style="opacity:0.65;border-color:${ok?'var(--jade)':'var(--crimson)'};">
-        <div style="font-size:15px;">${item.icon} ${escapeHtml(item.label)}</div>
-        <small style="color:${ok?'var(--jade)':'var(--crimson)'}">${ok?'✓ Berhasil':'✗ Gagal'}</small>
-      </div>`;
-    }
-    const keyParam = isCustom ? `'${item.id}',true,true` : `'${item.key}',true`;
-    const keyParamF = isCustom ? `'${item.id}',false,true` : `'${item.key}',false`;
-    return `<div class="spirit-btn" style="position:relative;">
-      <div style="font-size:14px;margin-bottom:6px;">${item.icon} ${escapeHtml(item.label)}</div>
-      <div style="display:flex;gap:4px;margin-top:auto;">
-        <button class="btn btn-secondary btn-sm" style="flex:1;color:var(--jade);border-color:rgba(52,211,153,0.3);" onclick="logSpiritual(${keyParam})">✓</button>
-        <button class="btn btn-secondary btn-sm" style="flex:1;color:var(--crimson);border-color:rgba(255,71,104,0.3);" onclick="logSpiritual(${keyParamF})">✗</button>
-      </div>
-      ${isCustom?`<button class="icon-btn" style="position:absolute;top:2px;right:2px;padding:2px;" onclick="deleteCustomRitual('${item.id}')"><svg viewBox="0 0 24 24" width="12" height="12"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2"/></svg></button>`:''}
-    </div>`;
-  }
 
   // Sedekah log
   const sEntries = state.sedekah?.entries || [];
@@ -6178,13 +6195,13 @@ function renderRitual(){
 
   <div data-sec-tab="ritual" data-sec-id="ritual-wajib">
     <div class="section-title">🕌 Sholat Wajib <small class="muted" style="font-size:10px;font-weight:400;">Gagal = -50 EXP, -20 HP, -10 Spiritual EXP</small></div>
-    <div class="card" style="border-left:3px solid var(--arise-bright);"><div class="spirit-grid">${wajibActions.map(a=>ritualBtn(a)).join('')}</div></div>
+    <div class="card" style="border-left:3px solid var(--arise-bright);"><div class="spirit-grid">${wajibActions.map(a=>renderRitualButton(a)).join('')}</div></div>
   </div>
 
   <div data-sec-tab="ritual" data-sec-id="ritual-sunnah">
     <div class="section-title mt-14">🌙 Sholat Sunnah & Amalan <small class="muted" style="font-size:10px;font-weight:400;">Berhasil = +10% EXP bonus hari ini</small></div>
-    <div class="card" style="border-left:3px solid var(--gold);"><div class="spirit-grid">${sunnahActions.map(a=>ritualBtn(a)).join('')}</div></div>
-    ${state.customRituals.length ? `<div class="section-title mt-14">✨ Ritual Kustom</div><div class="card"><div class="spirit-grid">${state.customRituals.map(a=>ritualBtn(a,true)).join('')}</div></div>` : ''}
+    <div class="card" style="border-left:3px solid var(--gold);"><div class="spirit-grid">${sunnahActions.map(a=>renderRitualButton(a)).join('')}</div></div>
+    ${state.customRituals.length ? `<div class="section-title mt-14">✨ Ritual Kustom</div><div class="card"><div class="spirit-grid">${state.customRituals.map(a=>renderRitualButton(a,true)).join('')}</div></div>` : ''}
     <button class="btn btn-ghost btn-block mt-10" onclick="addCustomRitual()">+ Tambah Ritual Kustom</button>
   </div>
 
@@ -6203,24 +6220,24 @@ function renderRitual(){
 function renderRitualButton(item, isCustom = false) {
     const today = todayStr();
     const logData = state.spiritual.dailyLog?.[today]?.[item.id || item.key];
-    
+
     if (logData) {
-        const isSuccess = logData === 'success';
-        return `<div class="spirit-btn" style="opacity:0.6; border-color:${isSuccess?'var(--jade)':'var(--crimson)'};">
-            <div style="font-size:16px;">${item.icon} ${escapeHtml(item.label)}</div>
-            <small style="color:${isSuccess?'var(--jade)':'var(--crimson)'}">${isSuccess?'Berhasil':'Gagal'}</small>
-        </div>`;
-    } else {
-        const jsParam = isCustom ? `'${item.id}', \${val}, true` : `'${item.key}', \${val}`;
-        return `<div class="spirit-btn">
-            <div style="font-size:14px; margin-bottom:6px;">${item.icon} ${escapeHtml(item.label)}</div>
-            <div style="display:flex; justify-content:space-between; gap:4px; margin-top:auto;">
-               <button class="btn btn-secondary btn-sm" style="flex:1; color:var(--jade); border-color:rgba(52,211,153,0.3);" onclick="logSpiritual(${jsParam.replace('${val}','true')})">✓</button>
-               <button class="btn btn-secondary btn-sm" style="flex:1; color:var(--crimson); border-color:rgba(255,71,104,0.3);" onclick="logSpiritual(${jsParam.replace('${val}','false')})">✕</button>
-            </div>
-            ${isCustom ? `<button class="icon-btn" style="position:absolute; top:2px; right:2px; padding:2px;" onclick="deleteCustomRitual('${item.id}')"><svg viewBox="0 0 24 24" width="12" height="12"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2"/></svg></button>`:''}
+        const ok = logData === 'success';
+        return `<div class="spirit-btn" style="opacity:0.65;border-color:${ok?'var(--jade)':'var(--crimson)'};">
+            <div style="font-size:15px;">${item.icon} ${escapeHtml(item.label)}</div>
+            <small style="color:${ok?'var(--jade)':'var(--crimson)'}">${ok?'✓ Berhasil':'✗ Gagal'}</small>
         </div>`;
     }
+    const keyParam  = isCustom ? `'${item.id}',true,true`  : `'${item.key}',true`;
+    const keyParamF = isCustom ? `'${item.id}',false,true` : `'${item.key}',false`;
+    return `<div class="spirit-btn" style="position:relative;">
+        <div style="font-size:14px;margin-bottom:6px;">${item.icon} ${escapeHtml(item.label)}</div>
+        <div style="display:flex;gap:4px;margin-top:auto;">
+            <button class="btn btn-secondary btn-sm" style="flex:1;color:var(--jade);border-color:rgba(52,211,153,0.3);" onclick="logSpiritual(${keyParam})">✓</button>
+            <button class="btn btn-secondary btn-sm" style="flex:1;color:var(--crimson);border-color:rgba(255,71,104,0.3);" onclick="logSpiritual(${keyParamF})">✗</button>
+        </div>
+        ${isCustom?`<button class="icon-btn" style="position:absolute;top:2px;right:2px;padding:2px;" onclick="deleteCustomRitual('${item.id}')"><svg viewBox="0 0 24 24" width="12" height="12"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2"/></svg></button>`:''}
+    </div>`;
 }
 
 function renderHome(){
@@ -6706,8 +6723,8 @@ function renderBoss(){
         <button class="chip ${_finRng==='30H'?'active':''}" onclick="setFinTradingRange('30H')">30 Hari</button>
         <button class="chip ${_finRng==='All'?'active':''}" onclick="setFinTradingRange('All')">All Time</button>
       </div>
-      <div class="chart-container" style="height:180px;position:relative;"><canvas id="financialMomentumChart"></canvas></div>
-      <div id="fm-point-info" style="text-align:center;margin-top:10px;min-height:36px;font-size:11px;color:var(--muted);">Tekan titik pada grafik untuk melihat detail transaksi.</div>
+      <div class="chart-container" style="height:220px;position:relative;"><canvas id="financialMomentumChart"></canvas></div>
+      <div id="fm-point-info" style="text-align:center;margin-top:10px;min-height:36px;font-size:11px;color:var(--muted);">Tekan titik pada grafik untuk melihat detail.</div>
     </div>`;
     const _secDaoChart = `<div class="section-title">Tren Momentum Pemasukan (7 Hari)</div><div class="card glass-panel"><div class="chart-container"><canvas id="daoChart"></canvas></div></div>`;
     const _secTransLog = `<div class="section-title">📋 Riwayat Transaksi Terbaru</div><div class="card">${logHtml}</div>`;
@@ -6736,6 +6753,8 @@ function initFinancialMomentumChart() {
     if(!ctx) return;
     if(financialMomentumChart) { financialMomentumChart.destroy(); financialMomentumChart = null; }
 
+    const rng = _finTradingRange || '30H';
+
     // Ambil semua transaksi (in/out), abaikan transfer, sort ascending
     const allTx = _getAllFinanceEntries()
         .filter(e => e.type !== 'transfer' && e.amount > 0 && e.date)
@@ -6746,7 +6765,6 @@ function initFinancialMomentumChart() {
         });
 
     // Filter rentang waktu
-    const rng = _finTradingRange || '30H';
     let filtered = allTx;
     if(rng === '7H' || rng === '30H') {
         const days = rng === '7H' ? 7 : 30;
@@ -6755,14 +6773,13 @@ function initFinancialMomentumChart() {
         filtered = allTx.filter(e => e.date >= cutStr);
     }
 
-    // Hitung saldo awal sebelum rentang (untuk '7H'/'30H' mode)
+    // Hitung saldo awal sebelum rentang (untuk running balance garis)
     let initBalance = 0;
     if(rng !== 'All') {
         const cutStr = filtered.length > 0 ? filtered[0].date : '';
         allTx.forEach(e => {
-            if(cutStr && e.date < cutStr) {
+            if(cutStr && e.date < cutStr)
                 initBalance += e.type === 'in' ? e.amount : -e.amount;
-            }
         });
     }
 
@@ -6771,75 +6788,146 @@ function initFinancialMomentumChart() {
         return;
     }
 
-    // Hitung saldo berjalan per transaksi
-    let running = initBalance;
-    const points = filtered.map(e => {
-        running += e.type === 'in' ? e.amount : -e.amount;
-        return { saldo: running, entry: e };
-    });
-
-    const dataY  = points.map(p => p.saldo);
-    const labels = points.map(p => {
-        try { return new Date(p.entry.date + 'T00:00:00').toLocaleDateString('id-ID', {day:'numeric', month:'short'}); }
-        catch(e) { return p.entry.date; }
-    });
-
-    // Warna segmen & titik (hijau=naik, merah=turun)
-    const segColor = ctx2 => {
-        const i = ctx2.p0DataIndex, a = dataY[i], b = dataY[i + 1];
-        return b > a ? '#34D399' : b < a ? '#FF4768' : '#9492AC';
-    };
-    const ptColors = dataY.map((v, i) => {
-        if(i === 0) return v >= 0 ? '#34D399' : '#FF4768';
-        return v > dataY[i-1] ? '#34D399' : v < dataY[i-1] ? '#FF4768' : '#9492AC';
-    });
-
     Chart.defaults.color = '#9492AC';
     Chart.defaults.font.family = "'Rajdhani', sans-serif";
 
+    // ── SELALU per hari: batang = total harian, garis = saldo berjalan per hari ──
+    const dateMap = {};
+    filtered.forEach(e => {
+        if(!dateMap[e.date]) dateMap[e.date] = { income: 0, expense: 0 };
+        if(e.type === 'in') dateMap[e.date].income += e.amount;
+        else                dateMap[e.date].expense += e.amount;
+    });
+    const dates = Object.keys(dateMap).sort();
+    const labels = dates.map(d => {
+        try { return new Date(d + 'T00:00:00').toLocaleDateString('id-ID', {day:'numeric', month:'short'}); }
+        catch(ex) { return d; }
+    });
+    const incomeData  = dates.map(d => dateMap[d].income);
+    const expenseData = dates.map(d => dateMap[d].expense);
+    // net harian (+ = hari positif, - = hari negatif) → untuk label di titik garis
+    const netData     = dates.map(d => dateMap[d].income - dateMap[d].expense);
+    // saldo berjalan kumulatif → untuk posisi titik garis (sumbu kanan)
+    let running = initBalance;
+    const balanceData = dates.map(d => {
+        running += dateMap[d].income - dateMap[d].expense;
+        return running;
+    });
+    _buildFinMixedChart(ctx, labels, incomeData, expenseData, balanceData, netData, dates, dateMap);
+}
+
+// ── Helper: render mixed chart — batang harian (kiri) + garis saldo berjalan (kanan) ──
+function _buildFinMixedChart(ctx, labels, incomeData, expenseData, balanceData, netData, dates, dateMap) {
+    // Warna titik garis: hijau jika hari net positif, merah jika negatif
+    const ptColors = netData.map(n => n >= 0 ? '#34D399' : '#FF4768');
+    const ptRadius = labels.length > 40 ? 2 : 5;
+
     financialMomentumChart = new Chart(ctx, {
-        type: 'line',
+        type: 'bar',
         data: {
             labels,
-            datasets: [{
-                label: 'Saldo Berjalan',
-                data: dataY,
-                borderColor: '#9492AC',
-                segment: { borderColor: segColor },
-                backgroundColor: chartCtx => {
-                    const chart = chartCtx.chart;
-                    const { ctx: c2, chartArea } = chart;
-                    if(!chartArea) return 'rgba(52,211,153,0.06)';
-                    const g = c2.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-                    g.addColorStop(0, 'rgba(52,211,153,0.18)');
-                    g.addColorStop(0.6, 'rgba(52,211,153,0.04)');
-                    g.addColorStop(1, 'rgba(255,71,104,0.06)');
-                    return g;
+            datasets: [
+                {
+                    type: 'bar',
+                    label: 'Pemasukan',
+                    data: incomeData,
+                    backgroundColor: 'rgba(52,211,153,0.55)',
+                    borderColor: 'rgba(52,211,153,0.85)',
+                    borderWidth: 1,
+                    borderRadius: 3,
+                    borderSkipped: false,
+                    yAxisID: 'y',
+                    order: 2,
                 },
-                fill: 'origin',
-                tension: 0.3,
-                borderWidth: 2,
-                pointBackgroundColor: ptColors,
-                pointBorderColor: ptColors,
-                pointBorderWidth: 1.5,
-                pointRadius: dataY.length > 60 ? 2 : 4,
-                pointHoverRadius: 7,
-            }]
+                {
+                    type: 'bar',
+                    label: 'Pengeluaran',
+                    data: expenseData,
+                    backgroundColor: 'rgba(255,71,104,0.55)',
+                    borderColor: 'rgba(255,71,104,0.85)',
+                    borderWidth: 1,
+                    borderRadius: 3,
+                    borderSkipped: false,
+                    yAxisID: 'y',
+                    order: 2,
+                },
+                {
+                    type: 'line',
+                    label: 'Saldo Berjalan',
+                    data: balanceData,
+                    borderColor: '#A48BFF',
+                    backgroundColor: 'transparent',
+                    fill: false,
+                    tension: 0.4,
+                    borderWidth: 2.5,
+                    pointBackgroundColor: ptColors,
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 1.5,
+                    pointRadius: ptRadius,
+                    pointHoverRadius: 8,
+                    yAxisID: 'y2',
+                    order: 1,
+                }
+            ]
         },
+        plugins: [{
+            id: 'finNetLabels',
+            afterDatasetsDraw(chart) {
+                if(labels.length > 15) return; // sembunyikan jika terlalu padat
+                const c = chart.ctx;
+                const meta = chart.getDatasetMeta(2); // Saldo Berjalan (line)
+                if(!meta || !meta.data) return;
+                meta.data.forEach((pt, i) => {
+                    const net = netData[i];
+                    if(net === undefined || net === null) return;
+                    const isPos  = net >= 0;
+                    const color  = isPos ? '#34D399' : '#FF4768';
+                    const sign   = isPos ? '+' : '−';
+                    const absVal = Math.abs(net);
+                    const lbl    = sign + (absVal >= 1000000 ? (absVal/1000000).toFixed(1)+'M'
+                                        : absVal >= 1000    ? (absVal/1000).toFixed(0)+'K'
+                                        : String(absVal));
+                    c.save();
+                    c.font      = "bold 9px 'Rajdhani', sans-serif";
+                    c.fillStyle = color;
+                    c.textAlign = 'center';
+                    c.fillText(lbl, pt.x, pt.y - 11);
+                    c.restore();
+                });
+            }
+        }],
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
             scales: {
                 y: {
+                    type: 'linear',
+                    position: 'left',
                     grid: { color: 'rgba(255,255,255,0.05)' },
                     ticks: {
                         callback: v => {
                             const a = Math.abs(v);
                             if(a >= 1000000) return (v/1000000).toFixed(1)+'M';
-                            if(a >= 1000) return (v/1000).toFixed(0)+'K';
+                            if(a >= 1000)    return (v/1000).toFixed(0)+'K';
                             return v;
                         },
                         font: { size: 9 }
+                    }
+                },
+                y2: {
+                    type: 'linear',
+                    position: 'right',
+                    grid: { drawOnChartArea: false }, // jangan timpa grid kiri
+                    ticks: {
+                        callback: v => {
+                            const a = Math.abs(v);
+                            if(a >= 1000000) return (v/1000000).toFixed(1)+'M';
+                            if(a >= 1000)    return (v/1000).toFixed(0)+'K';
+                            return v;
+                        },
+                        font: { size: 9 },
+                        color: '#A48BFF',
                     }
                 },
                 x: {
@@ -6848,17 +6936,24 @@ function initFinancialMomentumChart() {
                 }
             },
             plugins: {
-                legend: { display: false },
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        boxWidth: 10, boxHeight: 10,
+                        font: { size: 9 },
+                        color: '#9492AC',
+                        padding: 10,
+                    }
+                },
                 tooltip: {
                     callbacks: {
                         title: items => labels[items[0].dataIndex],
                         label: item => {
-                            const p = points[item.dataIndex];
-                            const sign = p.entry.type === 'in' ? '+' : '-';
-                            return [
-                                `Saldo: ${formatRupiah(item.raw)}`,
-                                `${sign}${formatRupiah(p.entry.amount)} · ${p.entry.note||'(tanpa catatan)'}`
-                            ];
+                            if(item.dataset.label === 'Saldo Berjalan') {
+                                return `Saldo: ${formatRupiah(item.raw)}`;
+                            }
+                            return `${item.dataset.label}: ${formatRupiah(item.raw)}`;
                         }
                     }
                 }
@@ -6866,16 +6961,20 @@ function initFinancialMomentumChart() {
             onClick: (evt, elements) => {
                 const infoEl = document.getElementById('fm-point-info');
                 if(!infoEl || !elements || !elements.length) return;
-                const idx = elements[0].index;
-                const p = points[idx];
-                const isIn = p.entry.type === 'in';
-                const color = isIn ? 'var(--jade)' : 'var(--crimson)';
-                const sign  = isIn ? '+' : '−';
+                const idx  = elements[0].index;
+                const date = dates[idx];
+                const day  = dateMap[date];
+                const bal  = balanceData[idx];
+                const net  = netData[idx];
+                const netColor = net >= 0 ? 'var(--jade)' : 'var(--crimson)';
+                const netSign  = net >= 0 ? '+' : '−';
                 infoEl.innerHTML = `
-                  <span style="font-weight:800;font-size:17px;color:${color};">${sign}${formatRupiah(p.entry.amount)}</span>
-                  &nbsp;<span style="font-size:10px;color:var(--muted);">${p.entry.date}</span><br>
-                  <span style="color:var(--bone);font-size:11px;">${escapeHtml(p.entry.note||'Tanpa catatan')}</span><br>
-                  <span style="font-size:10px;color:var(--muted);">Saldo setelah: <b style="color:${p.saldo>=0?'var(--jade)':'var(--crimson)'};">${formatRupiah(p.saldo)}</b></span>`;
+                    <span style="font-size:11px;color:var(--muted);">${labels[idx]}</span>
+                    &nbsp;<span style="font-weight:700;color:${netColor};">${netSign}${formatRupiah(Math.abs(net))}</span><br>
+                    <span style="color:var(--jade);font-weight:700;">▲ ${formatRupiah(day.income)}</span>
+                    <span style="color:var(--muted);margin:0 5px;">·</span>
+                    <span style="color:var(--crimson);font-weight:700;">▼ ${formatRupiah(day.expense)}</span><br>
+                    <span style="font-size:10px;color:var(--muted);">Saldo kumulatif: <b style="color:${bal>=0?'var(--jade)':'var(--crimson)'};">${formatRupiah(bal)}</b></span>`;
             }
         }
     });
@@ -7111,9 +7210,9 @@ function renderProjectKanban() {
         ).join('') + (!todayEntry ? `<div class="bp-day today-empty">?</div>` : '');
 
         return `<div class="bp-card-wrap">
-          <div class="bp-pin"></div>
-          <div class="bp-card status-${chipCls}">
-            <div class="bp-chip ${chipCls}">${chipMap[chipCls]||'📋'} <span style="font-size:7.5px;opacity:0.65;">blueprint</span></div>
+          <div class="bp-pin bp-pin-blue"></div>
+          <div class="bp-card bp-blueprint status-${chipCls}">
+            <div class="bp-chip ${chipCls}">📐 ${(chipMap[chipCls]||'📋 Perencanaan').replace(/^[^\s]+\s/,'')} <span style="font-size:7.5px;opacity:0.65;">blueprint</span></div>
             <div class="bp-card-title">${escapeHtml(item.label)}</div>
             ${item.desc ? `<div class="bp-card-desc">${escapeHtml(item.desc)}</div>` : ''}
             ${item.deadline ? `<div class="bp-deadline ${isOverdue?'overdue':''}">
@@ -7121,7 +7220,7 @@ function renderProjectKanban() {
               ${!isOverdue?`<span style="font-size:8.5px;color:#0ea5e9;"> · ${diffDays(today,item.deadline)} hari lagi</span>`:''}
             </div>` : ''}
             <div class="bp-progress-bar"><div class="bp-progress-fill" style="width:${prog}%"></div></div>
-            <div style="font-size:8.5px;color:#7a5500;margin-bottom:4px;">${prog}% · +${incr}%/hari · preview: +${expPrev} EXP</div>
+            <div style="font-size:8.5px;color:#6ba3cc;margin-bottom:4px;">${prog}% · +${incr}%/hari · preview: +${expPrev} EXP</div>
             <div class="bp-divider"></div>
             <div class="bp-checkins-label">PROGRES HARIAN${!todayEntry?` <span class="bp-today-tag">HARI INI</span>`:''}</div>
             <div class="bp-checkins">${dotHtml}</div>
@@ -9083,7 +9182,7 @@ function renderSettingsModal(){
         <input type="checkbox" ${s.showBackgroundAnim?'checked':''} onchange="setSetting('showBackgroundAnim',this.checked)">
       </div>
     </div></details>
-    <details class="settings-section"><summary>⚔️ EXP & Gameplay</summary><div class="settings-body"><label style="display:block;font-size:11.5px;color:var(--muted);margin-bottom:5px;font-weight:600;">Multiplier EXP</label><div class="btn-group">${[0.5,1.0,1.5,2.0].map(m => `<button class="btn btn-secondary ${s.expMultiplier===m?'active':''}" onclick="setSetting('expMultiplier',${m})">${m}x</button>`).join('')}</div><div class="toggle-row"><label>Efek Suara (SFX)</label><input type="checkbox" ${s.soundEnabled?'checked':''} onchange="setSetting('soundEnabled',this.checked)"></div><div class="toggle-row"><label>Floating EXP Animasi</label><input type="checkbox" ${s.showFloatingExp?'checked':''} onchange="setSetting('showFloatingExp',this.checked)"></div><div class="toggle-row"><label>Combo Bonus</label><input type="checkbox" ${s.comboBonus?'checked':''} onchange="setSetting('comboBonus',this.checked)"></div><div class="toggle-row"><label>Streak Bonus</label><input type="checkbox" ${s.streakBonus?'checked':''} onchange="setSetting('streakBonus',this.checked)"></div><div class="toggle-row"><label>Custom EXP Quest (input bebas)</label><input type="checkbox" ${s.customExpEnabled!==false?'checked':''} onchange="setSetting('customExpEnabled',this.checked)"></div><div class="toggle-row"><label>Batas EXP Harian</label><input type="checkbox" ${s.dailyExpCapEnabled===true?'checked':''} onchange="setSetting('dailyExpCapEnabled',this.checked)"></div></div></details>
+    <details class="settings-section"><summary>⚔️ EXP & Gameplay</summary><div class="settings-body"><label style="display:block;font-size:11.5px;color:var(--muted);margin-bottom:5px;font-weight:600;">Multiplier EXP</label><div class="btn-group">${[0.5,1.0,1.5,2.0].map(m => `<button class="btn btn-secondary ${s.expMultiplier===m?'active':''}" onclick="setSetting('expMultiplier',${m})">${m}x</button>`).join('')}</div><div class="toggle-row"><label>Efek Suara (SFX)</label><input type="checkbox" ${s.soundEnabled?'checked':''} onchange="setSetting('soundEnabled',this.checked)"></div><div class="toggle-row"><label>Floating EXP Animasi</label><input type="checkbox" ${s.showFloatingExp?'checked':''} onchange="setSetting('showFloatingExp',this.checked)"></div><div class="toggle-row"><label>Combo Bonus</label><input type="checkbox" ${s.comboBonus?'checked':''} onchange="setSetting('comboBonus',this.checked)"></div><div class="toggle-row"><label>Streak Bonus</label><input type="checkbox" ${s.streakBonus?'checked':''} onchange="setSetting('streakBonus',this.checked)"></div><div class="toggle-row"><label>Custom EXP Quest (input bebas)</label><input type="checkbox" ${s.customExpEnabled!==false?'checked':''} onchange="setSetting('customExpEnabled',this.checked)"></div></div></details>
     <details class="settings-section"><summary>💰 Target Finansial</summary><div class="settings-body">
       <div class="toggle-row">
         <label style="display:flex;flex-direction:column;gap:2px;">
@@ -9213,7 +9312,6 @@ function resetPartial(type){
     } else if(type === 'exp'){
       // Hanya reset bar EXP aktif — Level & Realm tidak berubah
       state.character.exp = 0;
-      state.meta.dailyExpEarned = 0;
     } else if(type === 'quest'){
       // Reset SEMUA quest ke pending (termasuk yang sudah done)
       state.quests.forEach(q => {
