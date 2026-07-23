@@ -845,7 +845,7 @@ a{color:var(--cyan);}
   transform: none !important;
   background: linear-gradient(175deg, #fefdf5 0%, #faf6e4 100%);
   color: #2a1a05;
-  padding-left: 30px;
+  padding-left: 11px;
   border: 1px solid rgba(180,160,100,0.35);
   box-shadow: 2px 5px 12px rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.2);
 }
@@ -862,17 +862,6 @@ a{color:var(--cyan);}
     transparent 0px, transparent 20px,
     rgba(100,140,220,0.15) 20px, rgba(100,140,220,0.15) 21px
   );
-}
-/* garis merah margin vertikal */
-.bp-card.bp-notebook::after {
-  content: '';
-  position: absolute;
-  top: 0; bottom: 0;
-  left: 25px;
-  width: 1.5px;
-  background: rgba(210,55,55,0.4);
-  pointer-events: none;
-  z-index: 1;
 }
 /* pastikan konten di atas pseudo-elements */
 .bp-card.bp-notebook > * { position: relative; z-index: 2; }
@@ -2104,6 +2093,7 @@ function formatRupiah(n){
   return prefix + abs.toLocaleString('id-ID');
 }
 function escapeHtml(str){ return str===undefined||str===null?'':String(str).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function getTipeIcon(type){const map={'Buku':'📖','Course':'🎓','Video':'🎬','Artikel':'📄','Catatan':'📝','Finansial':'💰','Investasi':'📈','Bisnis':'💼','Olahraga':'🏋️','Skill':'🎯','Proyek':'🔨','Mindset':'🧘','Riset':'🌐','Lainnya':'📦'};return map[type]||'📦';}
 function escapeAttr(str){ return escapeHtml(str); }
 function uid(prefix){ return (prefix||'id')+'_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7); }
 
@@ -7236,7 +7226,7 @@ function renderProjectKanban() {
           <div class="bp-card bp-notebook status-${sm.cls}">
             <div class="bp-chip ${sm.cls}">${sm.label}</div>
             <div class="bp-card-title">${escapeHtml(c.title)}</div>
-            ${c.type ? `<div class="bp-card-desc">📦 ${escapeHtml(c.type)}</div>` : ''}
+            ${c.type ? `<div class="bp-card-desc">${getTipeIcon(c.type)} ${escapeHtml(c.type)}</div>` : ''}
             ${c.dateTarget ? `<div class="bp-deadline ${isOverdue?'overdue':''}">
               ${isOverdue?'⚠️ Terlambat':'📅'} ${c.dateTarget}
               ${!isOverdue?`<span style="font-size:8.5px;color:#0ea5e9;"> · ${diffDays(today,c.dateTarget)} hari lagi</span>`:''}
@@ -7286,14 +7276,9 @@ function renderProjectKanban() {
         return `<div class="bp-card-wrap">
           <div class="bp-pin bp-pin-blue"></div>
           <div class="bp-card bp-blueprint status-${chipCls}">
-            <div class="bp-corner tl"></div><div class="bp-corner tr"></div>
-            <div class="bp-corner bl"></div><div class="bp-corner br"></div>
-            <div class="bp-header-strip">
-              <span class="bp-header-strip-label">📐 Blueprint</span>
-              <span class="bp-header-strip-icon">⬡</span>
-            </div>
             <div class="bp-chip ${chipCls}">${chipMap[chipCls]||'📋 Perencanaan'}</div>
             <div class="bp-card-title">${escapeHtml(item.label)}</div>
+            ${item.type ? `<div class="bp-card-desc">${getTipeIcon(item.type)} ${escapeHtml(item.type)}</div>` : ''}
             ${item.desc ? `<div class="bp-card-desc">${escapeHtml(item.desc)}</div>` : ''}
             ${item.deadline ? `<div class="bp-deadline ${isOverdue?'overdue':''}">
               ${isOverdue?'⚠️ Overdue':'📅'} ${item.deadline}
@@ -7540,6 +7525,7 @@ function openBlueprintModal(editId) {
         const item = (state.kanban.blueprint||[]).find(x=>x.id===editId);
         if(!item) return;
         document.getElementById('bp-label').value = item.label||'';
+        document.getElementById('bp-type').value = item.type||'';
         document.getElementById('bp-desc').value = item.desc||'';
         document.getElementById('bp-dateStart').value = item.dateStart||'';
         document.getElementById('bp-deadline').value = item.deadline||'';
@@ -7548,6 +7534,7 @@ function openBlueprintModal(editId) {
         document.getElementById('bp-notes').value = item.notes||'';
     } else {
         document.getElementById('bp-label').value = '';
+        document.getElementById('bp-type').value = '';
         document.getElementById('bp-desc').value = '';
         document.getElementById('bp-dateStart').value = '';
         document.getElementById('bp-deadline').value = '';
@@ -7564,6 +7551,7 @@ function submitBlueprintItem() {
     const editId = document.getElementById('bp-edit-id').value;
     const data = {
         label,
+        type: document.getElementById('bp-type').value.trim(),
         desc: document.getElementById('bp-desc').value.trim(),
         status: document.getElementById('bp-status').value,
         dateStart: document.getElementById('bp-dateStart').value,
@@ -9422,8 +9410,8 @@ function buildModals() {
   <div class="modal-overlay" id="modal-bridge-trial"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title" style="color:var(--gold-soft);">🌉 Trial Jembatan Surga</div><div class="small" style="line-height:1.6; color:var(--bone); margin:10px 0;">Kamu telah mencapai puncak <strong>Bridge <span id="bt-bridge-num">?</span></strong>. Untuk menembus ke Bridge berikutnya, kamu harus menjalani Trial Jembatan.<br><br>Gagal berarti kehilangan <strong>30% Energy Bridge</strong> dan <strong>HP -20%</strong>. Jika HP mencapai 0: <strong>Qi Deviation (Level -3)</strong>.<br><br>Apakah kamu siap menghadapi Trial?</div><div class="modal-actions"><button class="btn btn-ghost" onclick="submitBridgeTrial(false)">✕ Mundur (Tangguhkan)</button><button class="btn btn-gold" onclick="submitBridgeTrial(true)">⚔️ Hadapi Trial!</button></div></div></div>
   <div class="modal-overlay" id="modal-hp-log"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title" style="color:var(--crimson);">❤️ Riwayat Vitalitas (HP & Mana)</div><div class="small muted" style="margin:-6px 0 12px; line-height:1.5;">Semua perubahan HP dan Mana — kapan, kenapa, dan berapa — urut dari yang terbaru.</div><div id="hp-log-list" style="max-height:55vh; overflow-y:auto; display:flex; flex-direction:column; gap:8px;"></div><button class="btn btn-secondary btn-block mt-14" onclick="closeModal('modal-hp-log')">Tutup</button></div></div>
   <div class="modal-overlay" id="modal-add-quest"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title" id="modal-add-quest-title">Tambah Quest</div><div class="field"><label>Judul Quest</label><input type="text" id="aq-title" placeholder="Contoh: Latihan 10 menit" class="input"></div><div class="field"><label>Tipe Quest</label><select id="aq-type" class="input" onchange="toggleLegendaryExp()"><option value="daily">Daily — Harian</option><option value="weekly">Weekly — Mingguan</option><option value="monthly">Monthly — Bulanan</option><option value="special">Special — Spesial</option><option value="mythic">⚔️ Mythic (25.000 EXP)</option><option value="legendary">👑 Legendary (5.000 EXP)</option></select></div><div class="field"><label>Tingkat Kesulitan</label><select id="aq-difficulty" class="input" onchange="updateMaxQuestExpHint()"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option><option value="epic">Epic</option></select></div><div class="small muted" id="aq-max-exp-hint" style="margin:0 0 10px; padding:0 4px;"></div><div class="field"><label>Stat Reward (maks. 2)</label><div class="check-grid">${allStatKeys().map(k=>`<label class="check-item"><input type="checkbox" class="aq-stat" value="${k}" onchange="limitStatChecks(this)"> ${statDef(k).label}${STAT_ID_LABELS[k]?'<span style="display:block;font-size:9px;color:var(--muted);font-weight:400;line-height:1.2;margin-top:1px;">'+STAT_ID_LABELS[k]+'</span>':''}</label>`).join('')}</div></div><div class="field"><label class="checkbox-row" style="margin-bottom:0;"><input type="checkbox" id="aq-core"> Tandai sebagai Core Habit</label></div><div class="field"><label>Catatan (opsional)</label><textarea id="aq-notes" placeholder="Detail tambahan..." class="input"></textarea></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-add-quest')">Batal</button><button class="btn btn-primary" onclick="addQuest()">Simpan</button></div></div></div>
-  <div class="modal-overlay" id="modal-blueprint"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title" id="bp-modal-title">📐 Tambah Tahapan Blueprint</div><input type="hidden" id="bp-edit-id"><div class="field"><label>Nama Tahapan / Fase</label><input type="text" id="bp-label" placeholder="Contoh: Riset &amp; Perencanaan" class="input"></div><div class="field"><label>Deskripsi (opsional)</label><textarea id="bp-desc" placeholder="Detail tujuan tahapan ini..." class="input" rows="2"></textarea></div><div class="form-row"><div class="form-group half"><label>Tgl Mulai</label><input type="date" id="bp-dateStart" class="input"></div><div class="form-group half"><label>Deadline</label><input type="date" id="bp-deadline" class="input"></div></div><div class="field"><label>Prioritas</label><select id="bp-priority" class="input"><option value="low">🟢 Rendah</option><option value="medium" selected>🟡 Sedang</option><option value="high">🔴 Tinggi</option></select></div><div class="field"><label>Status</label><select id="bp-status" class="input"><option value="planning">📋 Perencanaan</option><option value="building">🔨 Sedang Dibangun</option><option value="done">✅ Selesai</option></select></div><div class="field"><label>Catatan Tambahan (opsional)</label><textarea id="bp-notes" placeholder="Referensi, link, detail penting..." class="input" rows="2"></textarea></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-blueprint')">Batal</button><button class="btn btn-primary" onclick="submitBlueprintItem()">Simpan</button></div></div></div>
-  <div class="modal-overlay" id="modal-kanban-edit"><div class="modal-sheet"><div class="modal-handle"></div><h2 class="modal-title" id="modal-card-title">Detail Materi</h2><input type="hidden" id="km-id"><input type="hidden" id="km-col"><div class="field"><label>Judul Materi</label><input type="text" id="km-title" placeholder="Nama buku, course, dll" class="input"></div><div class="field"><label>Tipe</label><select id="km-type" class="input"><option value="Buku">📖 Buku</option><option value="Course">🎓 Course</option><option value="Video">🎬 Video</option><option value="Artikel">📄 Artikel</option><option value="Lainnya">📦 Lainnya</option></select></div><div class="form-row"><div class="form-group half"><label>Tgl Mulai</label><input type="date" id="km-dateStart" class="input"></div><div class="form-group half"><label>Target Selesai</label><input type="date" id="km-dateTarget" class="input"></div></div><div class="field"><label>Progress: <span id="card-prog-val">0</span>%</label><input type="range" id="km-progress" min="0" max="100" value="0" style="width:100%; accent-color:var(--cyan);" oninput="document.getElementById('card-prog-val').textContent=this.value"></div><div class="field"><label>Kolom</label><select id="card-modal-col" class="input"><option value="mau_dipelajari">📚 Mau Dipelajari</option><option value="sedang_dipelajari">🔥 Sedang Dipelajari</option><option value="direview">🔍 Direview</option><option value="selesai">✅ Selesai</option></select></div><div class="field"><label>Insight / Catatan</label><textarea id="km-notes" placeholder="Tulis hal penting di sini..." class="input"></textarea></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-kanban-edit')">Batal</button><button class="btn btn-danger" onclick="deleteCardFromModal()">Hapus Item</button><button class="btn btn-primary" onclick="submitCardModal()">Simpan</button></div></div></div>
+  <div class="modal-overlay" id="modal-blueprint"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title" id="bp-modal-title">📐 Tambah Tahapan Blueprint</div><input type="hidden" id="bp-edit-id"><div class="field"><label>Nama Tahapan / Fase</label><input type="text" id="bp-label" placeholder="Contoh: Riset &amp; Perencanaan" class="input"></div><div class="field"><label>Tipe (opsional)</label><input type="text" id="bp-type" class="input" placeholder="Ketik atau pilih tipe..." list="tipe-list"></div><div class="field"><label>Deskripsi (opsional)</label><textarea id="bp-desc" placeholder="Detail tujuan tahapan ini..." class="input" rows="2"></textarea></div><div class="form-row"><div class="form-group half"><label>Tgl Mulai</label><input type="date" id="bp-dateStart" class="input"></div><div class="form-group half"><label>Deadline</label><input type="date" id="bp-deadline" class="input"></div></div><div class="field"><label>Prioritas</label><select id="bp-priority" class="input"><option value="low">🟢 Rendah</option><option value="medium" selected>🟡 Sedang</option><option value="high">🔴 Tinggi</option></select></div><div class="field"><label>Status</label><select id="bp-status" class="input"><option value="planning">📋 Perencanaan</option><option value="building">🔨 Sedang Dibangun</option><option value="done">✅ Selesai</option></select></div><div class="field"><label>Catatan Tambahan (opsional)</label><textarea id="bp-notes" placeholder="Referensi, link, detail penting..." class="input" rows="2"></textarea></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-blueprint')">Batal</button><button class="btn btn-primary" onclick="submitBlueprintItem()">Simpan</button></div></div></div>
+  <div class="modal-overlay" id="modal-kanban-edit"><div class="modal-sheet"><div class="modal-handle"></div><h2 class="modal-title" id="modal-card-title">Detail Materi</h2><input type="hidden" id="km-id"><input type="hidden" id="km-col"><div class="field"><label>Judul Materi</label><input type="text" id="km-title" placeholder="Nama buku, course, dll" class="input"></div><datalist id="tipe-list"><option value="Buku"><option value="Course"><option value="Video"><option value="Artikel"><option value="Catatan"><option value="Finansial"><option value="Investasi"><option value="Bisnis"><option value="Olahraga"><option value="Skill"><option value="Proyek"><option value="Mindset"><option value="Riset"><option value="Lainnya"></datalist><div class="field"><label>Tipe</label><input type="text" id="km-type" class="input" placeholder="Ketik atau pilih tipe..." list="tipe-list"></div><div class="form-row"><div class="form-group half"><label>Tgl Mulai</label><input type="date" id="km-dateStart" class="input"></div><div class="form-group half"><label>Target Selesai</label><input type="date" id="km-dateTarget" class="input"></div></div><div class="field"><label>Progress: <span id="card-prog-val">0</span>%</label><input type="range" id="km-progress" min="0" max="100" value="0" style="width:100%; accent-color:var(--cyan);" oninput="document.getElementById('card-prog-val').textContent=this.value"></div><div class="field"><label>Kolom</label><select id="card-modal-col" class="input"><option value="mau_dipelajari">📚 Mau Dipelajari</option><option value="sedang_dipelajari">🔥 Sedang Dipelajari</option><option value="direview">🔍 Direview</option><option value="selesai">✅ Selesai</option></select></div><div class="field"><label>Insight / Catatan</label><textarea id="km-notes" placeholder="Tulis hal penting di sini..." class="input"></textarea></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-kanban-edit')">Batal</button><button class="btn btn-danger" onclick="deleteCardFromModal()">Hapus Item</button><button class="btn btn-primary" onclick="submitCardModal()">Simpan</button></div></div></div>
   <div class="modal-overlay" id="modal-log-income"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">Catat Transaksi Finansial</div>
     <div class="field"><label>Jenis Transaksi</label><select id="bi-type" class="input"><option value="in">Pemasukan (+)</option><option value="out">Pengeluaran (-)</option></select></div>
     <div class="field"><label>Kantong</label><select id="bi-akun" class="input"><option value="cash">💵 Cash</option><option value="saldo">🏦 Saldo</option></select></div>
