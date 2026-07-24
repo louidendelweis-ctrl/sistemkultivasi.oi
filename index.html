@@ -775,6 +775,50 @@ a{color:var(--cyan);}
 .proj-log-detail { font-size:10.5px; color:var(--muted); margin-top:1px; }
 .proj-log-date { font-size:9.5px; color:var(--muted-2); margin-top:1px; font-family:var(--font-system); }
 .proj-log-empty { text-align:center; padding:16px 0; color:var(--muted); font-size:12px; }
+/* ── Analitik Papan Goal (cyan/teal theme) ── */
+.goal-board { background:linear-gradient(145deg,rgba(10,20,44,0.97),rgba(6,12,28,0.99)); border:1px solid rgba(45,212,244,0.28); border-radius:18px; padding:14px 13px 12px; margin-bottom:12px; box-shadow:0 6px 32px rgba(0,0,0,0.5),inset 0 1px 0 rgba(255,255,255,0.05); position:relative; overflow:hidden; }
+.goal-board::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg,transparent,rgba(45,212,244,0.7),rgba(52,211,153,0.4),transparent); border-radius:18px 18px 0 0; }
+.goal-board-label { font-family:var(--font-display); font-size:12px; font-weight:900; color:var(--bone); letter-spacing:1.5px; display:flex; align-items:center; gap:6px; }
+.goal-board-dot { width:7px; height:7px; border-radius:50%; background:#2DD4F4; box-shadow:0 0 8px rgba(45,212,244,0.9); animation:pulse 2s infinite; }
+.goal-period-sw { display:flex; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:8px; padding:2px; gap:2px; }
+.goal-period-btn { background:none; border:none; color:var(--muted); font-family:var(--font-system); font-size:11px; font-weight:700; letter-spacing:0.5px; padding:4px 10px; border-radius:6px; cursor:pointer; transition:all 0.18s; }
+.goal-period-btn.active { background:#2DD4F4; color:#0a1628; }
+.goal-ana-cards { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:10px; }
+.goal-ana-card { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.07); border-radius:10px; padding:9px 6px 7px; text-align:center; }
+.goal-ana-card.selesai { border-color:rgba(52,211,153,0.3); background:rgba(52,211,153,0.07); }
+.goal-ana-card.aktif   { border-color:rgba(45,212,244,0.3); background:rgba(45,212,244,0.07); }
+.goal-ana-card.gagal   { border-color:rgba(255,71,104,0.3); background:rgba(255,71,104,0.07); }
+.goal-ana-num { font-family:var(--font-scifi); font-size:20px; font-weight:800; color:var(--bone); line-height:1; }
+.goal-ana-card.selesai .goal-ana-num { color:var(--jade); }
+.goal-ana-card.aktif   .goal-ana-num { color:var(--cyan); }
+.goal-ana-card.gagal   .goal-ana-num { color:var(--crimson); }
+.goal-ana-lbl { font-family:var(--font-system); font-size:9px; font-weight:700; color:var(--muted); margin-top:3px; letter-spacing:0.3px; }
+.goal-ana-pct { font-family:var(--font-system); font-size:9px; font-weight:700; color:var(--jade); margin-top:1px; }
+.goal-meta-row { display:flex; gap:8px; margin-bottom:12px; }
+.goal-meta-chip { flex:1; background:rgba(45,212,244,0.07); border:1px solid rgba(45,212,244,0.18); border-radius:10px; padding:8px 6px; text-align:center; }
+.goal-meta-chip-num { font-family:var(--font-scifi); font-size:18px; font-weight:800; color:#2DD4F4; line-height:1; }
+.goal-meta-chip-lbl { font-family:var(--font-system); font-size:9px; color:var(--muted); margin-top:3px; letter-spacing:0.2px; }
+.goal-chart-tabs { display:flex; gap:3px; background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.07); border-radius:10px; padding:3px; margin-bottom:10px; }
+.goal-chart-tab { flex:1; background:none; border:none; color:var(--muted); font-family:var(--font-system); font-size:10.5px; font-weight:700; letter-spacing:0.2px; padding:7px 4px; border-radius:8px; cursor:pointer; transition:all 0.2s; text-align:center; }
+.goal-chart-tab.active { background:linear-gradient(135deg,rgba(45,212,244,0.30),rgba(52,211,153,0.12)); color:#fff; border:1px solid rgba(45,212,244,0.4); box-shadow:0 2px 8px rgba(45,212,244,0.2); }
+.goal-chart-pane { display:none; }
+.goal-chart-pane.active { display:block; animation:fadeIn 0.2s ease; }
+.goal-chart-wrap { position:relative; width:100%; height:190px; }
+.goal-chart-caption { font-family:var(--font-system); font-size:9.5px; color:var(--muted); margin-bottom:7px; padding:0 2px; }
+.goal-log-section { margin-top:12px; border-top:1px solid rgba(255,255,255,0.06); padding-top:10px; }
+.goal-log-head { font-family:var(--font-system); font-size:10px; font-weight:800; color:var(--muted); letter-spacing:0.8px; margin-bottom:8px; }
+.goal-log-item { display:flex; align-items:flex-start; gap:8px; padding:7px 0; border-bottom:1px solid rgba(255,255,255,0.04); }
+.goal-log-item:last-child { border-bottom:none; }
+.goal-log-icon { width:26px; height:26px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0; }
+.goal-log-icon.done { background:rgba(52,211,153,0.15); }
+.goal-log-icon.fail { background:rgba(255,71,104,0.15); }
+.goal-log-icon.upd  { background:rgba(45,212,244,0.15); }
+.goal-log-icon.new  { background:rgba(240,185,59,0.15); }
+.goal-log-body { flex:1; min-width:0; }
+.goal-log-title { font-family:var(--font-system); font-size:12px; font-weight:700; color:var(--bone); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.goal-log-detail { font-size:10.5px; color:var(--muted); margin-top:1px; }
+.goal-log-date { font-size:9.5px; color:var(--muted-2); margin-top:1px; }
+.goal-log-empty { text-align:center; padding:14px 0; color:var(--muted); font-size:12px; }
 .bp-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; position:relative; z-index:1; }
 .bp-card-wrap { display:flex; flex-direction:column; align-items:center; }
 .bp-pin { width:15px; height:15px; background:radial-gradient(circle at 38% 32%,#ff8080,#c0392b,#8b0000); border-radius:50%; box-shadow:0 2px 6px rgba(0,0,0,0.7),inset 0 1px 2px rgba(255,255,255,0.35); position:relative; z-index:3; margin-bottom:-7px; flex-shrink:0; }
@@ -3391,6 +3435,7 @@ const SECTION_DEFS = {
     { id:'quest-list',       label:'⚡ Daftar Quest & Filter' },
   ],
   goals: [
+    { id:'goal-analytics',   label:'📊 Analitik Goal' },
     { id:'active-goals',     label:'🎯 Goal Aktif' },
     { id:'goal-history',     label:'🏆 Riwayat Goal Selesai' },
   ],
@@ -3904,6 +3949,9 @@ function migrateState(s){
   if(!s.ui) s.ui = {};
   if(!s.ui.projectAnalyticsPeriod) s.ui.projectAnalyticsPeriod = '30d';
   if(!s.ui.projectChartTab) s.ui.projectChartTab = 'tren';
+  if(!s.ui.goalChartTab) s.ui.goalChartTab = 'tren';
+  if(!s.ui.goalAnalyticsPeriod) s.ui.goalAnalyticsPeriod = '30d';
+  if(!Array.isArray(s.goalActivityLog)) s.goalActivityLog = [];
   if(!s.sedekah) s.sedekah = { entries:[], totalLifetime:0, dailyExpGained:0, lastExpDate:'' };
   if(!s.weeklyShiftPlan) s.weeklyShiftPlan = DEFAULT_STATE().weeklyShiftPlan;
   if(!s.spiritual.dailyLog) s.spiritual.dailyLog = {};
@@ -4779,6 +4827,7 @@ function rollover(){
   state.goals.forEach(g => {
       if(g.status === 'active' && g.deadline && g.deadline < today) {
           g.status = 'failed'; state.character.failedGoals = (state.character.failedGoals||0)+1;
+          addGoalActivityLog('gagal', g.title, `Deadline ${g.deadline} terlewat — otomatis gagal 💀`);
           gainExp(-1000 * Math.max(1, state.character.level));
           showToast(`Goal Gagal (Deadline): ${g.title} - EXP Terkuras!`, 'bad');
           // BUGFIX: dulu goal yang gagal (lewat deadline) cuma ditandai status='failed' lalu
@@ -5436,6 +5485,7 @@ function addGoal(){
       if(g) { g.title=title; g.target=target; g.unit=unit; g.deadline=deadline; g.notes=notes; }
   } else {
       state.goals.push({id:uid('g'), title, target, unit, current:0, deadline, notes, status:'active', createdAt:Date.now()});
+      addGoalActivityLog('baru', title, `Target: ${target} ${unit}${deadline?' · Deadline: '+deadline:''}`);
   }
   closeModal('modal-add-goal'); render(); save();
 }
@@ -5457,6 +5507,7 @@ function submitGoalProgress(){
           const _ri = Math.max(0, state.character.realmIndex || 0);
           const _mult = 1 + _ri * 0.15;
           const rewardExp = Math.round(deadlineDays * 20 * _mult);
+          addGoalActivityLog('selesai', g.title, `Goal tercapai! ${g.current}/${g.target} ${g.unit} · +${rewardExp} EXP 🏆`);
           // Mana bonus tergantung durasi goal: pendek (<7 hari) +5, menengah (7-27 hari) +15, panjang (28+ hari, ~1 bulan) +50.
           const goalManaGain = deadlineDays >= 28 ? 50 : deadlineDays >= 7 ? 15 : 5;
           gainMana(goalManaGain, `Goal selesai: ${g.title}`);
@@ -5485,6 +5536,8 @@ function submitGoalProgress(){
   } else {
       g.status='active'; SFX.success();
       const pct = g.target > 0 ? (g.current / g.target) : 0;
+      const pctRound = Math.round(pct*100);
+      addGoalActivityLog('update', g.title, `+${amount} → ${g.current}/${g.target} ${g.unit} (${pctRound}%)`);
       if(pct >= 0.8) spiritSay(SPIRIT_GOAL_NEAR_LINES[Math.floor(Math.random()*SPIRIT_GOAL_NEAR_LINES.length)], false);
       gainBondExp(1);
   }
@@ -6632,25 +6685,111 @@ function renderQuests(){
 function setQuestFilter(key){ state.ui.questFilter = key; save(); render(); }
 
 function renderGoals(){
-  const goalChartsHtml = `<div class="section-title" style="margin-top:0;">📊 Analitik Goal</div>
-  <div class="card" style="padding:12px;margin-bottom:8px;">
-    <div class="card-title" style="margin-bottom:6px;">📈 Tren Goal Selesai (30 Hari)</div>
-    <div style="position:relative;width:100%;height:110px;"><canvas id="goalLineChart"></canvas></div>
-  </div>
-  <div class="card" style="padding:10px;margin-bottom:8px;">
-    <div class="card-title" style="margin-bottom:6px;font-size:11px;">Status Goal</div>
-    <div style="position:relative;width:100%;height:80px;"><canvas id="goalBarChart"></canvas></div>
-  </div>
-  <div class="card" style="padding:10px;margin-bottom:14px;">
-    <div class="card-title" style="margin-bottom:6px;font-size:11px;">Proporsi Goal</div>
-    <div style="position:relative;width:100%;height:100px;"><canvas id="goalPieChart"></canvas></div>
+  // ── Data analitik ─────────────────────────────────────────────────────────────
+  const _period    = (state.ui && state.ui.goalAnalyticsPeriod) || '30d';
+  const _chartTab  = (state.ui && state.ui.goalChartTab) || 'tren';
+  const _pLabel    = _period==='7d'?'7 hari terakhir':_period==='30d'?'30 hari terakhir':'semua waktu';
+  const _allGoals  = state.goals || [];
+  const _history   = state.goalHistory || [];
+  const _aktif     = _allGoals.filter(g=>g.status==='active').length;
+  const _selesai   = _history.filter(h=>h.status!=='failed').length;
+  const _gagal     = _history.filter(h=>h.status==='failed').length;
+  const _total     = _aktif + _selesai + _gagal;
+  const _compRate  = _total > 0 ? Math.round(_selesai/_total*100) : 0;
+
+  // Streak: berapa hari berturut-turut ada aktivitas goal
+  const _actLog = state.goalActivityLog || [];
+  let _streak = 0;
+  for(let i=0;i<90;i++){
+      const d=new Date(); d.setDate(d.getDate()-i);
+      const ds=d.toLocaleDateString('en-CA');
+      if(_actLog.some(e=>e.date===ds)) _streak++;
+      else break;
+  }
+  // Rata-rata waktu penyelesaian goal (hari dari buat ke selesai)
+  const _doneTimed = _history.filter(h=>h.status!=='failed'&&h.createdAt&&h.completedAt);
+  const _avgDays = _doneTimed.length > 0
+      ? Math.round(_doneTimed.reduce((s,h)=>s+Math.max(1,diffDays(new Date(h.createdAt).toLocaleDateString('en-CA'),h.completedAt)),0)/_doneTimed.length)
+      : 0;
+
+  const goalAnalyticsHtml = `
+  <div class="goal-board">
+    <div class="proj-ana-header">
+      <div class="goal-board-label">
+        <div class="goal-board-dot"></div>
+        ANALITIK GOAL
+      </div>
+      <div class="goal-period-sw">
+        <button class="goal-period-btn ${_period==='7d'?'active':''}" onclick="setGoalAnalyticsPeriod('7d')">7H</button>
+        <button class="goal-period-btn ${_period==='30d'?'active':''}" onclick="setGoalAnalyticsPeriod('30d')">30H</button>
+        <button class="goal-period-btn ${_period==='all'?'active':''}" onclick="setGoalAnalyticsPeriod('all')">All</button>
+      </div>
+    </div>
+
+    <div class="goal-ana-cards">
+      <div class="goal-ana-card">
+        <div class="goal-ana-num">${_total}</div>
+        <div class="goal-ana-lbl">🎯 Total</div>
+      </div>
+      <div class="goal-ana-card selesai">
+        <div class="goal-ana-num">${_selesai}</div>
+        <div class="goal-ana-lbl">✅ Selesai</div>
+        <div class="goal-ana-pct">${_compRate}%</div>
+      </div>
+      <div class="goal-ana-card aktif">
+        <div class="goal-ana-num">${_aktif}</div>
+        <div class="goal-ana-lbl">🔄 Aktif</div>
+      </div>
+      <div class="goal-ana-card gagal">
+        <div class="goal-ana-num">${_gagal}</div>
+        <div class="goal-ana-lbl">❌ Gagal</div>
+      </div>
+    </div>
+
+    <div class="goal-meta-row">
+      <div class="goal-meta-chip">
+        <div class="goal-meta-chip-num">🔥 ${_streak}</div>
+        <div class="goal-meta-chip-lbl">Hari Streak Aktif</div>
+      </div>
+      <div class="goal-meta-chip">
+        <div class="goal-meta-chip-num">${_avgDays>0?_avgDays+' H':'—'}</div>
+        <div class="goal-meta-chip-lbl">Rata-rata Selesai</div>
+      </div>
+    </div>
+
+    <div class="goal-chart-tabs">
+      <button class="goal-chart-tab ${_chartTab==='tren'?'active':''}" onclick="setGoalChartTab('tren')">📈 Tren</button>
+      <button class="goal-chart-tab ${_chartTab==='status'?'active':''}" onclick="setGoalChartTab('status')">🍩 Status</button>
+      <button class="goal-chart-tab ${_chartTab==='progress'?'active':''}" onclick="setGoalChartTab('progress')">📊 Progress</button>
+    </div>
+
+    <div class="goal-chart-pane ${_chartTab==='tren'?'active':''}">
+      <div class="goal-chart-caption">Aktivitas & goal selesai · ${_pLabel}</div>
+      <div class="goal-chart-wrap"><canvas id="goalLineChart"></canvas></div>
+    </div>
+    <div class="goal-chart-pane ${_chartTab==='status'?'active':''}">
+      <div class="goal-chart-caption">Proporsi status semua goal (aktif, selesai, gagal)</div>
+      <div class="goal-chart-wrap"><canvas id="goalPieChart"></canvas></div>
+    </div>
+    <div class="goal-chart-pane ${_chartTab==='progress'?'active':''}">
+      <div class="goal-chart-caption">Progress % tiap goal aktif — maks 7 goal ditampilkan</div>
+      <div class="goal-chart-wrap"><canvas id="goalBarChart"></canvas></div>
+    </div>
+
+    <div class="goal-log-section">
+      <div class="goal-log-head">📋 LOG AKTIVITAS GOAL</div>
+      ${_renderGoalLog()}
+    </div>
   </div>`;
-  // Hanya tampilkan goal aktif dan gagal — yang selesai masuk ke Riwayat di bawah
+
+  // ── Kartu goal aktif ──────────────────────────────────────────────────────────
   const activeGoals = state.goals.filter(g => g.status !== 'done').slice().sort((a,b) => b.createdAt - a.createdAt);
   const cards = activeGoals.map(g=>{
-    const pct = Math.max(0,Math.min(100, Math.round(100*g.current/(g.target||1)))); const dots = [25,50,75,100].map(m=>`<div class="mini-dot ${pct>=m?'done':''}"></div>`).join('');
-    let deadlineHtml = ''; if(g.deadline) { const dLeft = diffDays(todayStr(), g.deadline); if(dLeft > 0) deadlineHtml = `<div class="small mt-10" style="color:var(--orange); font-weight:700;">⏳ Sisa: ${dLeft} Hari</div>`; else if(dLeft === 0) deadlineHtml = `<div class="small mt-10" style="color:var(--crimson); font-weight:700; animation:pulseOpacity 1s infinite;">⚠️ DEADLINE HARI INI!</div>`; else deadlineHtml = `<div class="small mt-10" style="color:var(--crimson); font-weight:700;">🚨 TERLAMBAT ${Math.abs(dLeft)} HARI</div>`; }
-    const failedBadge = g.status === 'failed' ? `<div class="small mt-10" style="color:var(--crimson);font-weight:700;">✗ Deadline Terlewat</div>` : '';
+    const pct = Math.max(0,Math.min(100, Math.round(100*g.current/(g.target||1))));
+    const dots = [25,50,75,100].map(m=>`<div class="mini-dot ${pct>=m?'done':''}"></div>`).join('');
+    let deadlineHtml = '';
+    if(g.deadline){const dLeft=diffDays(todayStr(),g.deadline);if(dLeft>0)deadlineHtml=`<div class="small mt-10" style="color:var(--orange);font-weight:700;">⏳ Sisa: ${dLeft} Hari</div>`;else if(dLeft===0)deadlineHtml=`<div class="small mt-10" style="color:var(--crimson);font-weight:700;animation:pulseOpacity 1s infinite;">⚠️ DEADLINE HARI INI!</div>`;else deadlineHtml=`<div class="small mt-10" style="color:var(--crimson);font-weight:700;">🚨 TERLAMBAT ${Math.abs(dLeft)} HARI</div>`;}
+    const failedBadge = g.status==='failed'?`<div class="small mt-10" style="color:var(--crimson);font-weight:700;">✗ Deadline Terlewat</div>`:'';
     return `<div class="card goal-card ${g.status==='failed'?'status-done':''}">
         <div class="row-between">
             <span style="font-weight:600;font-size:13.5px;">${escapeHtml(g.title)}</span>
@@ -6659,15 +6798,19 @@ function renderGoals(){
               <button class="icon-btn" onclick="deleteGoalConfirm('${g.id}')"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
             </div>
         </div>
-        ${g.notes ? `<div class="quest-notes">${escapeHtml(g.notes)}</div>` : ''}
+        ${g.notes?`<div class="quest-notes">${escapeHtml(g.notes)}</div>`:''}
         <div class="row-between small mt-10"><span class="muted">${g.current} / ${g.target} ${escapeHtml(g.unit)}</span><span class="muted">${pct}%</span></div>
         <div class="stat-track mt-10"><div class="stat-fill" style="width:${pct}%;background:var(--arise)"></div></div>
         <div class="mini-dot-row">${dots}</div>${deadlineHtml}${failedBadge}
-        <div style="display:flex; gap:6px; margin-top:10px;"><button class="btn btn-primary" style="flex:1;" onclick="openUpdateGoal('${g.id}')">Update</button><button class="btn btn-secondary" style="flex:0 0 auto; width:40px; padding:0;" onclick="quickAddGoal('${g.id}')" title="Quick +1">+1</button></div>
+        <div style="display:flex;gap:6px;margin-top:10px;"><button class="btn btn-primary" style="flex:1;" onclick="openUpdateGoal('${g.id}')">Update</button><button class="btn btn-secondary" style="flex:0 0 auto;width:40px;padding:0;" onclick="quickAddGoal('${g.id}')" title="Quick +1">+1</button></div>
     </div>`;
   }).join('');
-  const activeSection = goalChartsHtml + `<div class="section-title">Tujuan / Goals</div><button class="btn btn-primary btn-block" style="margin-bottom:16px;" onclick="openAddGoal()">+ Tambah Goal</button>${activeGoals.length===0 ? `<div class="empty-state card"><span class="big">Belum ada goal aktif</span>Tambahkan goal baru atau lihat riwayat di bawah.</div>` : cards}`;
-  return '<div data-sec-tab="goals" data-sec-id="active-goals">'+activeSection+'</div>'+'<div data-sec-tab="goals" data-sec-id="goal-history">'+renderGoalHistory()+'</div>';
+
+  const activeSection = `<div class="section-title">Tujuan / Goals</div><button class="btn btn-primary btn-block" style="margin-bottom:16px;" onclick="openAddGoal()">+ Tambah Goal</button>${activeGoals.length===0?`<div class="empty-state card"><span class="big">Belum ada goal aktif</span>Tambahkan goal baru atau lihat riwayat di bawah.</div>`:cards}`;
+
+  return '<div data-sec-tab="goals" data-sec-id="goal-analytics">'+goalAnalyticsHtml+'</div>'
+       + '<div data-sec-tab="goals" data-sec-id="active-goals">'+activeSection+'</div>'
+       + '<div data-sec-tab="goals" data-sec-id="goal-history">'+renderGoalHistory()+'</div>';
 }
 
 function renderGoalHistory(){
@@ -7141,6 +7284,41 @@ function setProjChartTab(t) {
     save();
     if(state.ui.tab === 'project') { render(); setTimeout(initProjectCharts, 60); }
 }
+function addGoalActivityLog(type, title, detail) {
+    if(!Array.isArray(state.goalActivityLog)) state.goalActivityLog = [];
+    state.goalActivityLog.push({ type, title: title||'', detail: detail||'', date: todayStr() });
+    if(state.goalActivityLog.length > 500) state.goalActivityLog = state.goalActivityLog.slice(-500);
+}
+function setGoalAnalyticsPeriod(p) {
+    if(!state.ui) state.ui = {};
+    state.ui.goalAnalyticsPeriod = p;
+    save();
+    if(state.ui.tab === 'goals') { render(); setTimeout(initGoalCharts, 60); }
+}
+function setGoalChartTab(t) {
+    if(!state.ui) state.ui = {};
+    state.ui.goalChartTab = t;
+    save();
+    if(state.ui.tab === 'goals') { render(); setTimeout(initGoalCharts, 60); }
+}
+function _renderGoalLog() {
+    const logs = (state.goalActivityLog||[]).slice().reverse().slice(0,12);
+    if (!logs.length) return `<div class="goal-log-empty">Belum ada aktivitas tercatat.<br><span style="font-size:10px;opacity:0.6;">Setiap update, penyelesaian, atau kegagalan goal akan muncul di sini.</span></div>`;
+    const iconMap = { selesai:'🏆', gagal:'💀', update:'⬆️', baru:'✨' };
+    const clsMap  = { selesai:'done', gagal:'fail', update:'upd', baru:'new' };
+    return logs.map(l => {
+        const icon = iconMap[l.type]||'📝';
+        const cls  = clsMap[l.type]||'upd';
+        return `<div class="goal-log-item">
+            <div class="goal-log-icon ${cls}">${icon}</div>
+            <div class="goal-log-body">
+                <div class="goal-log-title">${escapeHtml(l.title)}</div>
+                <div class="goal-log-detail">${escapeHtml(l.detail)}</div>
+                <div class="goal-log-date">${l.date}</div>
+            </div>
+        </div>`;
+    }).join('');
+}
 
 function _renderProjectLog() {
     const logs = (state.projectActivityLog||[]).slice().reverse().slice(0, 12);
@@ -7220,32 +7398,54 @@ function initProjectCharts(){
 function initGoalCharts(){
     if(typeof Chart==='undefined') return;
     Chart.defaults.color='#9492AC'; Chart.defaults.font.family="'Rajdhani',sans-serif";
-    // ── Line chart: tren goal selesai 30 hari
-    const lineCtx = document.getElementById('goalLineChart'); if(!lineCtx) return;
-    if(_goalLineChart){ _goalLineChart.destroy(); _goalLineChart=null; }
-    const numDays=30; const lineLabels=[]; const lineData=[];
-    for(let i=numDays-1;i>=0;i--){
-        const d=new Date(); d.setDate(d.getDate()-i);
-        const ds=d.toLocaleDateString('en-CA');
-        lineLabels.push(i%6===0?d.toLocaleDateString('id-ID',{day:'2-digit',month:'short'}):'');
-        lineData.push((state.goalHistory||[]).filter(h=>h.completedAt===ds && h.status!=='failed').length);
+
+    const chartTab    = (state.ui && state.ui.goalChartTab) || 'tren';
+    const period      = (state.ui && state.ui.goalAnalyticsPeriod) || '30d';
+    const numDays     = period === '7d' ? 7 : period === '30d' ? 30 : 90;
+    const actLog      = state.goalActivityLog || [];
+    const activeGoals = state.goals || [];
+    const histGoals   = state.goalHistory || [];
+
+    // ── Tren: Aktivitas + Goal Selesai (line) ───────────────────────────────────
+    if(chartTab === 'tren') {
+        const lineCtx = document.getElementById('goalLineChart'); if(!lineCtx) return;
+        if(_goalLineChart){ _goalLineChart.destroy(); _goalLineChart=null; }
+        const lineLabels=[], actData=[], doneData=[];
+        for(let i=numDays-1;i>=0;i--){
+            const d=new Date(); d.setDate(d.getDate()-i);
+            const ds=d.toLocaleDateString('en-CA');
+            lineLabels.push(d.toLocaleDateString('id-ID',{day:'2-digit',month:'short'}));
+            actData.push(actLog.filter(e=>e.date===ds).length);
+            doneData.push(histGoals.filter(h=>h.completedAt===ds&&h.status!=='failed').length);
+        }
+        const yMax=Math.max(3,...actData,...doneData)+1;
+        _goalLineChart = new Chart(lineCtx,{type:'line',data:{labels:lineLabels,datasets:[
+            {label:'Aktivitas',data:actData,borderColor:'#2DD4F4',backgroundColor:'rgba(45,212,244,0.10)',borderWidth:2,tension:0.4,fill:true,pointBackgroundColor:_mkPtColors(actData),pointRadius:actData.map(v=>v>0?4:2),segment:{borderColor:_mkSegColor(actData)}},
+            {label:'Goal Selesai',data:doneData,borderColor:'#34D399',backgroundColor:'rgba(52,211,153,0.07)',borderWidth:2,tension:0.4,fill:false,pointBackgroundColor:doneData.map(v=>v>0?'#34D399':'rgba(52,211,153,0.3)'),pointRadius:doneData.map(v=>v>0?5:2)}
+        ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},scales:{y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{stepSize:1,font:{size:9}},min:0,max:yMax},x:{grid:{display:false},ticks:{maxTicksLimit:period==='7d'?7:10,font:{size:9}}}},plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:10,font:{size:9},padding:8,color:'#9492AC'}},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.raw}`}}}}});
     }
-    const yMax=Math.max(3,...lineData)+1;
-    _goalLineChart = new Chart(lineCtx,{type:'line',data:{labels:lineLabels,datasets:[{label:'Goal Selesai',data:lineData,borderColor:'#2DD4F4',backgroundColor:'rgba(45,212,244,0.10)',borderWidth:2,tension:0.35,fill:true,pointBackgroundColor:_mkPtColors(lineData),pointBorderColor:'rgba(255,255,255,0.5)',pointRadius:lineData.map(v=>v>0?4:2),segment:{borderColor:_mkSegColor(lineData)}}]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{grid:{color:'rgba(255,255,255,0.07)'},ticks:{stepSize:1,font:{size:9}},min:0,max:yMax},x:{grid:{color:'rgba(255,255,255,0.03)'},ticks:{maxTicksLimit:6,font:{size:9}}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.raw} goal selesai`}}}}});
-    // ── Bar chart: goal per status
-    const barCtx = document.getElementById('goalBarChart'); if(!barCtx) return;
-    if(_goalBarChart){ _goalBarChart.destroy(); _goalBarChart=null; }
-    const aktif=(state.goals||[]).filter(g=>g.status==='active').length;
-    const gagal=(state.goals||[]).filter(g=>g.status==='failed').length;
-    const selesai=(state.goalHistory||[]).filter(h=>h.status!=='failed').length;
-    const gBarMax=Math.max(3,aktif,gagal,selesai)+1;
-    _goalBarChart = new Chart(barCtx,{type:'bar',data:{labels:['Aktif','Gagal','✅'],datasets:[{data:[aktif,gagal,selesai],backgroundColor:['rgba(124,92,255,0.65)','rgba(255,71,104,0.65)','rgba(52,211,153,0.65)'],borderColor:['#7C5CFF','#FF4768','#34D399'],borderWidth:1.5,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{grid:{color:'rgba(255,255,255,0.07)'},ticks:{stepSize:1,font:{size:9}},min:0,max:gBarMax},x:{grid:{display:false},ticks:{font:{size:9}}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.raw} goal`}}}}});
-    // ── Doughnut chart: proporsi goal
-    const pieCtx = document.getElementById('goalPieChart'); if(!pieCtx) return;
-    if(_goalPieChart){ _goalPieChart.destroy(); _goalPieChart=null; }
-    const gTotal=aktif+gagal+selesai||0;
-    const gPieData=gTotal>0?[aktif,gagal,selesai]:[1,1,1];
-    _goalPieChart = new Chart(pieCtx,{type:'doughnut',data:{labels:['Aktif','Gagal','Selesai'],datasets:[{data:gPieData,backgroundColor:['rgba(124,92,255,0.80)','rgba(255,71,104,0.80)','rgba(52,211,153,0.80)'],borderColor:['#7C5CFF','#FF4768','#34D399'],borderWidth:1.5,hoverOffset:5}]},options:{responsive:true,maintainAspectRatio:false,cutout:'55%',plugins:{legend:{display:true,position:'right',labels:{boxWidth:8,font:{size:9},padding:4}},tooltip:{callbacks:{label:c=>gTotal>0?`${c.label}: ${c.raw} (${Math.round(c.raw/gTotal*100)}%)`:c.label}}}}});
+
+    // ── Status: Doughnut chart ───────────────────────────────────────────────────
+    if(chartTab === 'status') {
+        const pieCtx = document.getElementById('goalPieChart'); if(!pieCtx) return;
+        if(_goalPieChart){ _goalPieChart.destroy(); _goalPieChart=null; }
+        const aktif   = activeGoals.filter(g=>g.status==='active').length;
+        const gagal   = histGoals.filter(h=>h.status==='failed').length;
+        const selesai = histGoals.filter(h=>h.status!=='failed').length;
+        const gTotal  = aktif+gagal+selesai || 1;
+        const hasData = (aktif+gagal+selesai) > 0;
+        _goalPieChart = new Chart(pieCtx,{type:'doughnut',data:{labels:['Aktif','Gagal','Selesai'],datasets:[{data:hasData?[aktif,gagal,selesai]:[1,1,1],backgroundColor:['rgba(45,212,244,0.80)','rgba(255,71,104,0.80)','rgba(52,211,153,0.80)'],borderColor:['#2DD4F4','#FF4768','#34D399'],borderWidth:1.5,hoverOffset:8}]},options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:10,font:{size:10},padding:8,color:'#9492AC'}},tooltip:{callbacks:{label:c=>hasData?`${c.label}: ${c.raw} (${Math.round(c.raw/gTotal*100)}%)`:c.label}}}}});
+    }
+
+    // ── Progress: horizontal bar per goal aktif ──────────────────────────────────
+    if(chartTab === 'progress') {
+        const barCtx = document.getElementById('goalBarChart'); if(!barCtx) return;
+        if(_goalBarChart){ _goalBarChart.destroy(); _goalBarChart=null; }
+        const shown = activeGoals.filter(g=>g.status==='active').slice(0,7);
+        const barLabels = shown.length ? shown.map(g=>g.title.length>12?g.title.slice(0,12)+'…':g.title) : ['Belum ada goal'];
+        const barData   = shown.length ? shown.map(g=>g.target>0?Math.round(100*g.current/g.target):0) : [0];
+        _goalBarChart = new Chart(barCtx,{type:'bar',data:{labels:barLabels,datasets:[{label:'Progress %',data:barData,backgroundColor:barData.map(v=>v>=100?'rgba(52,211,153,0.75)':v>=50?'rgba(45,212,244,0.65)':'rgba(240,185,59,0.55)'),borderColor:barData.map(v=>v>=100?'#34D399':v>=50?'#2DD4F4':'#F0B93B'),borderWidth:1.5,borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',scales:{x:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{font:{size:9},callback:v=>v+'%'},min:0,max:100},y:{grid:{display:false},ticks:{font:{size:9},color:'#9492AC'}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.raw}% selesai`}}}}});
+    }
 }
 
 function initStatsChart(){
@@ -10468,8 +10668,10 @@ function moveUnifiedOrder(tab, id, dir) {
     if (!state.sectionConfig[tab][eid]) state.sectionConfig[tab][eid] = {};
     if (state.sectionConfig[tab][eid].order === undefined) state.sectionConfig[tab][eid].order = i * 10;
   });
-  // Urutkan
+  // Urutkan berdasarkan order saat ini
   activeIds.sort((a, b) => state.sectionConfig[tab][a].order - state.sectionConfig[tab][b].order);
+  // Normalisasi: pastikan semua order unik & berurutan (cegah nilai duplikat akibat seksi baru)
+  activeIds.forEach((eid, i) => { state.sectionConfig[tab][eid].order = i * 10; });
   const idx = activeIds.indexOf(id);
   const swapIdx = idx + dir;
   if (idx === -1 || swapIdx < 0 || swapIdx >= activeIds.length) return;
