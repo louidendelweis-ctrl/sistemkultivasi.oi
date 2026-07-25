@@ -775,9 +775,12 @@ a{color:var(--cyan);}
 .proj-log-detail { font-size:10.5px; color:var(--muted); margin-top:1px; }
 .proj-log-date { font-size:9.5px; color:var(--muted-2); margin-top:1px; font-family:var(--font-system); }
 .proj-log-empty { text-align:center; padding:16px 0; color:var(--muted); font-size:12px; }
-.log-expand-btn { background:none; border:1px solid rgba(255,255,255,0.1); color:var(--muted); font-size:10px; font-family:var(--font-system); letter-spacing:0.5px; padding:4px 14px; border-radius:20px; cursor:pointer; margin:8px auto 0; display:block; transition:border-color .2s,color .2s; }
-.log-expand-btn:hover { border-color:rgba(255,255,255,0.3); color:var(--bone); }
-.bp-btn-ok:disabled,.bp-btn-fail:disabled { opacity:0.45; cursor:not-allowed; }
+.log-date-header { font-family:var(--font-system); font-size:9px; font-weight:800; letter-spacing:0.8px; color:var(--muted-2); text-transform:uppercase; padding:6px 0 3px; margin-top:4px; border-top:1px dashed rgba(255,255,255,0.06); }
+.log-date-header:first-child { border-top:none; margin-top:0; }
+.log-del-btn { background:none; border:none; color:var(--muted-2); font-size:11px; cursor:pointer; padding:2px 4px; border-radius:5px; flex-shrink:0; opacity:0.5; transition:opacity 0.15s, background 0.15s; align-self:center; }
+.log-del-btn:hover { opacity:1; background:rgba(255,71,104,0.15); color:var(--crimson); }
+.log-expand-btn { width:100%; margin-top:8px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.09); border-radius:8px; padding:7px 0; font-family:var(--font-system); font-size:10.5px; font-weight:700; color:var(--muted); letter-spacing:0.3px; cursor:pointer; transition:background 0.18s, color 0.18s; }
+.log-expand-btn:hover { background:rgba(255,255,255,0.08); color:var(--bone); }
 /* ── Analitik Papan Goal (cyan/teal theme) ── */
 .goal-board { background:linear-gradient(145deg,rgba(10,20,44,0.97),rgba(6,12,28,0.99)); border:1px solid rgba(45,212,244,0.28); border-radius:18px; padding:14px 13px 12px; margin-bottom:12px; box-shadow:0 6px 32px rgba(0,0,0,0.5),inset 0 1px 0 rgba(255,255,255,0.05); position:relative; overflow:hidden; }
 .goal-board::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg,transparent,rgba(45,212,244,0.7),rgba(52,211,153,0.4),transparent); border-radius:18px 18px 0 0; }
@@ -816,6 +819,10 @@ a{color:var(--cyan);}
 .goal-log-icon.done { background:rgba(52,211,153,0.15); }
 .goal-log-icon.fail { background:rgba(255,71,104,0.15); }
 .goal-log-icon.upd  { background:rgba(45,212,244,0.15); }
+.goal-log-body { flex:1; min-width:0; }
+.goal-log-title { font-family:var(--font-system); font-size:12px; font-weight:700; color:var(--bone); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.goal-log-detail { font-size:10.5px; color:var(--muted); margin-top:1px; }
+.goal-log-empty { text-align:center; padding:16px 0; color:var(--muted); font-size:12px; }
 .goal-log-icon.new  { background:rgba(240,185,59,0.15); }
 .goal-log-body { flex:1; min-width:0; }
 .goal-log-title { font-family:var(--font-system); font-size:12px; font-weight:700; color:var(--bone); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -1530,7 +1537,7 @@ body.hide-history-actions .rh-del { display:none!important; }
 .finrank-track { height: 7px; border-radius: 6px; background: rgba(255,255,255,0.06); overflow: hidden; }
 .finrank-fill { height: 100%; border-radius: 6px; transition: width 0.7s cubic-bezier(.2,.8,.2,1); }
 
-/* ══════════════════════════════════════'t�═══
+/* ══════════════════════════════════════════
    LIFE HEATMAP — Character Tab
    ══════════════════════════════════════════ */
 .heatmap-card {
@@ -2172,6 +2179,17 @@ function todayStr(){ return new Date().toLocaleDateString('en-CA'); }
 function weekKey(d){ const date=new Date(d); const day=(date.getDay()+6)%7; date.setDate(date.getDate()-day); return date.toLocaleDateString('en-CA'); }
 function monthKey(d){ return new Date(d).toLocaleDateString('en-CA').slice(0,7); }
 function diffDays(a,b){ const A=new Date(a+'T00:00:00'), B=new Date(b+'T00:00:00'); return Math.round((B-A)/86400000); }
+function dateOffsetStr(dateStr, offset){
+  const d = new Date(dateStr+'T00:00:00');
+  if(isNaN(d.getTime())) return dateStr;
+  d.setDate(d.getDate() + offset);
+  return d.toLocaleDateString('en-CA');
+}
+function dayNameForDate(dateStr){
+  const d = new Date(dateStr+'T00:00:00');
+  if(isNaN(d.getTime())) return '';
+  return _WD_DAYS[[6,0,1,2,3,4,5][d.getDay()]];
+}
 // Sumber tunggal hitungan "Hari ke-N" — dipakai oleh header DAY counter maupun kedua widget Momentum,
 // supaya tidak ada dua angka hari yang berbeda untuk data yang sama.
 function getGameDay(){
@@ -3756,7 +3774,7 @@ function DEFAULT_STATE(){
     quests: [ {id:'q1', title:'Selesaikan shift kerja', type:'daily', difficulty:'normal', stats:['consistency'], isCore:true, notes:'', status:'pending', dailyLimit: null, completionsToday: 0, lastCompletedDate: '', createdAt:Date.now()} ],
     targets: [{ id: uid('t'), name:`Target Finansial Perdana`, maxHp:10000000, currentHp:10000000, deadline: '' }], 
     financeLog: [], 
-    goals:[], habits:[], goalHistory:[], lifeTimeline:[], lifeMomentum:[],
+    goals:[], habits:[], goalHistory:[], questFailureHistory:[], scheduleFailureHistory:[], lifeTimeline:[], lifeMomentum:[],
     // Arsip permanen "Sejarah Riwayat" (tab Profil) — entri tiap kategori yang sudah lewat 30 hari
     // dipindahkan ke sini dari riwayat aktifnya masing-masing, tersimpan selamanya, tidak pernah dihapus.
     historyArchive: { finansial:[], momentum:[], goal:[], sedekah:[], jurnal:[], refleksi:[], timeline:[], vitalitas:[], evaluasi:[], projek:[] },
@@ -3918,7 +3936,7 @@ function _riwayatArchiveUpsert(cat, dateField, entry){
 }
 function migrateState(s){
   ensureTombstones(s);
-  if(!Array.isArray(s.goals)) s.goals = []; if(!Array.isArray(s.habits)) s.habits = []; if(!s.meta.activityLog) s.meta.activityLog = {}; if(!s.meta.activityNotes) s.meta.activityNotes = {}; if(!Array.isArray(s.goalHistory)) s.goalHistory = []; if(!Array.isArray(s.lifeTimeline)) s.lifeTimeline = []; if(!Array.isArray(s.lifeMomentum)) s.lifeMomentum = [];
+  if(!Array.isArray(s.goals)) s.goals = []; if(!Array.isArray(s.habits)) s.habits = []; if(!s.meta.activityLog) s.meta.activityLog = {}; if(!s.meta.activityNotes) s.meta.activityNotes = {}; if(!Array.isArray(s.goalHistory)) s.goalHistory = []; if(!Array.isArray(s.questFailureHistory)) s.questFailureHistory = []; if(!Array.isArray(s.scheduleFailureHistory)) s.scheduleFailureHistory = []; if(!Array.isArray(s.lifeTimeline)) s.lifeTimeline = []; if(!Array.isArray(s.lifeMomentum)) s.lifeMomentum = [];
   if(!s.meta.dailyExpLog) s.meta.dailyExpLog = {};
   if(!s.schedule || !s.schedule.pagi) s.schedule = JSON.parse(JSON.stringify(DEFAULT_SCHEDULE));
   if(!s._realmMigratedV2){ s.character.realmIndex = s.character.realmIndex || 0; s._realmMigratedV2 = true; }
@@ -4498,9 +4516,9 @@ function afterQuestComplete(q){ q.completionsToday = (q.completionsToday || 0) +
 
 function completeQuest(id){
   try {
-    const q = state.quests.find(x=>x.id===id); if(!q || q.status==='done') return;
+    const q = state.quests.find(x=>x.id===id); if(!q || q.status==='done' || q.status==='failed') return;
     if(!canCompleteQuestToday(q)) { showToast('Batas harian quest ini habis.', 'bad'); SFX.error(); return; }
-    const exp = rewardFor(q); q.status='done'; q.lastCompletedAt = Date.now();
+    const exp = rewardFor(q); q.status='done'; q.statusDate=todayStr(); q.lastCompletedAt = Date.now();
     state.meta.completedTodayCount = (state.meta.completedTodayCount||0)+1; state.character.totalQuests = (state.character.totalQuests||0)+1;
     if(q.difficulty==='hard'||q.difficulty==='epic'){ state.meta.hardQuestsToday=(state.meta.hardQuestsToday||0)+1; state.meta.totalHardQuestsCompleted=(state.meta.totalHardQuestsCompleted||0)+1; }
     afterQuestComplete(q); addActivityLog(`Quest Selesai: ${q.title}`); state.questSuccessLog = state.questSuccessLog || {}; state.questSuccessLog[todayStr()] = (state.questSuccessLog[todayStr()]||0)+1; gainExp(exp); addRealmEnergy(Math.round(exp*0.5));
@@ -4530,8 +4548,16 @@ function failQuest(id){
         penalty = Math.max(50, Math.round(rewardFor(q) * 1.5 * (state.character.level / 10)));
     }
 
-    q.status='failed';
+    if(q.status==='done' || q.status==='failed') return;
+    q.status='failed'; q.statusDate=todayStr(); q.lastFailedDate=todayStr();
     state.questFailLog = state.questFailLog || {}; state.questFailLog[todayStr()] = (state.questFailLog[todayStr()]||0)+1;
+    state.questFailureHistory = state.questFailureHistory || [];
+    if(!state.questFailureHistory.some(x => x.questId === q.id && x.date === todayStr())){
+      state.questFailureHistory.unshift({
+        id: uid('qf'), questId: q.id, title: q.title, date: todayStr(),
+        reason: 'Ditandai gagal secara manual', automatic: false
+      });
+    }
     const _failExpMult = state.settings.expMultiplier || 1.0;
     const _actualPenalty = penalty > 0 ? Math.round(penalty * _failExpMult) : 0;
     if(penalty > 0) gainExp(-penalty);
@@ -4584,8 +4610,8 @@ function failQuest(id){
   }
 }
 
-function postponeQuest(id){ const q = state.quests.find(x=>x.id===id); if(!q) return; q.status='postponed'; render(); save(); }
-function resetQuestStatus(id){ const q = state.quests.find(x=>x.id===id); if(!q) return; q.status='pending'; render(); save(); }
+function postponeQuest(id){ const q = state.quests.find(x=>x.id===id); if(!q || q.status==='done' || q.status==='failed') return; q.status='postponed'; q.statusDate=todayStr(); render(); save(); }
+function resetQuestStatus(id){ const q = state.quests.find(x=>x.id===id); if(!q || q.status==='done' || q.status==='failed') return; q.status='pending'; q.statusDate=todayStr(); render(); save(); }
 function deleteQuestConfirm(id){
   const q = state.quests.find(x=>x.id===id); if(!q) return;
   openConfirm('Hapus quest "'+escapeHtml(q.title)+'"? Tindakan ini tidak dapat dibatalkan.', ()=>{ markDeleted('quests', id); state.quests = state.quests.filter(x=>x.id!==id); render(); save(); });
@@ -4725,6 +4751,104 @@ function addQuest(){
 
 function getTodayActiveShift() { const map = ['minggu','senin','selasa','rabu','kamis','jumat','sabtu']; const todayName = map[new Date().getDay()]; return state.weeklyShiftPlan[todayName] || 'libur'; }
 
+function processScheduleRollover(fromDate, toDate){
+  if(!state.weeklyDaySchedule || !fromDate || !toDate) return;
+  state.scheduleFailureHistory = state.scheduleFailureHistory || [];
+  let date = fromDate;
+  while(date < toDate){
+    const dayName = dayNameForDate(date);
+    ['pagi','siang','custom'].forEach(tpl => {
+      const day = state.weeklyDaySchedule[tpl]?.[dayName];
+      if(!day || !Array.isArray(day.tasks)) return;
+      day.tasks.forEach(t => {
+        if(t.done || t.failed) return;
+        const alreadyLogged = state.scheduleFailureHistory.some(x => x.taskId === t.id && x.date === date && x.template === tpl);
+        if(!alreadyLogged){
+          t.failed = true;
+          state.scheduleFailureHistory.unshift({
+            id: uid('sf'), date, template: tpl, taskId: t.id, label: t.label,
+            reason: 'Tidak diselesaikan sebelum pergantian hari', automatic: true
+          });
+        }
+      });
+      // Hari baru memakai checklist yang bersih; riwayat gagal disimpan terpisah.
+      day.tasks.forEach(t => { t.done = false; t.failed = false; });
+      day.lastReset = date;
+    });
+    date = dateOffsetStr(date, 1);
+  }
+  autoResetWeeklySchedule();
+}
+
+function processProjectCheckinsRollover(fromDate, toDate){
+  if(!state.kanban || !fromDate || !toDate) return;
+  let date = fromDate;
+  const addMissedCheckin = (item, title) => {
+    if(!Array.isArray(item.dailyCheckins)) item.dailyCheckins = [];
+    if(!item.dailyCheckins.some(x => x.date === date)){
+      item.dailyCheckins.push({date, ok:false, automatic:true});
+      addProjectActivityLog('checkin_fail', title, `Hari ${date} terlewat — otomatis gagal ❌`);
+    }
+  };
+  while(date < toDate){
+    (state.kanban.cards || []).forEach(c => {
+      if(c.failed || c.col === 'selesai') return;
+      if(c.dateStart && c.dateStart > date) return;
+      if(c.dateTarget && c.dateTarget < date) return;
+      addMissedCheckin(c, c.title);
+    });
+    (state.kanban.blueprint || []).forEach(item => {
+      if(item.failed || item.status === 'done') return;
+      if(item.dateStart && item.dateStart > date) return;
+      if(item.deadline && item.deadline < date) return;
+      addMissedCheckin(item, item.label || item.id);
+    });
+    date = dateOffsetStr(date, 1);
+  }
+}
+
+function processOverdueRelatedItems(today){
+  (state.kanban.cards || []).forEach(c => {
+    if(c.col !== 'selesai' && c.dateTarget && c.dateTarget < today && !c.failed){
+      c.failed = true; c.failedAt = today;
+      state.character.failedProjects = (state.character.failedProjects||0) + 1;
+      addProjectActivityLog('gagal', c.title, `Deadline ${c.dateTarget} terlewat — otomatis gagal ❌`);
+      ensureHistoryArchive(state);
+      if(!state.historyArchive.projek.some(x => x.id === c.id && x.status === 'failed')){
+        state.historyArchive.projek.push({
+          id:c.id, title:c.title, type:c.type||'Projek', failedAt:today,
+          deadline:c.dateTarget, status:'failed', _sourceType:'kanban', _archived:true
+        });
+      }
+      gainExp(-500 * Math.max(1, state.character.level));
+      showToast(`Project Overdue: ${c.title} - EXP Turun!`, 'bad');
+    }
+  });
+  (state.kanban.blueprint || []).forEach(item => {
+    if(item.status !== 'done' && item.deadline && item.deadline < today && !item.failed){
+      item.failed = true; item.failedAt = today;
+      state.character.failedProjects = (state.character.failedProjects||0) + 1;
+      addProjectActivityLog('gagal', item.label || item.id, `Deadline ${item.deadline} terlewat — otomatis gagal ❌`);
+      ensureHistoryArchive(state);
+      if(!state.historyArchive.projek.some(x => x.id === item.id && x.status === 'failed')){
+        state.historyArchive.projek.push({
+          id:item.id, title:item.label || item.id, type:'Blueprint', failedAt:today,
+          deadline:item.deadline, status:'failed', _sourceType:'blueprint', _archived:true
+        });
+      }
+      gainExp(-500 * Math.max(1, state.character.level));
+      showToast(`Blueprint Overdue: ${item.label || item.id} - EXP Turun!`, 'bad');
+    }
+  });
+  (state.targets || []).forEach(t => {
+    if(t.currentHp > 0 && t.deadline && t.deadline < today && !t.failed){
+      t.failed = true; t.failedAt = today;
+      state.character.failedTargets = (state.character.failedTargets||0) + 1;
+      addActivityLog(`Target "${t.name}" gagal otomatis — deadline ${t.deadline} terlewat`);
+    }
+  });
+}
+
 function rollover(){
   const today = todayStr();
   // BUG #3 FIX: path first-open sebelumnya return tanpa save() → _localSeq tetap 0
@@ -4740,6 +4864,8 @@ function rollover(){
   const gap = Math.max(1, diffDays(state.meta.lastActiveDate, today));
   const dailyQuests = state.quests.filter(q=>q.type==='daily'); const coreQuests = dailyQuests.filter(q=>q.isCore);
   const checklist = coreQuests.length ? coreQuests : dailyQuests; const allDone = checklist.length>0 && checklist.every(q=>q.status==='done');
+  processScheduleRollover(state.meta.lastActiveDate, today);
+  processProjectCheckinsRollover(state.meta.lastActiveDate, today);
 
   // ENTROPY WARNING (hanya peringatan, tidak mereset otomatis)
   if(gap >= 3) {
@@ -4748,9 +4874,41 @@ function rollover(){
       }, 800);
   }
   if(gap >= 1) {
-      // Normal penalties if less than 3 days
-      let missedCount = 0;
-      dailyQuests.forEach(q => { if(q.status !== 'done' && q.status !== 'postponed') missedCount++; });
+      // Setiap tanggal yang terlewati diproses berurutan. Status yang tersimpan
+      // adalah status hari terakhir yang dibuka; setelah diproses, item di-reset
+      // untuk hari berikutnya. Dengan begitu item yang terlewat benar-benar
+      // tercatat gagal, sementara status hari baru tetap pending.
+      const missedEntries = [];
+      let processDate = state.meta.lastActiveDate;
+      for(let dayIndex=0; dayIndex<gap; dayIndex++){
+          dailyQuests.forEach(q => {
+              // Selesai dan gagal manual sudah punya hasil; jangan dihukum dua kali.
+              // Ditunda tetap dianggap terlewat ketika hari berakhir.
+              if(q.status === 'done' || q.status === 'failed') return;
+              q.status = 'failed';
+              q.statusDate = processDate;
+              q.lastFailedDate = processDate;
+              missedEntries.push({q, date:processDate});
+              state.questFailLog = state.questFailLog || {};
+              state.questFailLog[processDate] = (state.questFailLog[processDate]||0) + 1;
+              state.questFailureHistory = state.questFailureHistory || [];
+              state.questFailureHistory.unshift({
+                  id: uid('qf'),
+                  questId: q.id,
+                  title: q.title,
+                  date: processDate,
+                  reason: 'Tidak diselesaikan sebelum pergantian hari',
+                  automatic: true
+              });
+          });
+          dailyQuests.forEach(q => {
+              q.status='pending';
+              q.statusDate=dateOffsetStr(processDate, 1);
+              q.completionsToday=0;
+          });
+          processDate = dateOffsetStr(processDate, 1);
+      }
+      const missedCount = missedEntries.length;
       if(missedCount > 0 && gap >= 1) {
           // ══ HEAVEN TRAMPLING specific daily penalties (lebih berat) ══
           if(isHeavenTrampling()){
@@ -4783,8 +4941,7 @@ function rollover(){
               // langsung dipotong penuh tanpa cek Mana sama sekali — jadi walau Mana masih penuh,
               // HP tetap kena penuh saat quest terlewat gara-gara refresh/reset harian.
               let totalHpLoss = 0, totalManaDrained = 0, manaWasUsedAny = false;
-              dailyQuests.forEach(q => {
-                  if(q.status === 'done' || q.status === 'postponed') return;
+               missedEntries.forEach(({q}) => {
                   if(typeof state.character.mana !== 'number') state.character.mana = 200;
                   let hpLoss;
                   if(state.character.mana > 0){
@@ -4815,7 +4972,7 @@ function rollover(){
                       ? `🛡️ Tameng Mana menyerap! Mana -${totalManaDrained}, HP -${totalHpLoss} (${missedCount} Quest terlewat)`
                       : `Disiplin Mengendur: HP -${totalHpLoss} (${missedCount} Quest terlewat)`, 'bad');
               }
-              if (state.character.hp <= 0) {
+               if (state.character.hp <= 0) {
                   state.character.hp = 0;
                   const hpZeroPenalty = getHpZeroExpPenalty();
                   const _actualHpZeroPenalty = Math.round(hpZeroPenalty * (state.settings.expMultiplier || 1.0));
@@ -4860,14 +5017,7 @@ function rollover(){
   // Hapus semua goal yang sudah gagal dari daftar aktif — sudah tercatat di goalHistory.
   state.goals = state.goals.filter(g => g.status !== 'failed');
 
-  (state.kanban.cards || []).forEach(c => {
-      if(c.col !== 'selesai' && c.dateTarget && c.dateTarget < today && !c.failed) {
-          c.failed = true; state.character.failedProjects = (state.character.failedProjects||0)+1;
-          addProjectActivityLog('gagal', c.title, `Deadline ${c.dateTarget} terlewat — otomatis gagal ❌`);
-          gainExp(-500 * Math.max(1, state.character.level));
-          showToast(`Project Overdue: ${c.title} - EXP Turun!`, 'bad');
-      }
-  });
+  processOverdueRelatedItems(today);
 
   // Streak naik cukup dengan membuka app hari berikutnya (login-like),
   // tidak perlu semua quest selesai. Penalty quest (HP/EXP) tetap berjalan terpisah di atas.
@@ -4876,7 +5026,7 @@ function rollover(){
   state.character.longestStreak = Math.max(state.character.longestStreak, state.character.streak);
   if(state.character.streak > 0){ ensureCharHistory(state); const _stD=todayStr(); if(!state.charHistory.streak.length||state.charHistory.streak[state.charHistory.streak.length-1].ts!==_stD) state.charHistory.streak.push({ts:_stD, val:state.character.streak}); }
 
-  (state.quests || []).forEach(q => { if(q.type==='daily'){ q.status='pending'; q.completionsToday = 0; } });
+  (state.quests || []).forEach(q => { if(q.type==='daily'){ q.status='pending'; q.statusDate=today; q.completionsToday = 0; } });
   state.meta.completedTodayCount = 0; state.meta.hardQuestsToday = 0;
   // Reset HT quest completion tracking setiap hari
   state.character.htQuestCompletedToday = {};
@@ -5361,7 +5511,7 @@ function getFinancialRank(){
 
 // Terapkan progress ke satu Target Finansial (dipakai baik oleh input manual maupun auto-sync pemasukan)
 function applyTargetDamage(target, amount){
-  if(!target || target.currentHp <= 0 || amount <= 0) return;
+  if(!target || target.failed || target.currentHp <= 0 || amount <= 0) return;
   target.currentHp = Math.max(0, target.currentHp - amount);
   if(target.currentHp <= 0){
       triggerBossDefeat(target.name);
@@ -5386,6 +5536,7 @@ function applyIncomeToTargets(amount){
 function applyExpenseToTargets(amount){
   if(!state.targets || !state.targets.length) return;
   state.targets.forEach(t => {
+    if(t.failed) return;
     // currentHp tidak boleh melebihi maxHp (progress tidak bisa minus dari 0%)
     t.currentHp = Math.min(t.maxHp, (t.currentHp || 0) + amount);
   });
@@ -6781,7 +6932,7 @@ function renderGoals(){
 
     <div class="goal-log-section">
       <div class="goal-log-head">📋 LOG AKTIVITAS GOAL</div>
-      ${_renderGoalLog()}
+      ${_renderGoalLog(window.__goalLogExpanded)}
     </div>
   </div>`;
 
@@ -7304,54 +7455,116 @@ function setGoalChartTab(t) {
     save();
     if(state.ui.tab === 'goals') { render(); setTimeout(initGoalCharts, 60); }
 }
-function toggleGoalLog() { window._goalLogExpanded = !window._goalLogExpanded; render(); }
-function _renderGoalLog() {
+function deleteGoalLog(realIdx) {
+    if(!Array.isArray(state.goalActivityLog)) return;
+    state.goalActivityLog.splice(realIdx, 1);
+    save();
+    if(state.ui && state.ui.tab === 'goals') render();
+}
+function _renderGoalLog(expanded) {
     const allLogs = (state.goalActivityLog||[]).slice().reverse();
-    const total = allLogs.length;
-    if (!total) return `<div class="goal-log-empty">Belum ada aktivitas tercatat.<br><span style="font-size:10px;opacity:0.6;">Setiap update, penyelesaian, atau kegagalan goal akan muncul di sini.</span></div>`;
-    const expanded = window._goalLogExpanded || false;
-    const logs = expanded ? allLogs : allLogs.slice(0, 5);
+    if (!allLogs.length) return `<div class="goal-log-empty">Belum ada aktivitas tercatat.<br><span style="font-size:10px;opacity:0.6;">Setiap update, penyelesaian, atau kegagalan goal akan muncul di sini.</span></div>`;
     const iconMap = { selesai:'🏆', gagal:'💀', update:'⬆️', baru:'✨' };
     const clsMap  = { selesai:'done', gagal:'fail', update:'upd', baru:'new' };
-    const items = logs.map(l => {
-        const icon = iconMap[l.type]||'📝';
-        const cls  = clsMap[l.type]||'upd';
-        return `<div class="goal-log-item">
-            <div class="goal-log-icon ${cls}">${icon}</div>
-            <div class="goal-log-body">
-                <div class="goal-log-title">${escapeHtml(l.title)}</div>
-                <div class="goal-log-detail">${escapeHtml(l.detail)}</div>
-                <div class="goal-log-date">${l.date}</div>
-            </div>
-        </div>`;
-    }).join('');
-    const btn = total > 5 ? `<button class="log-expand-btn" onclick="toggleGoalLog()">${expanded?'▲ Sembunyikan':'▼ Lihat semua ('+total+')'}</button>` : '';
-    return items + btn;
+    const DEFAULT_SHOW = 5;
+    const showAll = !!expanded;
+    const displayed = showAll ? allLogs : allLogs.slice(0, DEFAULT_SHOW);
+
+    // Kelompokkan per tanggal
+    const byDate = {};
+    displayed.forEach((l, i) => {
+        const d = l.date || '—';
+        if(!byDate[d]) byDate[d] = [];
+        // realIdx = index asli di array sebelum .reverse() = allLogs.length - 1 - i posisi di displayed
+        // tapi allLogs sudah di-reverse dari state, jadi realIdx = state.goalActivityLog.length - 1 - (index di allLogs)
+        const idxInAllLogs = showAll ? i : i; // posisi di allLogs (sudah reversed)
+        byDate[d].push({ l, realIdx: state.goalActivityLog.length - 1 - idxInAllLogs });
+    });
+
+    let html = '';
+    for(const [date, items] of Object.entries(byDate)) {
+        html += `<div class="log-date-header">${date}</div>`;
+        html += items.map(({ l, realIdx }) => {
+            const icon = iconMap[l.type]||'📝';
+            const cls  = clsMap[l.type]||'upd';
+            return `<div class="goal-log-item">
+                <div class="goal-log-icon ${cls}">${icon}</div>
+                <div class="goal-log-body">
+                    <div class="goal-log-title">${escapeHtml(l.title)}</div>
+                    <div class="goal-log-detail">${escapeHtml(l.detail)}</div>
+                </div>
+                <button class="log-del-btn" onclick="deleteGoalLog(${realIdx})" title="Hapus entri ini">🗑</button>
+            </div>`;
+        }).join('');
+    }
+
+    if(allLogs.length > DEFAULT_SHOW) {
+        const remaining = allLogs.length - DEFAULT_SHOW;
+        if(!showAll) {
+            html += `<button class="log-expand-btn" onclick="window.__goalLogExpanded=true;if(state.ui&&state.ui.tab==='goals'){render();}">
+                ↓ Lihat Semua ${allLogs.length} Aktivitas
+            </button>`;
+        } else {
+            html += `<button class="log-expand-btn" onclick="window.__goalLogExpanded=false;if(state.ui&&state.ui.tab==='goals'){render();}">
+                ↑ Sembunyikan
+            </button>`;
+        }
+    }
+    return html;
 }
 
-function toggleProjLog() { window._projLogExpanded = !window._projLogExpanded; render(); }
-function _renderProjectLog() {
+function deleteProjectLog(realIdx) {
+    if(!Array.isArray(state.projectActivityLog)) return;
+    state.projectActivityLog.splice(realIdx, 1);
+    save();
+    if(state.ui && state.ui.tab === 'project') render();
+}
+function _renderProjectLog(expanded) {
     const allLogs = (state.projectActivityLog||[]).slice().reverse();
-    const total = allLogs.length;
-    if (!total) return `<div class="proj-log-empty">Belum ada aktivitas tercatat.<br><span style="font-size:10px;opacity:0.6;">Setiap check-in, update, atau perubahan status akan muncul di sini.</span></div>`;
-    const expanded = window._projLogExpanded || false;
-    const logs = expanded ? allLogs : allLogs.slice(0, 5);
+    if (!allLogs.length) return `<div class="proj-log-empty">Belum ada aktivitas tercatat.<br><span style="font-size:10px;opacity:0.6;">Setiap check-in, update, atau perubahan status akan muncul di sini.</span></div>`;
     const iconMap = { checkin_ok:'✅', checkin_fail:'❌', status:'🔄', selesai:'🏆', gagal:'💀', progress:'⬆️' };
     const clsMap  = { checkin_ok:'ok', checkin_fail:'fail', status:'stat', selesai:'done', gagal:'fail', progress:'prog' };
-    const items = logs.map(l => {
-        const icon = iconMap[l.type]||'📝';
-        const cls  = clsMap[l.type]||'stat';
-        return `<div class="proj-log-item">
-            <div class="proj-log-icon ${cls}">${icon}</div>
-            <div class="proj-log-body">
-                <div class="proj-log-title">${escapeHtml(l.title)}</div>
-                <div class="proj-log-detail">${escapeHtml(l.detail)}</div>
-                <div class="proj-log-date">${l.date}</div>
-            </div>
-        </div>`;
-    }).join('');
-    const btn = total > 5 ? `<button class="log-expand-btn" onclick="toggleProjLog()">${expanded?'▲ Sembunyikan':'▼ Lihat semua ('+total+')'}</button>` : '';
-    return items + btn;
+    const DEFAULT_SHOW = 5;
+    const showAll = !!expanded;
+    const displayed = showAll ? allLogs : allLogs.slice(0, DEFAULT_SHOW);
+
+    // Kelompokkan per tanggal
+    const byDate = {};
+    displayed.forEach((l, i) => {
+        const d = l.date || '—';
+        if(!byDate[d]) byDate[d] = [];
+        byDate[d].push({ l, realIdx: state.projectActivityLog.length - 1 - i });
+    });
+
+    let html = '';
+    for(const [date, items] of Object.entries(byDate)) {
+        html += `<div class="log-date-header">${date}</div>`;
+        html += items.map(({ l, realIdx }) => {
+            const icon = iconMap[l.type]||'📝';
+            const cls  = clsMap[l.type]||'stat';
+            return `<div class="proj-log-item">
+                <div class="proj-log-icon ${cls}">${icon}</div>
+                <div class="proj-log-body">
+                    <div class="proj-log-title">${escapeHtml(l.title)}</div>
+                    <div class="proj-log-detail">${escapeHtml(l.detail)}</div>
+                </div>
+                <button class="log-del-btn" onclick="deleteProjectLog(${realIdx})" title="Hapus entri ini">🗑</button>
+            </div>`;
+        }).join('');
+    }
+
+    if(allLogs.length > DEFAULT_SHOW) {
+        if(!showAll) {
+            html += `<button class="log-expand-btn" onclick="window.__projLogExpanded=true;if(state.ui&&state.ui.tab==='project'){render();}">
+                ↓ Lihat Semua ${allLogs.length} Aktivitas
+            </button>`;
+        } else {
+            html += `<button class="log-expand-btn" onclick="window.__projLogExpanded=false;if(state.ui&&state.ui.tab==='project'){render();}">
+                ↑ Sembunyikan
+            </button>`;
+        }
+    }
+    return html;
 }
 
 function initProjectCharts(){
@@ -7558,7 +7771,7 @@ function renderProjectKanban() {
 
       <div class="proj-log-section">
         <div class="proj-log-head">📋 LOG AKTIVITAS TERBARU</div>
-        ${_renderProjectLog()}
+        ${_renderProjectLog(window.__projLogExpanded)}
       </div>
 
     </div>`;
@@ -7628,15 +7841,15 @@ function renderProjectKanban() {
             <div class="bp-checkins-label">PROGRES HARIAN${!todayEntry?` <span class="bp-today-tag">HARI INI</span>`:''}</div>
             <div class="bp-checkins">${dotHtml}</div>
             <div class="bp-btn-row">
-              <button class="bp-btn-ok" onclick="checkKanbanDay('${c.id}',true)" ${todayEntry?'disabled':''}>
+              <button class="bp-btn-ok" onclick="checkKanbanDay('${c.id}',true)" ${todayEntry?'disabled style="opacity:0.45;cursor:not-allowed;"':''}>
                 ${todayEntry&&todayEntry.ok?'✓ Tercatat':'✓ Berhasil'}
               </button>
-              <button class="bp-btn-fail" onclick="checkKanbanDay('${c.id}',false)" ${todayEntry?'disabled':''}>
+              <button class="bp-btn-fail" onclick="checkKanbanDay('${c.id}',false)" ${todayEntry?'disabled style="opacity:0.45;cursor:not-allowed;"':''}>
                 ${todayEntry&&!todayEntry.ok?'✗ Tercatat':'✗ Gagal'}
               </button>
             </div>
             <div class="bp-btn-row">
-              <button class="bp-btn-edit" onclick="openEditCard('${c.id}')">✏️ Edit</button>
+              <button class="bp-btn-edit" onclick="openEditCard('${c.id}')" ${c.failed||c.col==='selesai'?'disabled style="opacity:0.45;cursor:not-allowed;"':''}>✏️ Edit</button>
               <button class="bp-btn-next" onclick="cycleKanbanStatus('${c.id}')">↻ Status</button>
               <button class="bp-btn-del" onclick="deleteKanbanCard('${c.id}')">🗑</button>
             </div>
@@ -7681,10 +7894,10 @@ function renderProjectKanban() {
             <div class="bp-checkins-label">PROGRES HARIAN${!todayEntry?` <span class="bp-today-tag">HARI INI</span>`:''}</div>
             <div class="bp-checkins">${dotHtml}</div>
             <div class="bp-btn-row">
-              <button class="bp-btn-ok" onclick="checkBlueprintDay('${item.id}',true)" ${todayEntry?'disabled':''}>
+              <button class="bp-btn-ok" onclick="checkBlueprintDay('${item.id}',true)" ${todayEntry?'disabled style="opacity:0.45;cursor:not-allowed;"':''}>
                 ${todayEntry&&todayEntry.ok?'✓ Tercatat':'✓ Berhasil'}
               </button>
-              <button class="bp-btn-fail" onclick="checkBlueprintDay('${item.id}',false)" ${todayEntry?'disabled':''}>
+              <button class="bp-btn-fail" onclick="checkBlueprintDay('${item.id}',false)" ${todayEntry?'disabled style="opacity:0.45;cursor:not-allowed;"':''}>
                 ${todayEntry&&!todayEntry.ok?'✗ Tercatat':'✗ Gagal'}
               </button>
             </div>
@@ -7807,7 +8020,7 @@ function getProjectDeadlineDays(card){
 }
 
 function addProjectProgress(id) {
-    const c = (state.kanban.cards||[]).find(x=>x.id===id); if(!c) return;
+    const c = (state.kanban.cards||[]).find(x=>x.id===id); if(!c || c.failed || c.col==='selesai') return;
     c.progress = Math.min(100, (c.progress||0) + 10);
     state.projectProgressLog = state.projectProgressLog || {};
     state.projectProgressLog[todayStr()] = (state.projectProgressLog[todayStr()]||0)+1;
@@ -7822,20 +8035,18 @@ function addProjectProgress(id) {
 // ── Check-in harian kanban card ────────────────────────────────────────────────
 function checkKanbanDay(id, ok) {
     const c = (state.kanban.cards||[]).find(x=>x.id===id);
-    if(!c || c.col==='selesai') return;
+    if(!c || c.failed || c.col==='selesai') return;
     if(!Array.isArray(c.dailyCheckins)) c.dailyCheckins = [];
     const today = todayStr();
     const existing = c.dailyCheckins.find(x=>x.date===today);
-    if(existing) {
-        render(); return;
-    } else {
-        c.dailyCheckins.push({date:today, ok});
-        if(ok) {
-            const totalDays = (c.dateStart && c.dateTarget)
-                ? Math.max(1, diffDays(c.dateStart, c.dateTarget)) : 10;
-            c.progress = Math.min(100, Math.round((c.progress||0) + (100/totalDays)));
-            if(c.progress >= 100 && c.col !== 'selesai') { cycleKanbanStatus(id); return; }
-        }
+    // Sekali dipilih, terkunci sampai hari berikutnya — tidak bisa diubah
+    if(existing) { showToast('Check-in hari ini sudah terkunci. Lanjut besok! 🔒', 'bad'); return; }
+    c.dailyCheckins.push({date:today, ok});
+    if(ok) {
+        const totalDays = (c.dateStart && c.dateTarget)
+            ? Math.max(1, diffDays(c.dateStart, c.dateTarget)) : 10;
+        c.progress = Math.min(100, Math.round((c.progress||0) + (100/totalDays)));
+        if(c.progress >= 100 && c.col !== 'selesai') { cycleKanbanStatus(id); return; }
     }
     addProjectActivityLog(ok?'checkin_ok':'checkin_fail', c.title, ok?`Check-in berhasil ✅ · Progress: ${Math.round(c.progress||0)}%`:'Hari ini gagal dicatat ❌');
     showToast(ok?'✅ Check-in berhasil!':'❌ Hari gagal dicatat.', ok?'ach':'bad');
@@ -7846,7 +8057,7 @@ function checkKanbanDay(id, ok) {
 // ── Ganti status kanban card (planning→building→review→selesai) ───────────────
 function cycleKanbanStatus(id) {
     const c = (state.kanban.cards||[]).find(x=>x.id===id);
-    if(!c) return;
+    if(!c || c.failed || c.col==='selesai') return;
     const order = ['mau_dipelajari','sedang_dipelajari','direview','selesai'];
     const _prevCol = c.col;
     const next = order[(order.indexOf(c.col)+1) % order.length];
@@ -7894,19 +8105,17 @@ function deleteKanbanCard(id) {
 // ── Check-in harian blueprint ─────────────────────────────────────────────────
 function checkBlueprintDay(id, ok) {
     const item = (state.kanban.blueprint||[]).find(x=>x.id===id);
-    if(!item || item.status==='done') return;
+    if(!item || item.failed || item.status==='done') return;
     if(!Array.isArray(item.dailyCheckins)) item.dailyCheckins = [];
     const today = todayStr();
     const existing = item.dailyCheckins.find(x=>x.date===today);
-    if(existing) {
-        render(); return;
-    } else {
-        item.dailyCheckins.push({date:today, ok});
-        if(ok) {
-            const totalDays = (item.dateStart && item.deadline)
-                ? Math.max(1, diffDays(item.dateStart, item.deadline)) : 10;
-            item.progress = Math.min(100, Math.round((item.progress||0) + (100/totalDays)));
-        }
+    // Sekali dipilih, terkunci sampai hari berikutnya — tidak bisa diubah
+    if(existing) { showToast('Check-in hari ini sudah terkunci. Lanjut besok! 🔒', 'bad'); return; }
+    item.dailyCheckins.push({date:today, ok});
+    if(ok) {
+        const totalDays = (item.dateStart && item.deadline)
+            ? Math.max(1, diffDays(item.dateStart, item.deadline)) : 10;
+        item.progress = Math.min(100, Math.round((item.progress||0) + (100/totalDays)));
     }
     addProjectActivityLog(ok?'checkin_ok':'checkin_fail', item.label||item.id, ok?`Blueprint check-in ✅ · Progress: ${Math.round(item.progress||0)}%`:'Hari ini gagal dicatat ❌');
     showToast(ok?'✅ Check-in berhasil!':'❌ Hari gagal dicatat.', ok?'ach':'bad');
@@ -7958,7 +8167,13 @@ function submitBlueprintItem() {
     };
     if(editId) {
         const idx = state.kanban.blueprint.findIndex(x=>x.id===editId);
-        if(idx >= 0) state.kanban.blueprint[idx] = {...state.kanban.blueprint[idx], ...data};
+        if(idx >= 0) {
+            const existing = state.kanban.blueprint[idx];
+            // Blueprint yang sudah gagal tetap gagal; edit hanya boleh memperbarui
+            // deskripsi/metadata, bukan menghidupkan kembali statusnya.
+            if(existing.failed) data.status = existing.status;
+            state.kanban.blueprint[idx] = {...existing, ...data};
+        }
         showToast('Tahapan diperbarui! ✓', 'ach');
     } else {
         state.kanban.blueprint.push({id:'bp_'+Date.now(), dailyCheckins:[], progress:0, createdAt:Date.now(), ...data});
@@ -7970,7 +8185,7 @@ function cycleBlueprintStatus(id) {
     const order = ['planning', 'building', 'done'];
     const _bpLabel = {planning:'Perencanaan', building:'Berjalan', done:'Selesai'};
     const item = (state.kanban.blueprint || []).find(x => x.id === id);
-    if (!item) return;
+    if (!item || item.failed || item.status === 'done') return;
     const prevStatus = item.status;
     item.status = order[(order.indexOf(item.status) + 1) % order.length];
     if(item.status === 'done' && prevStatus !== 'done') {
@@ -9631,7 +9846,7 @@ function renderSettingsModal(){
   const s = state.settings;
   return `
   <div class="modal-overlay" id="modal-settings"><div class="modal-sheet settings-modal"><div class="modal-handle"></div><h2 class="modal-title">⚙️ Pengaturan OS</h2>
-    <details class="settings-section" open><summary>🧑 Profil Karakter</summary><div class="settings-body"><div class="form-group"><label>Nama Karakter</label><input id="s-char-name" type="text" class="input" value="${escapeAttr(state.character.name)}"></div><div class="form-group"><label>Pekerjaan</label><input id="s-char-job" type="text" class="input" value="${escapeAttr(state.character.job)}"></div><div class="form-group"><label>Umur</label><input id="s-char-age" type="number" class="input" value="${state.character.age}"></div><div class="form-group"><label>Avatar (Emoji)</label><input id="s-char-avatar" type="text" class="input" value="${escapeAttr(s.characterAvatar)}" maxlength="4" style="width:5rem"></div><div class="small muted" style="margin:2px 0 6px;">✒️ Prinsip Hidup kini diedit dari tab Quest → Refleksi.</div><div class="form-group"><label>✨ Warna Hologram Nama</label><div style="display:flex;gap:10px;align-items:center;margin-top:4px;"><div class="name-holo-swatch swatch-none ${(!s.nameHoloStyle||s.nameHoloStyle==='none')?'active':''}" title="Tidak ada" onclick="setNameHoloStyle('none')">✕</div><div class="name-holo-swatch swatch-gold ${s.nameHoloStyle==='gold'?'active':''}" title="Emas Gradasi Putih" onclick="setNameHoloStyle('gold')"></div><div class="name-holo-swatch swatch-rainbow ${s.nameHoloStyle==='rainbow'?'active':''}" title="Pelangi Gradasi" onclick="setNameHoloStyle('rainbow')"></div><div class="name-holo-swatch swatch-silver ${s.nameHoloStyle==='silver'?'active':''}" title="Silver Hologram" onclick="setNameHoloStyle('silver')"></div></div></div><button class="btn btn-secondary btn-block mt-10" onclick="saveSettingsProfile()">Simpan Profil</button></div></details>
+    <details class="settings-section" open><summary>🧑 Profil Karakter</summary><div class="settings-body"><div class="form-group"><label>Nama Karakter</label><input id="s-char-name" type="text" class="input" value="${escapeAttr(state.character.name)}"></div><div class="form-group"><label>Pekerjaan</label><input id="s-char-job" type="text" class="input" value="${escapeAttr(state.character.job)}"></div><div class="form-group"><label>Umur</label><input id="s-char-age" type="number" class="input" value="${state.character.age}"></div><div class="form-group"><label>Avatar (Emoji)</label><input id="s-char-avatar" type="text" class="input" value="${escapeAttr(s.characterAvatar)}" maxlength="4" style="width:5rem"></div><div class="small muted" style="margin:2px 0 6px;">✒️ Prinsip Hidup kini diedit dari tab Quest → Refleksi.</div><div class="form-group"><label>tN� Warna Hologram Nama</label><div style="display:flex;gap:10px;align-items:center;margin-top:4px;"><div class="name-holo-swatch swatch-none ${(!s.nameHoloStyle||s.nameHoloStyle==='none')?'active':''}" title="Tidak ada" onclick="setNameHoloStyle('none')">✕</div><div class="name-holo-swatch swatch-gold ${s.nameHoloStyle==='gold'?'active':''}" title="Emas Gradasi Putih" onclick="setNameHoloStyle('gold')"></div><div class="name-holo-swatch swatch-rainbow ${s.nameHoloStyle==='rainbow'?'active':''}" title="Pelangi Gradasi" onclick="setNameHoloStyle('rainbow')"></div><div class="name-holo-swatch swatch-silver ${s.nameHoloStyle==='silver'?'active':''}" title="Silver Hologram" onclick="setNameHoloStyle('silver')"></div></div></div><button class="btn btn-secondary btn-block mt-10" onclick="saveSettingsProfile()">Simpan Profil</button></div></details>
     <details class="settings-section"><summary>🎨 Tema Background</summary><div class="settings-body">
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;line-height:1.5;">Pilih suasana latar belakang animasi. Semua tema ringan & bergerak halus.</div>
       <div style="display:flex;flex-direction:column;gap:8px;">
@@ -10493,7 +10708,8 @@ function submitCardModal() {
         const c = (state.kanban.cards||[]).find(x => x.id === id);
         if(c) {
             const wasCompleted = c.progress === 100 || c.col === 'selesai';
-            c.title=title; c.col=col; c.type=type; c.dateStart=dateStart; c.dateTarget=dateTarget; c.progress=progress; c.notes=notes;
+            c.title=title; c.type=type; c.dateStart=dateStart; c.dateTarget=dateTarget; c.notes=notes;
+            if(!c.failed) { c.col=col; c.progress=progress; }
             if(!wasCompleted && (c.progress === 100 || c.col === 'selesai')) {
                 c.progress = 100; c.col = 'selesai';
                 const expGain = getProjectExpReward(projectDurationDays(c));
@@ -10527,35 +10743,11 @@ function deleteCardFromModal() {
     });
 }
 
-function sweepMissedCheckins() {
-    const today = todayStr();
-    const capDate = new Date(); capDate.setDate(capDate.getDate() - 90);
-    const capStr = capDate.toISOString().slice(0, 10);
-    function fillMissed(obj, startKey) {
-        const start = obj[startKey];
-        if (!start || start >= today) return;
-        if (!Array.isArray(obj.dailyCheckins)) obj.dailyCheckins = [];
-        const from = start < capStr ? capStr : start;
-        let d = new Date(from + 'T00:00:00');
-        const yest = new Date(today + 'T00:00:00'); yest.setDate(yest.getDate() - 1);
-        while (d <= yest) {
-            const ds = d.toISOString().slice(0, 10);
-            if (!obj.dailyCheckins.find(x => x.date === ds)) {
-                obj.dailyCheckins.push({ date: ds, ok: false });
-            }
-            d.setDate(d.getDate() + 1);
-        }
-    }
-    (state.kanban.cards || []).filter(c => c.col !== 'selesai').forEach(c => fillMissed(c, 'dateStart'));
-    (state.kanban.blueprint || []).filter(b => b.status !== 'done').forEach(b => fillMissed(b, 'dateStart'));
-}
-
 function init(){
   // Load dari localStorage dulu — app langsung siap, tidak nunggu Firebase.
   let loaded = loadState();
   state = loaded ? migrateState(deepMerge(DEFAULT_STATE(), loaded)) : DEFAULT_STATE();
   rollover();
-  sweepMissedCheckins();
   // sweepHistoryArchive dipanggil terpisah dari rollover agar berjalan setiap kali app dibuka,
   // bukan hanya saat pergantian hari — menangkap overflow aktif array dalam sesi yang sama.
   sweepHistoryArchive(state);
@@ -10620,6 +10812,26 @@ function init(){
           sweepHistoryArchive(state);
       }
   }, 30000);
+
+  // Jika tab tertidur/tersembunyi melewati tengah malam, interval browser bisa
+  // tertunda. Jalankan pemeriksaan segera saat aplikasi kembali terlihat atau
+  // mendapat fokus; rollover tetap idempoten sehingga tidak memberi penalti ganda.
+  const resumeRollover = () => {
+      if(document.visibilityState === 'hidden') return;
+      if(state.meta.lastActiveDate !== todayStr()) {
+          rollover();
+          recordMomentumHistory();
+          render();
+          save();
+      } else {
+          autoResetWeeklySchedule();
+      }
+  };
+  if(!window.__dailyRolloverResumeBound){
+      document.addEventListener('visibilitychange', resumeRollover);
+      window.addEventListener('focus', resumeRollover);
+      window.__dailyRolloverResumeBound = true;
+  }
 }
 window.onload = function() { init(); };
 
@@ -11645,6 +11857,9 @@ function resetNavGroupOrder() {
   };
 })();
 </script>
+
+</body>
+</html>
 
 </body>
 </html>
