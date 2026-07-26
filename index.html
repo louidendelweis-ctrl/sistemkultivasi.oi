@@ -9846,7 +9846,7 @@ function renderSettingsModal(){
   const s = state.settings;
   return `
   <div class="modal-overlay" id="modal-settings"><div class="modal-sheet settings-modal"><div class="modal-handle"></div><h2 class="modal-title">⚙️ Pengaturan OS</h2>
-    <details class="settings-section" open><summary>🧑 Profil Karakter</summary><div class="settings-body"><div class="form-group"><label>Nama Karakter</label><input id="s-char-name" type="text" class="input" value="${escapeAttr(state.character.name)}"></div><div class="form-group"><label>Pekerjaan</label><input id="s-char-job" type="text" class="input" value="${escapeAttr(state.character.job)}"></div><div class="form-group"><label>Umur</label><input id="s-char-age" type="number" class="input" value="${state.character.age}"></div><div class="form-group"><label>Avatar (Emoji)</label><input id="s-char-avatar" type="text" class="input" value="${escapeAttr(s.characterAvatar)}" maxlength="4" style="width:5rem"></div><div class="small muted" style="margin:2px 0 6px;">✒️ Prinsip Hidup kini diedit dari tab Quest → Refleksi.</div><div class="form-group"><label>tN� Warna Hologram Nama</label><div style="display:flex;gap:10px;align-items:center;margin-top:4px;"><div class="name-holo-swatch swatch-none ${(!s.nameHoloStyle||s.nameHoloStyle==='none')?'active':''}" title="Tidak ada" onclick="setNameHoloStyle('none')">✕</div><div class="name-holo-swatch swatch-gold ${s.nameHoloStyle==='gold'?'active':''}" title="Emas Gradasi Putih" onclick="setNameHoloStyle('gold')"></div><div class="name-holo-swatch swatch-rainbow ${s.nameHoloStyle==='rainbow'?'active':''}" title="Pelangi Gradasi" onclick="setNameHoloStyle('rainbow')"></div><div class="name-holo-swatch swatch-silver ${s.nameHoloStyle==='silver'?'active':''}" title="Silver Hologram" onclick="setNameHoloStyle('silver')"></div></div></div><button class="btn btn-secondary btn-block mt-10" onclick="saveSettingsProfile()">Simpan Profil</button></div></details>
+    <details class="settings-section" open><summary>🧑 Profil Karakter</summary><div class="settings-body"><div class="form-group"><label>Nama Karakter</label><input id="s-char-name" type="text" class="input" value="${escapeAttr(state.character.name)}"></div><div class="form-group"><label>Pekerjaan</label><input id="s-char-job" type="text" class="input" value="${escapeAttr(state.character.job)}"></div><div class="form-group"><label>Umur</label><input id="s-char-age" type="number" class="input" value="${state.character.age}"></div><div class="form-group"><label>Avatar (Emoji)</label><input id="s-char-avatar" type="text" class="input" value="${escapeAttr(s.characterAvatar)}" maxlength="4" style="width:5rem"></div><div class="small muted" style="margin:2px 0 6px;">✒️ Prinsip Hidup kini diedit dari tab Quest → Refleksi.</div><div class="form-group"><label>✨ Warna Hologram Nama</label><div style="display:flex;gap:10px;align-items:center;margin-top:4px;"><div class="name-holo-swatch swatch-none ${(!s.nameHoloStyle||s.nameHoloStyle==='none')?'active':''}" title="Tidak ada" onclick="setNameHoloStyle('none')">✕</div><div class="name-holo-swatch swatch-gold ${s.nameHoloStyle==='gold'?'active':''}" title="Emas Gradasi Putih" onclick="setNameHoloStyle('gold')"></div><div class="name-holo-swatch swatch-rainbow ${s.nameHoloStyle==='rainbow'?'active':''}" title="Pelangi Gradasi" onclick="setNameHoloStyle('rainbow')"></div><div class="name-holo-swatch swatch-silver ${s.nameHoloStyle==='silver'?'active':''}" title="Silver Hologram" onclick="setNameHoloStyle('silver')"></div></div></div><button class="btn btn-secondary btn-block mt-10" onclick="saveSettingsProfile()">Simpan Profil</button></div></details>
     <details class="settings-section"><summary>🎨 Tema Background</summary><div class="settings-body">
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;line-height:1.5;">Pilih suasana latar belakang animasi. Semua tema ringan & bergerak halus.</div>
       <div style="display:flex;flex-direction:column;gap:8px;">
@@ -9924,7 +9924,7 @@ function renderSettingsModal(){
   </div></div>`;
 }
 
-function setSetting(key, value){ if(!state.settings) state.settings = DEFAULT_SETTINGS(); state.settings[key] = value; save(); render(); const _sEl = document.getElementById('modal-settings'); const _isOpen = _sEl && _sEl.classList.contains('open'); document.getElementById('settings-slot').innerHTML = renderSettingsModal(); if(_isOpen) openModal('modal-settings'); }
+function setSetting(key, value){ if(!state.settings) state.settings = DEFAULT_SETTINGS(); state.settings[key] = value; _keepSettingsOpen(); }
 function saveLifePrinciple(){
   const el = document.getElementById('rf-life-principle'); if(!el) return;
   const newText = el.value.trim(); if(!newText){ showToast('Tulis dulu prinsip hidupmu.','bad'); return; }
@@ -9959,15 +9959,37 @@ function deleteLifePrincipleHistory(lpId){
     state.historyArchive.refleksi = state.historyArchive.refleksi.filter(e=>!(e._sourceType==='principle' && e.id===lpId));
   save(); render();
 }
+// Helper: render ulang settings modal tanpa menutupnya.
+// Dipanggil setiap kali ada perubahan dari dalam settings agar modal tetap terbuka.
+function _keepSettingsOpen() {
+  save();
+  render();
+  const slot = document.getElementById('settings-slot');
+  if (slot) slot.innerHTML = renderSettingsModal();
+  const overlay = document.getElementById('modal-settings');
+  if (overlay) openModal('modal-settings');
+}
+
 function saveConsequenceText(){
   const el = document.getElementById('s-consequence-text'); if(!el) return;
   const text = el.value.trim();
   if(!text){ showToast('Isi dulu teks konsekuensinya.', 'bad'); return; }
-  state.settings.consequenceText = text; save(); showToast('Konsekuensi disimpan!', 'ach');
+  state.settings.consequenceText = text;
+  _keepSettingsOpen();
+  showToast('Konsekuensi disimpan!', 'ach');
 }
-function saveSettingsProfile(){ state.character.name = document.getElementById('s-char-name').value.trim() || 'Jian'; state.character.job = document.getElementById('s-char-job').value.trim(); state.character.age = parseInt(document.getElementById('s-char-age').value) || 22; state.settings.characterAvatar = document.getElementById('s-char-avatar').value.trim() || '⚔️'; const lpEl = document.getElementById('s-char-life-principle'); if(lpEl) state.character.lifePrinciple = lpEl.value.trim(); save(); render(); showToast('Profil disimpan!', 'ach'); }
-function setNameHoloStyle(style){ state.settings.nameHoloStyle = style; save(); render(); const slot = document.getElementById('settings-slot'); if(slot){ slot.innerHTML = renderSettingsModal(); openModal('modal-settings'); } showToast('Warna hologram nama diperbarui', 'ach'); }
-function resetModule(module){ const map = { kanban: () => state.kanban = { cards:[] }, sedekah: () => state.sedekah = { entries:[], totalLifetime:0, dailyExpGained:0, lastExpDate:'' }, habits: () => state.habits = DEFAULT_STATE().habits, }; if(!map[module]) return; openConfirm(`Reset modul "${module}"? Data karakter aman.`, () => { map[module](); save(); render(); document.getElementById('settings-slot').innerHTML = renderSettingsModal(); openModal('modal-settings'); showToast('Modul direset', 'ach'); }); }
+function saveSettingsProfile(){
+  state.character.name = document.getElementById('s-char-name').value.trim() || 'Jian';
+  state.character.job  = document.getElementById('s-char-job').value.trim();
+  state.character.age  = parseInt(document.getElementById('s-char-age').value) || 22;
+  state.settings.characterAvatar = document.getElementById('s-char-avatar').value.trim() || '⚔️';
+  const lpEl = document.getElementById('s-char-life-principle');
+  if(lpEl) state.character.lifePrinciple = lpEl.value.trim();
+  _keepSettingsOpen();
+  showToast('Profil disimpan!', 'ach');
+}
+function setNameHoloStyle(style){ state.settings.nameHoloStyle = style; _keepSettingsOpen(); showToast('Warna hologram nama diperbarui', 'ach'); }
+function resetModule(module){ const map = { kanban: () => state.kanban = { cards:[] }, sedekah: () => state.sedekah = { entries:[], totalLifetime:0, dailyExpGained:0, lastExpDate:'' }, habits: () => state.habits = DEFAULT_STATE().habits, }; if(!map[module]) return; openConfirm(`Reset modul "${module}"? Data karakter aman.`, () => { map[module](); _keepSettingsOpen(); showToast('Modul direset', 'ach'); }); }
 
 function resetPartial(type){
   const labels = { level:'Level & Realm', exp:'EXP aktif', quest:'semua Quest ke pending', uang:'Log Finansial & Target', day:'Hari ke Day 1' };
@@ -9976,14 +9998,11 @@ function resetPartial(type){
     if(type === 'day'){
       state.meta.startDate = todayStr();
       state.character.streak = 1;
-      save(); render();
-      document.getElementById('settings-slot').innerHTML = renderSettingsModal();
-      openModal('modal-settings');
+      _keepSettingsOpen();
       showToast('Hari direset ke Day 1!', 'ach');
       return;
     }
     if(type === 'level'){
-      // Hanya reset Level & Realm — EXP aktif, Quest, Uang tidak tersentuh
       state.character.level = 1;
       state.character.realmIndex = 0;
       state.character.realmEnergy = 0;
@@ -9993,10 +10012,8 @@ function resetPartial(type){
       state.character.htQuestCompletedToday = {};
       recomputeLifeScore();
     } else if(type === 'exp'){
-      // Hanya reset bar EXP aktif — Level & Realm tidak berubah
       state.character.exp = 0;
     } else if(type === 'quest'){
-      // Reset SEMUA quest ke pending (termasuk yang sudah done)
       state.quests.forEach(q => {
         q.status = 'pending';
         q.completionsToday = 0;
@@ -10008,15 +10025,30 @@ function resetPartial(type){
       state.targets = DEFAULT_STATE().targets;
       state.completedTargets = [];
     }
-    save(); render();
-    document.getElementById('settings-slot').innerHTML = renderSettingsModal();
-    openModal('modal-settings');
+    _keepSettingsOpen();
     showToast('Reset berhasil!', 'ach');
   });
 }
 function exportData(){ const blob = new Blob([JSON.stringify(state,null,2)], {type:'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'mysistem-'+todayStr()+'.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); }
 function importData(ev){ const file = ev.target.files[0]; if(!file) return; const reader = new FileReader(); reader.onload = ()=>{ try{ const parsed = JSON.parse(reader.result); state = migrateState(deepMerge(DEFAULT_STATE(), parsed)); if(state.meta && state.meta.startDate){ const _impGap = state.meta.lastActiveDate ? diffDays(state.meta.lastActiveDate, todayStr()) : 999; if(_impGap <= 1){ const _correctStreak = diffDays(state.meta.startDate, todayStr()) + 1; state.character.streak = Math.max(state.character.streak||0, _correctStreak); state.character.longestStreak = Math.max(state.character.longestStreak||0, state.character.streak); } else { state.character.streak = 0; } const _itod=todayStr(); ensureCharHistory(state); if(state.character.streak>0 && !state.charHistory.streak.some(s=>s.ts===_itod)) state.charHistory.streak.push({ts:_itod, val:state.character.streak}); if(!state.charHistory.realm||!state.charHistory.realm.length){ const _ir=(state.realms||[])[state.character.realmIndex||0]; if(_ir) state.charHistory.realm.push({ts:_itod, val:_ir.nameID}); } state.meta.activityLog=state.meta.activityLog||{}; if(!state.meta.activityLog[_itod]) state.meta.activityLog[_itod]=1; state.meta.lastActiveDate=_itod; } rollover(); recomputeLifeScore(); render(); save(); showToast('Data berhasil diimpor','ach'); }catch(e){ showToast('Gagal impor: file tidak valid','bad'); } }; reader.readAsText(file); ev.target.value=''; }
-function confirmResetData(){ openConfirm('Reset SEMUA progres? Karakter kembali ke Level 1.', ()=>{ state = DEFAULT_STATE(); localStorage.removeItem(STORAGE_KEY); rollover(); render(); save(); closeModal('modal-settings'); }); }
+function confirmResetData(){
+  openConfirm('Reset SEMUA progres? Karakter kembali ke Level 1.\n\nCatatan: tema, tampilan visual, dan layout seksi akan dipertahankan.', () => {
+    // Selamatkan tampilan & konfigurasi layout sebelum reset
+    const _savedSettings     = JSON.parse(JSON.stringify(state.settings     || {}));
+    const _savedSectionCfg   = JSON.parse(JSON.stringify(state.sectionConfig || {}));
+    // Reset penuh ke state kosong
+    state = DEFAULT_STATE();
+    localStorage.removeItem(STORAGE_KEY);
+    // Kembalikan tampilan & layout yang sudah dikonfigurasi
+    state.settings     = Object.assign(DEFAULT_SETTINGS(), _savedSettings);
+    state.sectionConfig = _savedSectionCfg;
+    rollover();
+    render();
+    save();
+    closeModal('modal-settings');
+    showToast('Reset selesai — tampilan dipertahankan ✓', 'ach');
+  });
+}
 
 function buildModals() {
   document.getElementById('modal-root').innerHTML = `
