@@ -4862,8 +4862,7 @@ function rollover(){
   sweepHistoryArchive(state); // pemindah arsip otomatis harian — entri >30 hari pindah ke Sejarah Riwayat
 
   const gap = Math.max(1, diffDays(state.meta.lastActiveDate, today));
-  const dailyQuests = state.quests.filter(q=>q.type==='daily'); const coreQuests = dailyQuests.filter(q=>q.isCore);
-  const checklist = coreQuests.length ? coreQuests : dailyQuests; const allDone = checklist.length>0 && checklist.every(q=>q.status==='done');
+  const dailyQuests = state.quests.filter(q=>q.type==='daily');
   processScheduleRollover(state.meta.lastActiveDate, today);
   processProjectCheckinsRollover(state.meta.lastActiveDate, today);
 
@@ -4888,18 +4887,27 @@ function rollover(){
               q.status = 'failed';
               q.statusDate = processDate;
               q.lastFailedDate = processDate;
-              missedEntries.push({q, date:processDate});
-              state.questFailLog = state.questFailLog || {};
-              state.questFailLog[processDate] = (state.questFailLog[processDate]||0) + 1;
               state.questFailureHistory = state.questFailureHistory || [];
-              state.questFailureHistory.unshift({
-                  id: uid('qf'),
-                  questId: q.id,
-                  title: q.title,
-                  date: processDate,
-                  reason: 'Tidak diselesaikan sebelum pergantian hari',
-                  automatic: true
-              });
+              // Dedup guard: cegah entri ganda (questFailureHistory, missedEntries, questFailLog)
+              // jika rollover terpanggil dua kali sebelum save() sempat jalan — race condition
+              // umum terjadi saat focus/blur event atau sync lintas perangkat gagal.
+              // Pola ini konsisten dengan failQuest() yang sudah punya guard serupa.
+              const _alreadyLogged = state.questFailureHistory.some(
+                  x => x.questId === q.id && x.date === processDate && x.automatic === true
+              );
+              if(!_alreadyLogged){
+                  missedEntries.push({q, date:processDate});
+                  state.questFailLog = state.questFailLog || {};
+                  state.questFailLog[processDate] = (state.questFailLog[processDate]||0) + 1;
+                  state.questFailureHistory.unshift({
+                      id: uid('qf'),
+                      questId: q.id,
+                      title: q.title,
+                      date: processDate,
+                      reason: 'Tidak diselesaikan sebelum pergantian hari',
+                      automatic: true
+                  });
+              }
           });
           dailyQuests.forEach(q => {
               q.status='pending';
@@ -5239,6 +5247,27 @@ function addHabit(){ const titleEl = document.getElementById('ah-title'); const 
 function deleteHabit(id){ const h = state.habits.find(x=>x.id===id); if(!h) return; openConfirm('Hapus habit "'+escapeHtml(h.title)+'" beserta seluruh riwayatnya?', ()=>{ markDeleted('habits', id); state.habits = state.habits.filter(x=>x.id!==id); state.meta.habitsDeleted = (state.meta.habitsDeleted||0) + 1; render(); save(); }); }
 function getLast7Days(){ const days = []; const dayNames = ['Min','Sen','Sel','Rab','Kam','Jum','Sab']; for(let i=6; i>=0; i--){ const d = new Date(); d.setDate(d.getDate() - i); days.push({ dateStr: d.toLocaleDateString('en-CA'), label: dayNames[d.getDay()], isToday: i===0 }); } return days; }
 
+function _hasSedekahRitualToday(){
+  // Cek apakah sudah ada entri dari ritual Sedekah hari ini di financeLog atau historyArchive
+  const today = todayStr();
+  const allFin = [...(state.financeLog||[]), ...((state.historyArchive&&state.historyArchive.finansial)||[])];
+  return allFin.some(e => e.source === 'sedekah' && e.date === today);
+}
+
+function checkSedekahDupeWarn(){
+  const catEl  = document.getElementById('bi-cat');
+  const typeEl = document.getElementById('bi-type');
+  const warnEl = document.getElementById('bi-sedekah-warn');
+  if(!catEl || !typeEl || !warnEl) return;
+  const isSedekahCat = catEl.value.trim().toLowerCase().includes('sedekah');
+  const isOut = typeEl.value === 'out';
+  if(isSedekahCat && isOut && _hasSedekahRitualToday()){
+    warnEl.style.display = '';
+  } else {
+    warnEl.style.display = 'none';
+  }
+}
+
 function addFinanceTransaction(){
   const amount = parseInt(document.getElementById('bi-amount').value,10); 
   const note = document.getElementById('bi-note').value.trim();
@@ -5246,8 +5275,20 @@ function addFinanceTransaction(){
   const cat = document.getElementById('bi-cat').value.trim() || 'Lainnya';
   const akun = document.getElementById('bi-akun').value || 'cash';
 
-  if(!amount || amount<=0){ document.getElementById('bi-amount').focus(); return; } 
-  
+  if(!amount || amount<=0){ document.getElementById('bi-amount').focus(); return; }
+
+  // Guard duplikasi Sedekah — jika kategori "sedekah" & sudah ada entri ritual hari ini
+  if(type === 'out' && cat.toLowerCase().includes('sedekah') && _hasSedekahRitualToday()){
+    openConfirm(
+      '⚠️ Kamu sudah mencatat Sedekah hari ini via Ritual Sedekah. Mencatat lagi akan mengurangi saldo dua kali. Tetap tambahkan?',
+      _doAddFinanceTransaction.bind(null, amount, note, type, cat, akun)
+    );
+    return;
+  }
+  _doAddFinanceTransaction(amount, note, type, cat, akun);
+}
+
+function _doAddFinanceTransaction(amount, note, type, cat, akun){
   if(type === 'in') {
       state.character.lifetimeIncome = (state.character.lifetimeIncome||0) + amount; 
       bumpStat('finance', Math.max(1, Math.round(amount/100000))); 
@@ -5306,6 +5347,43 @@ function _findFinanceEntry(id){
   return e || null;
 }
 
+function _efSyncInfoText(origType, newType, origAmount, newAmount, syncOn){
+  // Hitung dampak perubahan ke lifetimeIncome
+  if(origType !== 'in' && newType !== 'in') return ''; // tidak ada efek ke lifetimeIncome
+  if(!syncOn){
+    return '⚠️ Sinkron nonaktif — Total Pemasukan tidak akan berubah meski tipe transaksi diubah.';
+  }
+  // syncOn aktif — hitung delta
+  let delta = 0;
+  if(origType === 'in') delta -= (origAmount || 0);
+  if(newType === 'in') delta += (newAmount || 0);
+  if(origType === 'in' && newType === 'in'){
+    const diff = (newAmount || 0) - (origAmount || 0);
+    if(diff === 0) return '💡 Sinkron aktif — Total Pemasukan tidak berubah (jumlah sama).';
+    if(diff > 0) return '💡 Sinkron aktif — Total Pemasukan akan bertambah ' + formatRupiah(diff) + '.';
+    return '💡 Sinkron aktif — Total Pemasukan akan berkurang ' + formatRupiah(Math.abs(diff)) + '.';
+  }
+  if(origType === 'in' && newType !== 'in'){
+    return '⚠️ Sinkron aktif — Tipe berubah ke Pengeluaran. Total Pemasukan akan berkurang ' + formatRupiah(origAmount || 0) + '.';
+  }
+  if(origType !== 'in' && newType === 'in'){
+    return '💡 Sinkron aktif — Tipe berubah ke Pemasukan. Total Pemasukan akan bertambah ' + formatRupiah(newAmount || 0) + '.';
+  }
+  return '';
+}
+
+function updateEditFinanceSyncInfo(){
+  const isTransfer = document.getElementById('ef-is-transfer').value === '1';
+  const infoEl = document.getElementById('ef-sync-info');
+  if(isTransfer){ infoEl.textContent = ''; return; }
+  const syncOn = state.settings && state.settings.financeEditSync !== false;
+  const origType   = document.getElementById('ef-orig-type').value;
+  const origAmount = parseInt(document.getElementById('ef-orig-amount').value || '0', 10);
+  const newType    = document.getElementById('ef-type').value;
+  const newAmount  = parseInt(document.getElementById('ef-amount').value || '0', 10);
+  infoEl.textContent = _efSyncInfoText(origType, newType, origAmount, newAmount, syncOn);
+}
+
 function openEditFinance(id){
   const e = _findFinanceEntry(id);
   if(!e){ showToast('Transaksi tidak ditemukan.', 'bad'); return; }
@@ -5314,6 +5392,9 @@ function openEditFinance(id){
   document.getElementById('ef-is-transfer').value = isTransfer ? '1' : '';
   document.getElementById('ef-body-main').style.display = isTransfer ? 'none' : '';
   document.getElementById('ef-body-transfer').style.display = isTransfer ? '' : 'none';
+  // Simpan nilai asli untuk kalkulasi delta info sinkronisasi
+  document.getElementById('ef-orig-type').value   = isTransfer ? 'transfer' : (e.type || 'in');
+  document.getElementById('ef-orig-amount').value = e.amount || 0;
   if(!isTransfer){
     const typeEl = document.getElementById('ef-type');
     typeEl.value = e.type || 'in';
@@ -5323,15 +5404,7 @@ function openEditFinance(id){
   }
   document.getElementById('ef-amount').value = e.amount || '';
   document.getElementById('ef-note').value = e.note || '';
-  const syncOn = state.settings && state.settings.financeEditSync !== false;
-  const infoEl = document.getElementById('ef-sync-info');
-  if(e.type === 'in' && !isTransfer){
-    infoEl.textContent = syncOn
-      ? '💡 Sinkron aktif — Total Pemasukan akan disesuaikan otomatis.'
-      : '⚠️ Sinkron nonaktif — Total Pemasukan tidak akan berubah.';
-  } else {
-    infoEl.textContent = '';
-  }
+  updateEditFinanceSyncInfo();
   openModal('modal-edit-finance');
 }
 
@@ -6317,8 +6390,9 @@ function addSedekah(evt){
   
   // lifetimeIncome TIDAK dikurangi di sini — sedekah hanya dicatat sebagai transaksi 'out'
   // di financeLog. Mengurangi lifetimeIncome sekaligus mencatat 'out' menyebabkan double-deduct.
+  // source:'sedekah' ditambahkan agar addFinanceTransaction bisa mendeteksi duplikasi.
   const _sedekahAkun = (document.getElementById('sedekah-akun') || {}).value || 'cash';
-  const _sedekahFin = {id: uid('fin'), date: today, amount: nominal, note: 'Sedekah: ' + document.getElementById('sedekah-note').value.trim(), type: 'out', akun: _sedekahAkun};
+  const _sedekahFin = {id: uid('fin'), date: today, amount: nominal, note: 'Sedekah: ' + document.getElementById('sedekah-note').value.trim(), type: 'out', akun: _sedekahAkun, source: 'sedekah'};
   state.financeLog.unshift(_sedekahFin);
   _riwayatArchivePush('finansial', _sedekahFin);
   if(state.settings.financeTargetSync !== false) applyExpenseToTargets(nominal);
@@ -10060,24 +10134,27 @@ function buildModals() {
   <div class="modal-overlay" id="modal-blueprint"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title" id="bp-modal-title">📐 Tambah Tahapan Blueprint</div><input type="hidden" id="bp-edit-id"><div class="field"><label>Nama Tahapan / Fase</label><input type="text" id="bp-label" placeholder="Contoh: Riset &amp; Perencanaan" class="input"></div><div class="field"><label>Tipe (opsional)</label><input type="text" id="bp-type" class="input" placeholder="Ketik atau pilih tipe..." list="tipe-list"></div><div class="field"><label>Deskripsi (opsional)</label><textarea id="bp-desc" placeholder="Detail tujuan tahapan ini..." class="input" rows="2"></textarea></div><div class="form-row"><div class="form-group half"><label>Tgl Mulai</label><input type="date" id="bp-dateStart" class="input"></div><div class="form-group half"><label>Deadline</label><input type="date" id="bp-deadline" class="input"></div></div><div class="field"><label>Prioritas</label><select id="bp-priority" class="input"><option value="low">🟢 Rendah</option><option value="medium" selected>🟡 Sedang</option><option value="high">🔴 Tinggi</option></select></div><div class="field"><label>Status</label><select id="bp-status" class="input"><option value="planning">📋 Perencanaan</option><option value="building">🔨 Sedang Dibangun</option><option value="done">✅ Selesai</option></select></div><div class="field"><label>Catatan Tambahan (opsional)</label><textarea id="bp-notes" placeholder="Referensi, link, detail penting..." class="input" rows="2"></textarea></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-blueprint')">Batal</button><button class="btn btn-primary" onclick="submitBlueprintItem()">Simpan</button></div></div></div>
   <div class="modal-overlay" id="modal-kanban-edit"><div class="modal-sheet"><div class="modal-handle"></div><h2 class="modal-title" id="modal-card-title">Detail Materi</h2><input type="hidden" id="km-id"><input type="hidden" id="km-col"><div class="field"><label>Judul Materi</label><input type="text" id="km-title" placeholder="Nama buku, course, dll" class="input"></div><datalist id="tipe-list"><option value="Buku"><option value="Course"><option value="Video"><option value="Artikel"><option value="Catatan"><option value="Finansial"><option value="Investasi"><option value="Bisnis"><option value="Olahraga"><option value="Skill"><option value="Proyek"><option value="Mindset"><option value="Riset"><option value="Lainnya"></datalist><div class="field"><label>Tipe</label><input type="text" id="km-type" class="input" placeholder="Ketik atau pilih tipe..." list="tipe-list"></div><div class="form-row"><div class="form-group half"><label>Tgl Mulai</label><input type="date" id="km-dateStart" class="input"></div><div class="form-group half"><label>Target Selesai</label><input type="date" id="km-dateTarget" class="input"></div></div><div class="field"><label>Progress: <span id="card-prog-val">0</span>%</label><input type="range" id="km-progress" min="0" max="100" value="0" style="width:100%; accent-color:var(--cyan);" oninput="document.getElementById('card-prog-val').textContent=this.value"></div><div class="field"><label>Kolom</label><select id="card-modal-col" class="input"><option value="mau_dipelajari">📚 Mau Dipelajari</option><option value="sedang_dipelajari">🔥 Sedang Dipelajari</option><option value="direview">🔍 Direview</option><option value="selesai">✅ Selesai</option></select></div><div class="field"><label>Insight / Catatan</label><textarea id="km-notes" placeholder="Tulis hal penting di sini..." class="input"></textarea></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-kanban-edit')">Batal</button><button class="btn btn-danger" onclick="deleteCardFromModal()">Hapus Item</button><button class="btn btn-primary" onclick="submitCardModal()">Simpan</button></div></div></div>
   <div class="modal-overlay" id="modal-log-income"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">Catat Transaksi Finansial</div>
-    <div class="field"><label>Jenis Transaksi</label><select id="bi-type" class="input"><option value="in">Pemasukan (+)</option><option value="out">Pengeluaran (-)</option></select></div>
+    <div class="field"><label>Jenis Transaksi</label><select id="bi-type" class="input" onchange="checkSedekahDupeWarn()"><option value="in">Pemasukan (+)</option><option value="out">Pengeluaran (-)</option></select></div>
     <div class="field"><label>Kantong</label><select id="bi-akun" class="input"><option value="cash">💵 Cash</option><option value="saldo">🏦 Saldo</option></select></div>
-    <div class="field"><label>Kategori</label><input type="text" id="bi-cat" placeholder="Ketik kategori... (mis. Kopi, Servis Motor)" class="input">
+    <div class="field"><label>Kategori</label><input type="text" id="bi-cat" placeholder="Ketik kategori... (mis. Kopi, Servis Motor)" class="input" oninput="checkSedekahDupeWarn()">
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">${getCategorySuggestions().map(c=>`<button type="button" class="btn btn-ghost btn-sm" style="font-size:10.5px;padding:3px 10px;" onclick="fillCatChip('${escapeHtml(c).replace(/'/g,"\\'")}')">${escapeHtml(c)}</button>`).join('')}</div>
     </div>
+    <div id="bi-sedekah-warn" style="display:none;margin-bottom:8px;font-size:12px;font-weight:600;color:#fff;background:linear-gradient(90deg,rgba(255,138,61,0.35),rgba(255,138,61,0.12));border:1px solid rgba(255,138,61,0.5);border-radius:10px;padding:8px 10px;line-height:1.5;">⚠️ Kamu sudah mencatat Sedekah hari ini via Ritual Sedekah. Menyimpan ini akan mengurangi saldo dua kali.</div>
     <div class="field"><label>Jumlah (Rp)</label><input type="number" id="bi-amount" placeholder="100000" inputmode="numeric" class="input"></div><div class="field"><label>Catatan (opsional)</label><input type="text" id="bi-note" placeholder="Hasil proyek, target tercapai, dll" class="input"></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-log-income')">Batal</button><button class="btn btn-primary" onclick="addFinanceTransaction()">Catat</button></div></div></div>
   <div class="modal-overlay" id="modal-edit-finance"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">✏️ Edit Transaksi</div>
     <input type="hidden" id="ef-id">
     <input type="hidden" id="ef-is-transfer">
+    <input type="hidden" id="ef-orig-type">
+    <input type="hidden" id="ef-orig-amount">
     <div id="ef-body-main">
-      <div class="field"><label>Jenis Transaksi</label><select id="ef-type" class="input"><option value="in">Pemasukan (+)</option><option value="out">Pengeluaran (-)</option></select></div>
+      <div class="field"><label>Jenis Transaksi</label><select id="ef-type" class="input" onchange="updateEditFinanceSyncInfo()"><option value="in">Pemasukan (+)</option><option value="out">Pengeluaran (-)</option></select></div>
       <div class="field"><label>Kantong</label><select id="ef-akun" class="input"><option value="cash">💵 Cash</option><option value="saldo">🏦 Saldo</option></select></div>
       <div class="field"><label>Kategori</label><input type="text" id="ef-cat" placeholder="Kategori" class="input"></div>
     </div>
     <div id="ef-body-transfer" style="display:none;">
       <div class="small muted" style="margin-bottom:10px;line-height:1.5;">Transfer: hanya jumlah dan catatan yang bisa diubah. Arah transfer tidak dapat diedit.</div>
     </div>
-    <div class="field"><label>Jumlah (Rp)</label><input type="number" id="ef-amount" placeholder="100000" inputmode="numeric" class="input"></div>
+    <div class="field"><label>Jumlah (Rp)</label><input type="number" id="ef-amount" placeholder="100000" inputmode="numeric" class="input" oninput="updateEditFinanceSyncInfo()"></div>
     <div class="field"><label>Catatan (opsional)</label><input type="text" id="ef-note" placeholder="Catatan..." class="input"></div>
     <div class="small muted" id="ef-sync-info" style="margin-bottom:10px;line-height:1.5;"></div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-edit-finance')">Batal</button><button class="btn btn-primary" onclick="saveEditFinance()">Simpan Perubahan</button></div>
@@ -11889,6 +11966,9 @@ function resetNavGroupOrder() {
   };
 })();
 </script>
+
+</body>
+</html>
 
 </body>
 </html>
