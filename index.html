@@ -2175,21 +2175,60 @@ function drawCanvas() {
 }
 initCanvas(); drawCanvas(); window.addEventListener('resize', initCanvas);
 
-function todayStr(){ return new Date().toLocaleDateString('en-CA'); }
-function weekKey(d){ const date=new Date(d); const day=(date.getDay()+6)%7; date.setDate(date.getDate()-day); return date.toLocaleDateString('en-CA'); }
-function monthKey(d){ return new Date(d).toLocaleDateString('en-CA').slice(0,7); }
-function diffDays(a,b){ const A=new Date(a+'T00:00:00'), B=new Date(b+'T00:00:00'); return Math.round((B-A)/86400000); }
+// ── Date helpers ─────────────────────────────────────────────────────────────
+// TIDAK menggunakan toLocaleDateString('en-CA') karena dukungannya tidak merata
+// di semua browser/Android. Format manual YYYY-MM-DD selalu konsisten di local time.
+function _dateToYMD(d){
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
+}
+function todayStr(){ return _dateToYMD(new Date()); }
+function weekKey(d){
+  const date = new Date(d);
+  if(isNaN(date.getTime())) return _dateToYMD(new Date());
+  const dow = (date.getDay() + 6) % 7; // Senin = 0
+  date.setDate(date.getDate() - dow);
+  return _dateToYMD(date);
+}
+function monthKey(d){
+  const date = new Date(d);
+  if(isNaN(date.getTime())) return _dateToYMD(new Date()).slice(0, 7);
+  return _dateToYMD(date).slice(0, 7);
+}
+// diffDays: parse YYYY-MM-DD langsung sebagai UTC midnight agar tidak terpengaruh
+// DST (daylight saving time) atau perpindahan timezone. Hasilnya selalu bilangan bulat
+// karena kita bandingkan midnight UTC ke midnight UTC — tidak ada jam ±1 dari DST.
+function diffDays(a, b){
+  const parseUTC = s => {
+    const parts = (s || '').split('-').map(Number);
+    if(parts.length < 3 || isNaN(parts[0])) return NaN;
+    return Date.UTC(parts[0], parts[1] - 1, parts[2]);
+  };
+  const diff = parseUTC(b) - parseUTC(a);
+  if(isNaN(diff)) return 0;
+  return Math.round(diff / 86400000);
+}
 function dateOffsetStr(dateStr, offset){
-  const d = new Date(dateStr+'T00:00:00');
+  const d = new Date(dateStr + 'T00:00:00');
   if(isNaN(d.getTime())) return dateStr;
   d.setDate(d.getDate() + offset);
-  return d.toLocaleDateString('en-CA');
+  return _dateToYMD(d);
 }
 function dayNameForDate(dateStr){
   const d = new Date(dateStr+'T00:00:00');
   if(isNaN(d.getTime())) return '';
   return _WD_DAYS[[6,0,1,2,3,4,5][d.getDay()]];
 }
+// Format YYYY-MM-DD → "3 Agustus 2026" (hanya untuk tampilan, bukan date key)
+function formatDateLong(dateStr){
+  if(!dateStr) return '—';
+  const d = new Date(dateStr + 'T00:00:00');
+  if(isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'});
+}
+
 // Sumber tunggal hitungan "Hari ke-N" — dipakai oleh header DAY counter maupun kedua widget Momentum,
 // supaya tidak ada dua angka hari yang berbeda untuk data yang sama.
 function getGameDay(){
@@ -5206,7 +5245,7 @@ function deleteCustomRitual(id) {
 
 function habitConsecutiveDays(h, fromDate) {
   let count = 0; const d = new Date(fromDate);
-  while(true) { const s = d.toLocaleDateString('en-CA'); if(h.log && h.log[s]) { count++; d.setDate(d.getDate()-1); } else break; }
+  while(true) { const s = _dateToYMD(d); if(h.log && h.log[s]) { count++; d.setDate(d.getDate()-1); } else break; }
   return count;
 }
 function habitExpByStreak(streak) {
@@ -5245,7 +5284,7 @@ function checkAllHabitsDoneToday(dateStr){
 }
 function addHabit(){ const titleEl = document.getElementById('ah-title'); const title = titleEl.value.trim(); if(!title){ titleEl.focus(); return; } state.habits.push({ id:uid('h'), title, log:{}, createdAt:Date.now() }); titleEl.value=''; closeModal('modal-add-habit'); render(); save(); }
 function deleteHabit(id){ const h = state.habits.find(x=>x.id===id); if(!h) return; openConfirm('Hapus habit "'+escapeHtml(h.title)+'" beserta seluruh riwayatnya?', ()=>{ markDeleted('habits', id); state.habits = state.habits.filter(x=>x.id!==id); state.meta.habitsDeleted = (state.meta.habitsDeleted||0) + 1; render(); save(); }); }
-function getLast7Days(){ const days = []; const dayNames = ['Min','Sen','Sel','Rab','Kam','Jum','Sab']; for(let i=6; i>=0; i--){ const d = new Date(); d.setDate(d.getDate() - i); days.push({ dateStr: d.toLocaleDateString('en-CA'), label: dayNames[d.getDay()], isToday: i===0 }); } return days; }
+function getLast7Days(){ const days = []; const dayNames = ['Min','Sen','Sel','Rab','Kam','Jum','Sab']; for(let i=6; i>=0; i--){ const d = new Date(); d.setDate(d.getDate() - i); days.push({ dateStr: _dateToYMD(d), label: dayNames[d.getDay()], isToday: i===0 }); } return days; }
 
 function _hasSedekahRitualToday(){
   // Cek apakah sudah ada entri dari ritual Sedekah hari ini di financeLog atau historyArchive
@@ -5728,7 +5767,7 @@ function submitGoalProgress(){
   if(g.current >= g.target){ 
       if(g.status!=='done'){ 
           g.status='done'; state.character.goalsCompleted = (state.character.goalsCompleted||0)+1; 
-          const createdDate = new Date(g.createdAt).toLocaleDateString('en-CA');
+          const createdDate = _dateToYMD(new Date(g.createdAt));
           const duration = Math.max(1, diffDays(createdDate, todayStr()));
           const deadlineDays = g.deadline ? Math.max(1, diffDays(createdDate, g.deadline)) : Math.max(1, duration);
           const _ri = Math.max(0, state.character.realmIndex || 0);
@@ -6790,6 +6829,7 @@ function renderHome(){
       <div class="life-score-item"><div class="num" style="color:var(--orange)">${c.streak}🔥</div><div class="lbl">Streak</div></div>
       <div class="life-score-item"><div class="num" style="color:var(--cyan)">${c.bossesDefeated||0}</div><div class="lbl">Target Achieved</div></div>
     </div>
+    ${state.meta.startDate ? `<div style="text-align:center;margin-top:9px;font-size:10.5px;color:var(--muted);font-weight:500;letter-spacing:0.2px;">📅 Mulai perjalanan: <span style="color:var(--bone);font-weight:700;">${formatDateLong(state.meta.startDate)}</span></div>` : ''}
   </div>
 
   <div id="time-block-slot" data-sec-tab="home" data-sec-id="time-block">${renderTimeBlockCard()}</div>
@@ -6930,14 +6970,14 @@ function renderGoals(){
   let _streak = 0;
   for(let i=0;i<90;i++){
       const d=new Date(); d.setDate(d.getDate()-i);
-      const ds=d.toLocaleDateString('en-CA');
+      const ds=_dateToYMD(d);
       if(_actLog.some(e=>e.date===ds)) _streak++;
       else break;
   }
   // Rata-rata waktu penyelesaian goal (hari dari buat ke selesai)
   const _doneTimed = _history.filter(h=>h.status!=='failed'&&h.createdAt&&h.completedAt);
   const _avgDays = _doneTimed.length > 0
-      ? Math.round(_doneTimed.reduce((s,h)=>s+Math.max(1,diffDays(new Date(h.createdAt).toLocaleDateString('en-CA'),h.completedAt)),0)/_doneTimed.length)
+      ? Math.round(_doneTimed.reduce((s,h)=>s+Math.max(1,diffDays(_dateToYMD(new Date(h.createdAt)),h.completedAt)),0)/_doneTimed.length)
       : 0;
 
   const goalAnalyticsHtml = `
@@ -7088,7 +7128,7 @@ function openGoalDetail(id) {
   const deadlineDisplay = h.deadline ? new Date(h.deadline + 'T00:00:00').toLocaleDateString('id-ID', {day:'2-digit', month:'long', year:'numeric'}) : 'Tidak ada';
   let durasi = '-';
   if (h.createdAt && h.completedAt) {
-    const start = new Date(h.createdAt).toLocaleDateString('en-CA');
+    const start = _dateToYMD(new Date(h.createdAt));
     const end = h.completedAt;
     durasi = Math.max(1, diffDays(start, end)) + ' Hari';
   }
@@ -7260,7 +7300,7 @@ function initFinancialMomentumChart() {
     if(rng === '7H' || rng === '30H') {
         const days = rng === '7H' ? 7 : 30;
         const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
-        const cutStr = cutoff.toLocaleDateString('en-CA');
+        const cutStr = _dateToYMD(cutoff);
         filtered = allTx.filter(e => e.date >= cutStr);
     }
 
@@ -7479,7 +7519,7 @@ function initDaoChart() {
     if(typeof Chart === 'undefined') { const c=document.getElementById('daoChart'); if(c){ const p=c.parentElement; p.innerHTML='<div class="small muted" style="text-align:center;padding:20px;">📊 Grafik tidak tersedia (perlu koneksi internet)</div>'; } return; }
     const ctx = document.getElementById('daoChart'); if(!ctx) return; if(daoChart) daoChart.destroy();
     const dailyIncome = {}; _getAllFinanceEntries().forEach(l => { if(l.type === 'in') { if(!dailyIncome[l.date]) dailyIncome[l.date] = 0; dailyIncome[l.date] += l.amount; }});
-    const labels = []; const data = []; for(let i=6; i>=0; i--) { let d = new Date(); d.setDate(d.getDate() - i); labels.push(d.toLocaleDateString('id-ID', {weekday:'short'})); data.push(dailyIncome[d.toLocaleDateString('en-CA')] || 0); }
+    const labels = []; const data = []; for(let i=6; i>=0; i--) { let d = new Date(); d.setDate(d.getDate() - i); labels.push(d.toLocaleDateString('id-ID', {weekday:'short'})); data.push(dailyIncome[_dateToYMD(d)] || 0); }
     Chart.defaults.color = '#9492AC'; Chart.defaults.font.family = "'Rajdhani', sans-serif";
     daoChart = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [{ label: 'Pemasukan (Rp)', data: data, borderColor: '#F0B93B', backgroundColor: 'rgba(240, 185, 59, 0.15)', borderWidth: 2, tension: 0.4, fill: true, pointBackgroundColor: '#F0B93B', pointBorderColor: '#fff' }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { callback: function(value) { if(value >= 1000000) return (value / 1000000).toFixed(1) + 'M'; if(value >= 1000) return (value / 1000).toFixed(1) + 'K'; return value; }, font:{size:10} } }, x: { grid: { display: false } } }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => formatRupiah(ctx.raw) } } } } });
 }
@@ -7660,7 +7700,7 @@ function initProjectCharts(){
         const lineLabels=[], actData=[], progressData=[];
         for(let i=numDays-1;i>=0;i--){
             const d=new Date(); d.setDate(d.getDate()-i);
-            const ds=d.toLocaleDateString('en-CA');
+            const ds=_dateToYMD(d);
             lineLabels.push(d.toLocaleDateString('id-ID',{day:'2-digit',month:'short'}));
             actData.push(actLog.filter(e=>e.date===ds).length);
             progressData.push(allSrc.reduce((s,c)=>s+((c.dailyCheckins||[]).filter(x=>x.date===ds&&x.ok).length),0));
@@ -7691,7 +7731,7 @@ function initProjectCharts(){
         const barCtx = document.getElementById('projectBarChart'); if(!barCtx) return;
         if(_projectBarChart){ _projectBarChart.destroy(); _projectBarChart=null; }
         const barLabels=[],barData=[];
-        for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const ds=d.toLocaleDateString('en-CA');barLabels.push(d.toLocaleDateString('id-ID',{weekday:'short'}));barData.push(actLog.filter(e=>e.date===ds).length);}
+        for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const ds=_dateToYMD(d);barLabels.push(d.toLocaleDateString('id-ID',{weekday:'short'}));barData.push(actLog.filter(e=>e.date===ds).length);}
         const barMax=Math.max(2,...barData)+1;
         _projectBarChart = new Chart(barCtx,{type:'bar',data:{labels:barLabels,datasets:[{label:'Aktivitas',data:barData,backgroundColor:barData.map(v=>v>0?'rgba(124,92,255,0.75)':'rgba(148,163,184,0.18)'),borderColor:barData.map(v=>v>0?'#7C5CFF':'rgba(148,163,184,0.3)'),borderWidth:1.5,borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{stepSize:1,font:{size:10}},min:0,max:barMax},x:{grid:{display:false},ticks:{font:{size:11},color:'#9492AC'}}},plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.raw} aktivitas`}}}}});
     }
@@ -7715,7 +7755,7 @@ function initGoalCharts(){
         const lineLabels=[], actData=[], doneData=[];
         for(let i=numDays-1;i>=0;i--){
             const d=new Date(); d.setDate(d.getDate()-i);
-            const ds=d.toLocaleDateString('en-CA');
+            const ds=_dateToYMD(d);
             lineLabels.push(d.toLocaleDateString('id-ID',{day:'2-digit',month:'short'}));
             actData.push(actLog.filter(e=>e.date===ds).length);
             doneData.push(histGoals.filter(h=>h.completedAt===ds&&h.status!=='failed').length);
@@ -7760,7 +7800,7 @@ function initStatsChart(){
     const failLog = state.questFailLog || {};
     for(let i=numDays-1;i>=0;i--){
         const d=new Date(); d.setDate(d.getDate()-i);
-        const ds=d.toLocaleDateString('en-CA');
+        const ds=_dateToYMD(d);
         lineLabels.push(d.toLocaleDateString('id-ID',{day:'2-digit',month:'short'}));
         successData.push(successLog[ds]||0);
         failData.push(failLog[ds]||0);
@@ -8087,7 +8127,7 @@ function getProjectExpReward(days){
 }
 function getProjectDeadlineDays(card){
   if(!card) return 1;
-  const start = card.dateStart || (card.createdAt ? new Date(card.createdAt).toLocaleDateString('en-CA') : todayStr());
+  const start = card.dateStart || (card.createdAt ? _dateToYMD(new Date(card.createdAt)) : todayStr());
   const deadline = card.dateTarget;
   if(deadline && deadline > start) return Math.max(1, diffDays(start, deadline));
   return projectDurationDays(card);
@@ -9430,7 +9470,7 @@ function toggleLtYear(yr){ _ltExpanded[yr] = !_ltExpanded[yr]; render(); }
 
 function calcHabitRateWeek(daysAgoStart, daysAgoEnd = 0) {
    if(!state.habits || state.habits.length === 0) return 0; let possible = 0; let done = 0;
-   for(let i = daysAgoStart - 1; i >= daysAgoEnd; i--) { let d = new Date(); d.setDate(d.getDate() - i); let dStr = d.toLocaleDateString('en-CA'); state.habits.forEach(h => { possible++; if(h.log && h.log[dStr]) done++; }); }
+   for(let i = daysAgoStart - 1; i >= daysAgoEnd; i--) { let d = new Date(); d.setDate(d.getDate() - i); let dStr = _dateToYMD(d); state.habits.forEach(h => { possible++; if(h.log && h.log[dStr]) done++; }); }
    return possible === 0 ? 0 : Math.round((done/possible)*100);
 }
 function formatExpShort(n){
@@ -9491,7 +9531,19 @@ function renderHallOfFame(){
     <div class="hof-subtitle">Pencapaian Terbesar Sepanjang Perjalanan</div>
     <div class="hof-stats-row">
       <div class="hof-stat-chip">🏅 ${totalEarned} / ${totalDefs}<br><span style="font-size:9px;font-weight:400;">Diraih</span></div>
-      <div class="hof-stat-chip">📅 ${state.meta.startDate||'—'}<br><span style="font-size:9px;font-weight:400;">Mulai Perjalanan</span></div>
+      <div class="hof-stat-chip" onclick="toggleStartDateEdit()" style="cursor:pointer;" title="Klik untuk ubah tanggal">
+        📅 ${formatDateLong(state.meta.startDate)}<br>
+        <span style="font-size:9px;font-weight:400;">Mulai Perjalanan ✏️</span>
+      </div>
+    </div>
+    <div id="hof-start-date-edit" style="display:none;background:rgba(255,200,50,0.07);border:1px solid rgba(255,200,50,0.28);border-radius:12px;padding:12px 14px;margin:10px 0 2px;text-align:left;">
+      <div style="font-size:11px;font-weight:700;color:var(--gold-soft);margin-bottom:8px;font-family:var(--font-display);letter-spacing:0.5px;">✏️ Ubah Tanggal Mulai Perjalanan</div>
+      <div style="font-size:10.5px;color:var(--muted);margin-bottom:8px;line-height:1.5;">Mengubah tanggal ini akan memperbarui hitungan Hari ke-N secara otomatis.</div>
+      <input type="date" id="hof-start-date-input" class="input" value="${state.meta.startDate||''}" max="${todayStr()}" style="margin-bottom:10px;">
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary btn-sm" style="flex:1;" onclick="saveStartDate()">Simpan</button>
+        <button class="btn btn-ghost btn-sm" style="flex:1;" onclick="toggleStartDateEdit()">Batal</button>
+      </div>
     </div>
   </div>
   ${sectionsHtml}
@@ -9679,8 +9731,8 @@ function renderRealmEncyclopedia(){
 
 function generateWeeklyInsights() {
   const today = new Date();
-  const weekAgoStr    = new Date(today - 7*86400000).toLocaleDateString('en-CA');
-  const twoWeeksStr   = new Date(today - 14*86400000).toLocaleDateString('en-CA');
+  const weekAgoStr    = _dateToYMD(new Date(today - 7*86400000));
+  const twoWeeksStr   = _dateToYMD(new Date(today - 14*86400000));
   const insights = [];
 
   // 1. Pengeluaran minggu ini vs minggu lalu
@@ -9748,7 +9800,7 @@ function renderWeeklyInsightPanel() {
 function renderStatisticsTable() {
     let weeklyActivity = 0; let lastWeeklyActivity = 0; let weeklyIncome = 0; let lastWeeklyIncome = 0;
     const today = new Date(); const weekAgo = new Date(today - 7*86400000); const twoWeeksAgo = new Date(today - 14*86400000);
-    const cutOffStr = weekAgo.toLocaleDateString('en-CA'); const twoWeeksAgoStr = twoWeeksAgo.toLocaleDateString('en-CA');
+    const cutOffStr = _dateToYMD(weekAgo); const twoWeeksAgoStr = _dateToYMD(twoWeeksAgo);
     for (const [date, count] of Object.entries(state.meta.activityLog || {})) { if(date >= cutOffStr) weeklyActivity += count; else if(date >= twoWeeksAgoStr) lastWeeklyActivity += count; }
     _getAllFinanceEntries().forEach(l => { if(l.type !== 'transfer' && l.type === 'in' && l.date >= cutOffStr) weeklyIncome += l.amount; else if(l.type !== 'transfer' && l.type === 'in' && l.date >= twoWeeksAgoStr) lastWeeklyIncome += l.amount; });
     const sedekahThisWeek = (state.sedekah?.entries||[]).filter(e=>e.date>=cutOffStr).reduce((s,e)=>s+(e.nominal||0),0); const sedekahLastWeek = (state.sedekah?.entries||[]).filter(e=>e.date>=twoWeeksAgoStr && e.date<cutOffStr).reduce((s,e)=>s+(e.nominal||0),0);
@@ -9844,7 +9896,7 @@ function renderStatisticsTable() {
           <div class="pl">Hall of Fame</div>
         </div>
       </div></div>
-      <div style="text-align:center;margin-top:10px;font-size:10.5px;color:var(--muted-2);letter-spacing:0.4px;">📅 Mulai perjalanan: <b style="color:var(--muted);">${state.meta.startDate||'—'}</b> &nbsp;·&nbsp; Data diperbarui otomatis.</div>
+      <div style="text-align:center;margin-top:10px;font-size:10.5px;color:var(--muted-2);letter-spacing:0.4px;">📅 Mulai perjalanan: <b style="color:var(--muted);">${formatDateLong(state.meta.startDate)}</b> &nbsp;·&nbsp; Data diperbarui otomatis.</div>
     </div>`;
 
     const _secStatsRanked = `<div class="section-title">⚔️ Character Stats (Ranked)</div><div class="card glass-panel" style="padding:0; overflow-x:auto;"><table class="stats-table"><thead><tr><th>Stat / Atribut</th><th>Grup</th><th>Nilai</th></tr></thead><tbody>${tbl2Rows}</tbody></table></div>`;
@@ -9867,7 +9919,7 @@ function initLifeMomentumChart(){
     const isWeekly = lifeMomentumRange === 'weekly';
     const POINTS = isWeekly ? 7 : 30;
     const dayKeys = []; const dayLabels = [];
-    for(let i=POINTS-1; i>=0; i--) { let d = new Date(); d.setDate(d.getDate() - i); dayKeys.push(d.toLocaleDateString('en-CA')); dayLabels.push(d.toLocaleDateString('id-ID', {day:'numeric', month:'short'})); }
+    for(let i=POINTS-1; i>=0; i--) { let d = new Date(); d.setDate(d.getDate() - i); dayKeys.push(_dateToYMD(d)); dayLabels.push(d.toLocaleDateString('id-ID', {day:'numeric', month:'short'})); }
 
     const snapshots = state.lifeMomentum || [];
     const byDate = {}; snapshots.forEach(s => byDate[s.date] = s);
@@ -10033,6 +10085,24 @@ function deleteLifePrincipleHistory(lpId){
     state.historyArchive.refleksi = state.historyArchive.refleksi.filter(e=>!(e._sourceType==='principle' && e.id===lpId));
   save(); render();
 }
+// ── Hall of Fame: edit tanggal mulai perjalanan ──────────────────────────────
+function toggleStartDateEdit(){
+  const el = document.getElementById('hof-start-date-edit');
+  if(!el) return;
+  const isHidden = el.style.display === 'none' || el.style.display === '';
+  el.style.display = isHidden ? 'block' : 'none';
+}
+function saveStartDate(){
+  const input = document.getElementById('hof-start-date-input');
+  if(!input || !input.value){ showToast('Pilih tanggal dulu.', 'bad'); return; }
+  const val = input.value; // YYYY-MM-DD
+  if(val > todayStr()){ showToast('Tanggal tidak boleh melebihi hari ini.', 'bad'); return; }
+  state.meta.startDate = val;
+  save();
+  render();
+  showToast('📅 Tanggal perjalanan diperbarui ke ' + formatDateLong(val), 'ach');
+}
+
 // Helper: render ulang settings modal tanpa menutupnya.
 // Dipanggil setiap kali ada perubahan dari dalam settings agar modal tetap terbuka.
 function _keepSettingsOpen() {
@@ -10117,9 +10187,8 @@ function confirmResetData(){
     state.settings     = Object.assign(DEFAULT_SETTINGS(), _savedSettings);
     state.sectionConfig = _savedSectionCfg;
     rollover();
-    render();
     save();
-    closeModal('modal-settings');
+    _keepSettingsOpen();
     showToast('Reset selesai — tampilan dipertahankan ✓', 'ach');
   });
 }
@@ -10912,6 +10981,8 @@ function init(){
       updateTimeBlockUI();
       if(state.meta.lastActiveDate !== todayStr()) {
           rollover();
+          sweepHistoryArchive(state);
+          recomputeLifeScore();
           recordMomentumHistory();
           render();
           save();
@@ -10929,6 +11000,8 @@ function init(){
       if(document.visibilityState === 'hidden') return;
       if(state.meta.lastActiveDate !== todayStr()) {
           rollover();
+          sweepHistoryArchive(state);
+          recomputeLifeScore();
           recordMomentumHistory();
           render();
           save();
@@ -11228,7 +11301,7 @@ function calcMomentumPoints() {
 
   // — Aktivitas finansial positif (pemasukan 7 hari terakhir, max 8 pts) —
   const week = 7 * 24 * 3600 * 1000;
-  const weekAgoStr = new Date(Date.now() - week).toLocaleDateString('en-CA');
+  const weekAgoStr = _dateToYMD(new Date(Date.now() - week));
   const recentIncome = _getAllFinanceEntries().filter(e => e.type === 'in' && e.date >= weekAgoStr);
   pts += Math.min(8, recentIncome.length * 2);
 
@@ -11364,7 +11437,7 @@ function renderCharacterMomentumTab() {
   const goalPts = goalsC >= 10 ? 10 : goalsC >= 5 ? 7 : goalsC >= 1 ? 4 : 0;
 
   const week = 7 * 24 * 3600 * 1000;
-  const weekAgoStr = new Date(Date.now() - week).toLocaleDateString('en-CA');
+  const weekAgoStr = _dateToYMD(new Date(Date.now() - week));
   const recentIncome = _getAllFinanceEntries().filter(e => e.type === 'in' && e.date >= weekAgoStr);
   const financePts = Math.min(8, recentIncome.length * 2);
 
@@ -11509,7 +11582,7 @@ function renderLifeHeatmap() {
     const days = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i);
-      days.push(d.toLocaleDateString('en-CA'));
+      days.push(_dateToYMD(d));
     }
     gridHTML = `<div class="heatmap-weekly-grid">` +
       days.map(ds => {
@@ -11966,9 +12039,6 @@ function resetNavGroupOrder() {
   };
 })();
 </script>
-
-</body>
-</html>
 
 </body>
 </html>
