@@ -2161,20 +2161,73 @@ function drawHeavenPalaceBg() {
         ctx.globalAlpha = 1;
     });
 }
-function drawCanvas() {
-    if(!state || state.settings?.showBackgroundAnim !== false) {
-        ctx.clearRect(0,0,canvas.width, canvas.height);
-        const theme = state?.settings?.bgTheme || 'void';
-        if(theme === 'formation') drawFormationArrayBg();
-        else if(theme === 'sanctuary') drawSanctuaryBg();
-        else if(theme === 'heaven') drawHeavenPalaceBg();
-        else drawVoidHologramBg();
-    } else {
-        ctx.clearRect(0,0,canvas.width, canvas.height);
+function drawElegantStaticBg() {
+    const W = canvas.width, H = canvas.height;
+    // Deep void base gradient
+    const base = ctx.createLinearGradient(0, 0, W * 0.5, H);
+    base.addColorStop(0,   '#0c0a18');
+    base.addColorStop(0.45,'#070610');
+    base.addColorStop(1,   '#030308');
+    ctx.fillStyle = base;
+    ctx.fillRect(0, 0, W, H);
+    // Soft ambient glow pools
+    const glows = [
+        { x: W * 0.12, y: H * 0.22, r: W * 0.38, c: 'rgba(124,92,255,0.07)'  },
+        { x: W * 0.88, y: H * 0.55, r: W * 0.32, c: 'rgba(45,212,244,0.045)' },
+        { x: W * 0.50, y: H * 0.90, r: W * 0.28, c: 'rgba(52,211,153,0.035)' },
+        { x: W * 0.70, y: H * 0.10, r: W * 0.22, c: 'rgba(240,185,59,0.03)'  },
+    ];
+    glows.forEach(g => {
+        const grd = ctx.createRadialGradient(g.x, g.y, 0, g.x, g.y, g.r);
+        grd.addColorStop(0, g.c); grd.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grd; ctx.fillRect(0, 0, W, H);
+    });
+    // Subtle dot grid
+    ctx.fillStyle = 'rgba(255,255,255,0.016)';
+    const sp = 30;
+    for(let x = sp; x < W; x += sp)
+        for(let y = sp; y < H; y += sp) {
+            ctx.beginPath(); ctx.arc(x, y, 0.65, 0, Math.PI * 2); ctx.fill();
+        }
+    // Fine diagonal lines (very faint grid texture)
+    ctx.strokeStyle = 'rgba(124,92,255,0.025)';
+    ctx.lineWidth = 0.5;
+    for(let i = -H; i < W + H; i += 60) {
+        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i + H, H); ctx.stroke();
     }
-    requestAnimationFrame(drawCanvas);
 }
-initCanvas(); drawCanvas(); window.addEventListener('resize', initCanvas);
+
+let _rafId = null;
+function _startCanvasLoop() {
+    if(_rafId) { cancelAnimationFrame(_rafId); _rafId = null; }
+    _drawCanvasFrame();
+}
+function _drawCanvasFrame() {
+    const animOn = !state || state.settings?.showBackgroundAnim !== false;
+    const theme  = state?.settings?.bgTheme || 'void';
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if(theme === 'elegant' || !animOn) {
+        // Static — draw once, no loop
+        if(theme === 'elegant') drawElegantStaticBg();
+        _rafId = null;
+        return;
+    }
+    if(theme === 'formation')    drawFormationArrayBg();
+    else if(theme === 'sanctuary') drawSanctuaryBg();
+    else if(theme === 'heaven')    drawHeavenPalaceBg();
+    else                           drawVoidHologramBg();
+    _rafId = requestAnimationFrame(_drawCanvasFrame);
+}
+// Pause when tab is hidden, resume when visible
+document.addEventListener('visibilitychange', () => {
+    if(document.hidden) {
+        if(_rafId) { cancelAnimationFrame(_rafId); _rafId = null; }
+    } else {
+        _startCanvasLoop();
+    }
+});
+initCanvas(); _startCanvasLoop();
+window.addEventListener('resize', () => { initCanvas(); _startCanvasLoop(); });
 
 // ── Date helpers ─────────────────────────────────────────────────────────────
 // TIDAK menggunakan toLocaleDateString('en-CA') karena dukungannya tidak merata
@@ -5744,16 +5797,26 @@ function setNewBoss(){
   const name = document.getElementById('nb-name').value.trim(); 
   const maxHp = parseInt(document.getElementById('nb-maxhp').value,10);
   const deadline = document.getElementById('nb-deadline').value || '';
-  if(!name || !maxHp || maxHp<=0) return; 
-  
-  if(_editingTargetId) {
+  if(!name || !maxHp || maxHp<=0) return;
+
+  const _doSaveTarget = () => {
+    if(_editingTargetId) {
       const target = state.targets.find(t => t.id === _editingTargetId);
       if(target) { target.name = name; target.maxHp = maxHp; target.deadline = deadline; if(target.currentHp > maxHp) target.currentHp = maxHp; }
-  } else {
+    } else {
       state.targets.push({id: uid('t'), name, maxHp, currentHp:maxHp, deadline});
+    }
+    closeModal('modal-new-boss'); render(); save();
+  };
+
+  if(deadline && deadline < todayStr()) {
+    openConfirm(
+      `⚠️ Deadline "${deadline}" sudah lewat.\n\nTarget ini akan otomatis gagal pada rollover berikutnya. Tetap simpan?`,
+      _doSaveTarget
+    );
+  } else {
+    _doSaveTarget();
   }
-  
-  closeModal('modal-new-boss'); render(); save();
 }
 
 let _editingGoalId = null;
@@ -5785,70 +5848,99 @@ function addGoal(){
       if(deadline) { target = Math.max(1, diffDays(todayStr(), deadline)); } 
       else { target = 100; }
   }
-  const unit = document.getElementById('ag-unit').value.trim() || (deadline && !document.getElementById('ag-target').value ? 'hari' : 'poin'); 
-  
-  if(_editingGoalId) {
+  const unit = document.getElementById('ag-unit').value.trim() || (deadline && !document.getElementById('ag-target').value ? 'hari' : 'poin');
+
+  const _doSaveGoal = () => {
+    if(_editingGoalId) {
       const g = state.goals.find(x=>x.id===_editingGoalId);
       if(g) { g.title=title; g.target=target; g.unit=unit; g.deadline=deadline; g.notes=notes; }
-  } else {
+    } else {
       state.goals.push({id:uid('g'), title, target, unit, current:0, deadline, notes, status:'active', createdAt:Date.now()});
       addGoalActivityLog('baru', title, `Target: ${target} ${unit}${deadline?' · Deadline: '+deadline:''}`);
+    }
+    closeModal('modal-add-goal'); render(); save();
+  };
+
+  if(deadline && deadline < todayStr()) {
+    openConfirm(
+      `⚠️ Deadline "${deadline}" sudah lewat.\n\nGoal ini akan otomatis gagal pada rollover berikutnya. Tetap simpan?`,
+      _doSaveGoal
+    );
+  } else {
+    _doSaveGoal();
   }
-  closeModal('modal-add-goal'); render(); save();
 }
 
 function quickAddGoal(id) { document.getElementById('ug-goal-id').value = id; document.getElementById('ug-amount').value = 1; submitGoalProgress(); }
 function openUpdateGoal(id){ document.getElementById('ug-goal-id').value = id; document.getElementById('ug-amount').value = ''; openModal('modal-update-goal'); }
 function submitGoalProgress(){
-  const id = document.getElementById('ug-goal-id').value; const amount = parseFloat(document.getElementById('ug-amount').value);
-  const g = state.goals.find(x=>x.id===id); if(!g || isNaN(amount) || amount===0) return;
-  // Goal yang sudah selesai tidak bisa diubah (mencegah duplikat riwayat)
+  const id = document.getElementById('ug-goal-id').value;
+  const amount = parseFloat(document.getElementById('ug-amount').value);
+  const g = state.goals.find(x=>x.id===id);
+  if(!g || isNaN(amount) || amount===0) return;
+  // Goal yang sudah selesai tidak bisa diubah
   if(g.status==='done'){ closeModal('modal-update-goal'); showToast('Goal ini sudah tercapai dan tercatat di Riwayat.', 'ach'); return; }
-  g.current = Math.max(0, g.current + amount); if(amount>0) gainExp(5);
-  if(g.current >= g.target){ 
-      if(g.status!=='done'){ 
-          g.status='done'; state.character.goalsCompleted = (state.character.goalsCompleted||0)+1; 
-          const createdDate = _dateToYMD(new Date(g.createdAt));
-          const duration = Math.max(1, diffDays(createdDate, todayStr()));
-          const deadlineDays = g.deadline ? Math.max(1, diffDays(createdDate, g.deadline)) : Math.max(1, duration);
-          const _ri = Math.max(0, state.character.realmIndex || 0);
-          const _mult = 1 + _ri * 0.15;
-          const rewardExp = Math.round(deadlineDays * 20 * _mult);
-          addGoalActivityLog('selesai', g.title, `Goal tercapai! ${g.current}/${g.target} ${g.unit} · +${rewardExp} EXP 🏆`);
-          // Mana bonus tergantung durasi goal: pendek (<7 hari) +5, menengah (7-27 hari) +15, panjang (28+ hari, ~1 bulan) +50.
-          const goalManaGain = deadlineDays >= 28 ? 50 : deadlineDays >= 7 ? 15 : 5;
-          gainMana(goalManaGain, `Goal selesai: ${g.title}`);
-          gainExp(rewardExp); addRealmEnergy(40); showToast(`Goal tercapai: ${g.title} (+${rewardExp} EXP)`,'ach'); SFX.levelUp(); checkAchievements();
-          gainBondExp(15); spiritSay(SPIRIT_GOAL_DONE_LINES[Math.floor(Math.random()*SPIRIT_GOAL_DONE_LINES.length)], true);
-          // Catat ke Timeline Kehidupan
-          addTimelineEvent('goal', 'Goal "' + g.title + '" selesai', '🎯');
-          // Simpan ke Riwayat Goal Permanen
-          if(!Array.isArray(state.goalHistory)) state.goalHistory = [];
-          const _goalDone = {
-              id: g.id,
-              title: g.title,
-              notes: g.notes || '',
-              createdAt: g.createdAt,
-              deadline: g.deadline || '',
-              completedAt: todayStr(),
-              rewardExp: rewardExp,
-              rewardMoney: 0,
-              status: 'done',
-              target: g.target,
-              unit: g.unit
-          };
-          state.goalHistory.unshift(_goalDone);
-          _riwayatArchivePush('goal', _goalDone);
-      } 
-  } else {
-      g.status='active'; SFX.success();
-      const pct = g.target > 0 ? (g.current / g.target) : 0;
-      const pctRound = Math.round(pct*100);
-      addGoalActivityLog('update', g.title, `+${amount} → ${g.current}/${g.target} ${g.unit} (${pctRound}%)`);
-      if(pct >= 0.8) spiritSay(SPIRIT_GOAL_NEAR_LINES[Math.floor(Math.random()*SPIRIT_GOAL_NEAR_LINES.length)], false);
-      gainBondExp(1);
+
+  const newCurrent = Math.max(0, g.current + amount);
+
+  // Jika progress mencapai/melewati target → tanya konfirmasi dulu
+  if(newCurrent >= g.target) {
+    g.current = newCurrent;
+    if(amount > 0) gainExp(5);
+    closeModal('modal-update-goal');
+    render(); save();
+    openConfirm(
+      `🎯 "${escapeHtml(g.title)}" sudah tercapai (${newCurrent}/${g.target} ${g.unit||''})!\n\nTandai goal ini sebagai selesai?`,
+      () => { _finalizeGoalDone(id); }
+    );
+    return;
   }
+
+  // Update progress normal
+  g.current = newCurrent;
+  if(amount > 0) gainExp(5);
+  g.status = 'active';
+  SFX.success();
+  const pct = g.target > 0 ? (g.current / g.target) : 0;
+  const pctRound = Math.round(pct * 100);
+  addGoalActivityLog('update', g.title, `+${amount} → ${g.current}/${g.target} ${g.unit||''} (${pctRound}%)`);
+  if(pct >= 0.8) spiritSay(SPIRIT_GOAL_NEAR_LINES[Math.floor(Math.random()*SPIRIT_GOAL_NEAR_LINES.length)], false);
+  gainBondExp(1);
   closeModal('modal-update-goal'); render(); save();
+}
+
+// Finalisasi goal selesai — dipanggil setelah konfirmasi user
+function _finalizeGoalDone(id) {
+  const g = state.goals.find(x=>x.id===id);
+  if(!g || g.status==='done') return;
+  g.status = 'done';
+  state.character.goalsCompleted = (state.character.goalsCompleted||0) + 1;
+  const createdDate = _dateToYMD(new Date(g.createdAt));
+  const duration = Math.max(1, diffDays(createdDate, todayStr()));
+  const deadlineDays = g.deadline ? Math.max(1, diffDays(createdDate, g.deadline)) : Math.max(1, duration);
+  const _ri = Math.max(0, state.character.realmIndex || 0);
+  const _mult = 1 + _ri * 0.15;
+  const rewardExp = Math.round(deadlineDays * 20 * _mult);
+  addGoalActivityLog('selesai', g.title, `Goal tercapai! ${g.current}/${g.target} ${g.unit||''} · +${rewardExp} EXP 🏆`);
+  // Mana bonus: pendek (<7 hari) +5, menengah (7-27 hari) +15, panjang (28+ hari) +50
+  const goalManaGain = deadlineDays >= 28 ? 50 : deadlineDays >= 7 ? 15 : 5;
+  gainMana(goalManaGain, `Goal selesai: ${g.title}`);
+  gainExp(rewardExp); addRealmEnergy(40);
+  showToast(`Goal tercapai: ${g.title} (+${rewardExp} EXP)`, 'ach');
+  SFX.levelUp(); checkAchievements();
+  gainBondExp(15);
+  spiritSay(SPIRIT_GOAL_DONE_LINES[Math.floor(Math.random()*SPIRIT_GOAL_DONE_LINES.length)], true);
+  addTimelineEvent('goal', 'Goal "' + g.title + '" selesai', '🎯');
+  if(!Array.isArray(state.goalHistory)) state.goalHistory = [];
+  const _goalDone = {
+    id: g.id, title: g.title, notes: g.notes||'',
+    createdAt: g.createdAt, deadline: g.deadline||'',
+    completedAt: todayStr(), rewardExp, rewardMoney: 0,
+    status: 'done', target: g.target, unit: g.unit
+  };
+  state.goalHistory.unshift(_goalDone);
+  _riwayatArchivePush('goal', _goalDone);
+  render(); save();
 }
 function deleteGoalConfirm(id){ const g = state.goals.find(x=>x.id===id); if(!g) return; openConfirm('Hapus goal "'+escapeHtml(g.title)+'"?', ()=>{ markDeleted('goals', id); state.goals = state.goals.filter(x=>x.id!==id); render(); save(); }); }
 function deleteGoalHistory(id){
@@ -6304,19 +6396,29 @@ function getMoodRecommendation(m) {
     if(filled === 0) return { icon:'📝', text:'Isi mood hari ini — 30 detik untuk memahami dirimu sendiri.' };
     if(mood >= 7 && fokus >= 7 && stres <= 3) return { icon:'🚀', text:'Kondisi puncakmu hari ini. Manfaatkan untuk hal yang paling penting.' };
     if(stres >= 8) return { icon:'😰', text:'Kamu sedang di bawah tekanan berat. Wajar merasa kewalahan — ambil napas dulu.' };
-    if(mood <= 3 && energi <= 3) return { icon:'🌧️', text:'Hari yang berat. Izinkan dirimu istirahat, besok bisa mulai lagi.' };
-    if(energi <= 3 && fokus <= 3) return { icon:'🪫', text:'Tubuh dan pikiran minta diisi ulang. Prioritaskan tidur dan makan.' };
-    if(stres >= 6 && mood <= 5) return { icon:'😓', text:'Tekanan sedang terasa. Coba tulis satu hal yang kamu syukuri hari ini.' };
-    if(energi >= 8 && mood <= 4) return { icon:'😤', text:'Energi ada tapi mood kurang. Mungkin perlu sesuatu yang menyenangkan dulu.' };
-    if(stres >= 5 && fokus <= 4) return { icon:'🌀', text:'Pikiran agak berserakan. Coba buat daftar prioritas singkat sebelum mulai.' };
+    if(mood > 0 && mood <= 3 && energi > 0 && energi <= 3) return { icon:'🌧️', text:'Hari yang berat. Izinkan dirimu istirahat, besok bisa mulai lagi.' };
+    if(energi > 0 && energi <= 3 && fokus > 0 && fokus <= 3) return { icon:'🪫', text:'Tubuh dan pikiran minta diisi ulang. Prioritaskan tidur dan makan.' };
+    if(stres >= 6 && mood > 0 && mood <= 5) return { icon:'😓', text:'Tekanan sedang terasa. Coba tulis satu hal yang kamu syukuri hari ini.' };
+    if(stres >= 6 && mood === 0) return { icon:'😓', text:'Stres terasa cukup tinggi. Jangan lupa isi dimensi lainnya juga.' };
+    if(energi >= 8 && mood > 0 && mood <= 4) return { icon:'😤', text:'Energi ada tapi mood kurang. Mungkin perlu sesuatu yang menyenangkan dulu.' };
+    if(stres >= 5 && fokus > 0 && fokus <= 4) return { icon:'🌀', text:'Pikiran agak berserakan. Coba buat daftar prioritas singkat sebelum mulai.' };
     if(fokus >= 7 && stres <= 4) return { icon:'🎯', text:'Fokusmu tajam hari ini. Deep work mode aktif — hindari distraksi.' };
     if(mood >= 7 && energi >= 7) return { icon:'💪', text:'Energi dan semangat sedang optimal. Quest-quest besar menunggumu.' };
+    if(mood >= 7) return { icon:'😄', text:'Mood kamu sedang bagus hari ini. Manfaatkan energi positif ini!' };
+    if(energi >= 7) return { icon:'⚡', text:'Energimu tinggi — saatnya bergerak dan selesaikan hal-hal penting.' };
+    if(fokus >= 7) return { icon:'🎯', text:'Fokusmu tajam. Gunakan untuk pekerjaan yang butuh konsentrasi.' };
+    if(stres > 0 && mood === 0 && energi === 0 && fokus === 0) return { icon:'😤', text:'Stres tercatat. Isi dimensi lainnya untuk gambaran kondisimu yang lengkap.' };
     return { icon:'✨', text:'Terus pantau kondisimu hari ini. Setiap langkah kecil tetap berarti.' };
 }
 
 function renderMoodCard() {
     const today = todayStr();
     const todayMood = (state.moodLog && state.moodLog[today]) || {};
+
+    // Yesterday
+    const yestDate = (()=>{ const d=new Date(); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10); })();
+    const yestMood = (state.moodLog && state.moodLog[yestDate]) || {};
+
     const dayNames = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
     const last7 = Array.from({length:7}, (_,i) => {
         const d = new Date(); d.setDate(d.getDate() - (6-i));
@@ -6330,7 +6432,41 @@ function renderMoodCard() {
     const stresEmojis = ['','😌','🙂','😐','😬','😓','😰','😤','😫','🤯','💥'];
     const opts = [1,3,5,7,9,10];
 
-    // Dimensi config: [key, label, emojis, activeColor, bgColor]
+    // Completion status chip
+    const filled4 = ['mood','energi','fokus','stres'].filter(k=>todayMood[k]).length;
+    const statusChip = filled4 === 4
+        ? `<span style="font-size:10px;font-weight:700;padding:2px 9px;border-radius:99px;background:rgba(52,211,153,0.13);border:1px solid rgba(52,211,153,0.3);color:var(--jade);">✅ Lengkap</span>`
+        : filled4 > 0
+        ? `<span style="font-size:10px;font-weight:700;padding:2px 9px;border-radius:99px;background:rgba(240,185,59,0.1);border:1px solid rgba(240,185,59,0.28);color:var(--gold);">⚠️ ${filled4}/4</span>`
+        : '';
+
+    // Weekly insight
+    const weekFilled = last7.filter(d=>d.mood||d.energi||d.fokus||d.stres);
+    let insightHtml = '';
+    if(weekFilled.length >= 3) {
+        const avg = key => { const vals=weekFilled.map(d=>d[key]).filter(Boolean); return vals.length?(vals.reduce((a,b)=>a+b,0)/vals.length):null; };
+        const aM=avg('mood'); const aS=avg('stres'); const aF=avg('fokus'); const aE=avg('energi');
+        const fullDN = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+        const stressPeak = last7.map((d,i)=>({...d,i})).filter(d=>d.stres).reduce((a,b)=>b.stres>a.stres?b:a, {stres:0,i:-1});
+        let txt = '';
+        if(aM && aS) {
+            if(aM>=7 && aS<=3.5) txt=`🌟 Minggu yang solid — mood rata-rata ${aM.toFixed(1)} dan stres terkendali.`;
+            else if(aS>=7) txt=`😰 Stres cukup tinggi minggu ini (rata-rata ${aS.toFixed(1)}). Pertimbangkan lebih banyak istirahat.`;
+            else if(aM<=4) txt=`🌧️ Minggu yang cukup berat — mood rata-rata ${aM.toFixed(1)}. Kamu sudah melewatinya.`;
+            else txt=`📊 Mood ${aM.toFixed(1)}${aS?` · Stres ${aS.toFixed(1)}`:''}${aF?` · Fokus ${aF.toFixed(1)}`:''}${aE?` · Energi ${aE.toFixed(1)}`:''} rata-rata minggu ini.`;
+        } else if(aM) {
+            txt=`📊 Mood rata-rata minggu ini: ${aM.toFixed(1)}/10.`;
+        } else if(aS) {
+            txt=`📊 Stres rata-rata minggu ini: ${aS.toFixed(1)}/10.`;
+        }
+        if(txt && stressPeak.stres>=7 && stressPeak.i>=0) {
+            const pd=new Date(); pd.setDate(pd.getDate()-(6-stressPeak.i));
+            txt+=` Stres tertinggi: ${fullDN[pd.getDay()]} (${stressPeak.stres}/10).`;
+        }
+        if(txt) insightHtml=`<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.06);font-size:11px;color:var(--muted);line-height:1.65;">${txt}</div>`;
+    }
+
+    // Dimensi config
     const dims = [
         ['mood',   'MOOD',   moodEmojis,   'var(--arise)',  'rgba(124,92,255,0.25)'],
         ['energi', 'ENERGI', energiEmojis, 'var(--cyan)',   'rgba(45,212,244,0.2)'],
@@ -6352,7 +6488,8 @@ function renderMoodCard() {
     </div>
     <div style="display:flex;gap:5px;align-items:flex-end;height:44px;">
         ${last7.map(day=>{const v=day[_moodChartTab];return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;"><div style="width:100%;height:34px;display:flex;flex-direction:column;justify-content:flex-end;"><div style="height:${v?(v/10*34).toFixed(0):2}px;background:${barColor(v,_moodChartTab)};border-radius:3px 3px 0 0;min-height:2px;transition:height .3s;" title="${v?v+'/10':'—'}"></div></div><div style="font-size:9px;color:var(--muted);font-family:var(--font-system);">${day.label}</div></div>`;}).join('')}
-    </div>`;
+    </div>
+    ${insightHtml}`;
 
     const rec = getMoodRecommendation(todayMood);
     const recHtml = `<div style="margin:10px 0 0;padding:10px 12px;border-radius:10px;background:rgba(124,92,255,0.08);border:1px solid rgba(124,92,255,0.2);font-size:12px;line-height:1.55;color:var(--bone);">
@@ -6369,14 +6506,17 @@ function renderMoodCard() {
     </div>`).join('')}
     </div>`;
 
+    // Catatan + kemarin
+    const yestCatatan = yestMood.catatan || '';
     const catatanHtml = `<div style="margin-top:10px;">
         <div style="font-size:10px;color:var(--muted);font-family:var(--font-system);font-weight:700;letter-spacing:0.5px;margin-bottom:5px;">📝 CATATAN HARI INI (OPSIONAL)</div>
         <textarea id="mood-catatan-input" placeholder="Misal: meeting pagi cukup melelahkan, tapi sorenya produktif..." style="width:100%;min-height:64px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px;color:var(--bone);font-family:var(--font-body);resize:vertical;box-sizing:border-box;">${escapeHtml(todayMood.catatan||'')}</textarea>
         <button onclick="saveMoodNote()" style="margin-top:6px;padding:6px 16px;background:rgba(124,92,255,0.18);border:1px solid rgba(124,92,255,0.4);border-radius:8px;color:var(--arise-bright);font-size:12px;font-weight:700;cursor:pointer;">Simpan</button>
+        ${yestCatatan ? `<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.06);font-size:11px;color:var(--muted);line-height:1.6;">💬 <span style="opacity:0.65;">Kemarin:</span> <em>"${escapeHtml(yestCatatan)}"</em></div>` : ''}
     </div>`;
 
     return `
-    <div class="section-title">🎭 Mood & Energi Harian</div>
+    <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;"><span>🎭 Mood & Energi Harian</span>${statusChip}</div>
     <div class="card glass-panel" id="mood-card-slot">
         ${dimsHtml}
         ${recHtml}
@@ -9657,50 +9797,73 @@ function renderLifeEncyclopedia(){
   const c = state.character;
   const lv = state.lifeVisi || {};
 
-  // ── Visi & Prinsip Hidup ──
-  function visiField(key, icon, label, placeholder) {
-    return `<div style="margin-bottom:16px;">
-      <div style="font-size:11px;font-weight:700;color:var(--gold);letter-spacing:0.5px;margin-bottom:6px;">${icon} ${label}</div>
-      <textarea id="lv-${key}" style="width:100%;min-height:72px;background:rgba(255,255,255,0.04);border:1px solid rgba(240,185,59,0.2);border-radius:8px;padding:9px 10px;font-size:12.5px;color:var(--bone);font-family:var(--font-body);resize:vertical;box-sizing:border-box;line-height:1.6;" placeholder="${placeholder}">${escapeHtml(lv[key]||'')}</textarea>
-      <button onclick="saveLifeVisi('${key}')" style="margin-top:5px;padding:5px 14px;background:rgba(240,185,59,0.12);border:1px solid rgba(240,185,59,0.35);border-radius:7px;color:var(--gold);font-size:11px;font-weight:700;cursor:pointer;">💾 Simpan</button>
+  // ── Visi & Prinsip Hidup — Card style ──
+  function visiCard(key, icon, label, placeholder, emptyPrompt) {
+    const val = lv[key] || '';
+    const hasVal = val.trim().length > 0;
+    return `<div id="visi-card-${key}" style="background:rgba(240,185,59,0.035);border:1px solid rgba(240,185,59,0.12);border-radius:12px;padding:13px 14px;margin-bottom:10px;transition:border-color .2s;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${hasVal?'10':'6'}px;">
+        <div style="font-size:10px;font-weight:700;color:rgba(240,185,59,0.65);letter-spacing:0.8px;text-transform:uppercase;">${icon} ${label}</div>
+        <button onclick="toggleVisiEdit('${key}')" id="visi-editbtn-${key}" style="padding:3px 9px;font-size:10px;font-weight:700;background:rgba(240,185,59,0.07);border:1px solid rgba(240,185,59,0.18);border-radius:6px;color:rgba(240,185,59,0.65);cursor:pointer;transition:all .15s;">✏️ Edit</button>
+      </div>
+      <div id="visi-view-${key}">
+        ${hasVal
+          ? `<div style="font-size:13px;color:var(--bone);line-height:1.75;font-style:italic;padding:6px 10px;border-left:2px solid rgba(240,185,59,0.3);background:rgba(240,185,59,0.03);border-radius:0 8px 8px 0;">"${escapeHtml(val)}"</div>`
+          : `<div style="text-align:center;padding:12px 0 6px;color:var(--muted);font-size:11.5px;line-height:1.6;">${emptyPrompt}<span style="display:block;margin-top:8px;"><button onclick="toggleVisiEdit('${key}')" style="padding:5px 14px;font-size:11px;font-weight:700;background:rgba(240,185,59,0.09);border:1px solid rgba(240,185,59,0.22);border-radius:8px;color:var(--gold);cursor:pointer;">✍️ Tulis Sekarang</button></span></div>`
+        }
+      </div>
+      <div id="visi-edit-${key}" style="display:none;">
+        <textarea id="lv-${key}" style="width:100%;min-height:72px;background:rgba(255,255,255,0.05);border:1px solid rgba(240,185,59,0.35);border-radius:8px;padding:9px 10px;font-size:12.5px;color:var(--bone);font-family:var(--font-body);resize:vertical;box-sizing:border-box;line-height:1.6;" placeholder="${placeholder}">${escapeHtml(val)}</textarea>
+        <div style="display:flex;gap:7px;margin-top:6px;">
+          <button onclick="saveLifeVisi('${key}')" style="padding:5px 14px;background:rgba(240,185,59,0.13);border:1px solid rgba(240,185,59,0.38);border-radius:7px;color:var(--gold);font-size:11px;font-weight:700;cursor:pointer;">💾 Simpan</button>
+          <button onclick="cancelVisiEdit('${key}')" style="padding:5px 10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.09);border-radius:7px;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;">✕ Batal</button>
+        </div>
+      </div>
     </div>`;
   }
 
   const visiSection = `
-  <div style="background:rgba(240,185,59,0.04);border:1px solid rgba(240,185,59,0.15);border-radius:12px;padding:14px 14px 4px;margin-bottom:14px;">
-    <div style="font-family:var(--font-system);font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(240,185,59,0.6);margin-bottom:14px;">💭 VISI & PRINSIP HIDUP</div>
-    ${visiField('visi5','🔭','Visi 5 Tahun','Apa yang ingin kamu capai dalam 5 tahun ke depan?')}
-    ${visiField('nilaiHidup','⚖️','Nilai Hidup','Hal-hal yang tidak bisa kamu kompromikan...')}
-    ${visiField('inginDikenang','🕯️','Hal yang Ingin Dikenang','Bagaimana kamu ingin diingat oleh orang-orang terdekat?')}
+  <div style="margin-bottom:18px;">
+    <div style="font-family:var(--font-system);font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(240,185,59,0.45);margin-bottom:10px;">💭 VISI &amp; PRINSIP HIDUP</div>
+    ${visiCard('visi5','🔭','Visi 5 Tahun','Apa yang ingin kamu capai dalam 5 tahun ke depan?','Belum ada visi yang ditulis.<br>Luangkan waktu sebentar untuk menulisnya.')}
+    ${visiCard('nilaiHidup','⚖️','Nilai Hidup','Hal-hal yang tidak bisa kamu kompromikan...','Apa yang paling penting bagimu dalam hidup?')}
+    ${visiCard('inginDikenang','🕯️','Ingin Dikenang Sebagai','Bagaimana kamu ingin diingat oleh orang-orang terdekat?','Warisan seperti apa yang ingin kamu tinggalkan?')}
   </div>`;
 
-  // ── Milestone Perjalanan ──
+  // ── Milestone — Timeline style ──
   const milestones = [...(state.lifeMilestones||[])].sort((a,b)=>(b.tanggal||'').localeCompare(a.tanggal||''));
+
   const msHtml = milestones.length === 0
-    ? `<div style="text-align:center;padding:20px 0;color:var(--muted);font-size:12px;">Belum ada milestone. Tambah momen penting dalam hidupmu!</div>`
-    : milestones.map(ms=>`
-      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:12px 13px;margin-bottom:10px;">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
-          <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
-            <div style="font-size:24px;flex-shrink:0;">${escapeHtml(ms.emoji||'📌')}</div>
-            <div style="flex:1;min-width:0;">
-              <div style="font-weight:700;font-size:13px;color:var(--bone);word-break:break-word;">${escapeHtml(ms.judul||'')}</div>
-              ${ms.tanggal?`<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">📅 ${ms.tanggal}</div>`:''}
-              ${ms.cerita?`<div style="font-size:11.5px;color:var(--muted-2);margin-top:5px;line-height:1.55;white-space:pre-wrap;word-break:break-word;">"${escapeHtml(ms.cerita)}"</div>`:''}
+    ? `<div style="text-align:center;padding:22px 0 8px;color:var(--muted);font-size:12px;line-height:1.75;">Belum ada milestone.<br><span style="font-size:11px;opacity:0.75;">Tambah momen penting — pencapaian, keputusan besar, titik balik hidupmu.</span></div>`
+    : `<div style="position:relative;padding-left:26px;">
+        <div style="position:absolute;left:8px;top:8px;bottom:8px;width:2px;background:linear-gradient(to bottom,rgba(45,212,244,0.5),rgba(45,212,244,0.04));border-radius:2px;pointer-events:none;"></div>
+        ${milestones.map((ms,idx)=>`
+        <div style="position:relative;margin-bottom:${idx<milestones.length-1?'16':'4'}px;">
+          <div style="position:absolute;left:-20px;top:12px;width:10px;height:10px;border-radius:50%;background:${idx===0?'rgba(45,212,244,0.9)':'rgba(45,212,244,0.35)'};border:2px solid ${idx===0?'var(--cyan)':'rgba(45,212,244,0.25)'};box-shadow:${idx===0?'0 0 8px rgba(45,212,244,0.45)':'none'};flex-shrink:0;"></div>
+          <div style="background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,${idx===0?'0.1':'0.055'});border-radius:10px;padding:11px 12px;">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;">
+              <div style="display:flex;align-items:flex-start;gap:9px;flex:1;min-width:0;">
+                <div style="font-size:22px;flex-shrink:0;line-height:1.2;margin-top:1px;">${escapeHtml(ms.emoji||'📌')}</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-weight:700;font-size:13px;color:var(--bone);word-break:break-word;line-height:1.4;">${escapeHtml(ms.judul||'')}</div>
+                  ${ms.tanggal?`<div style="font-size:10px;color:var(--cyan);opacity:0.65;margin-top:2px;">📅 ${escapeHtml(ms.tanggal)}</div>`:''}
+                  ${ms.cerita?`<div style="font-size:11.5px;color:var(--muted);margin-top:7px;line-height:1.65;white-space:pre-wrap;word-break:break-word;font-style:italic;padding-left:2px;">"${escapeHtml(ms.cerita)}"</div>`:''}
+                </div>
+              </div>
+              <div style="display:flex;gap:4px;flex-shrink:0;margin-top:1px;">
+                <button onclick="openEditMilestone('${escapeAttr(ms.id)}')" style="padding:4px 8px;font-size:11px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:6px;color:var(--muted);cursor:pointer;">✏️</button>
+                <button onclick="deleteMilestone('${escapeAttr(ms.id)}')" style="padding:4px 8px;font-size:11px;background:rgba(255,71,104,0.06);border:1px solid rgba(255,71,104,0.15);border-radius:6px;color:var(--crimson);cursor:pointer;">🗑️</button>
+              </div>
             </div>
           </div>
-          <div style="display:flex;gap:5px;flex-shrink:0;">
-            <button onclick="openEditMilestone('${escapeAttr(ms.id)}')" style="padding:4px 8px;font-size:12px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:6px;color:var(--muted);cursor:pointer;">✏️</button>
-            <button onclick="deleteMilestone('${escapeAttr(ms.id)}')" style="padding:4px 8px;font-size:12px;background:rgba(255,71,104,0.08);border:1px solid rgba(255,71,104,0.2);border-radius:6px;color:var(--crimson);cursor:pointer;">🗑️</button>
-          </div>
-        </div>
-      </div>`).join('');
+        </div>`).join('')}
+      </div>`;
 
   const milestoneSection = `
-  <div style="background:rgba(45,212,244,0.03);border:1px solid rgba(45,212,244,0.1);border-radius:12px;padding:14px 14px 8px;margin-bottom:14px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-      <div style="font-family:var(--font-system);font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(45,212,244,0.6);">📌 MILESTONE PERJALANAN</div>
-      <button onclick="openAddMilestone()" style="padding:4px 12px;font-size:11px;font-weight:700;background:rgba(45,212,244,0.1);border:1px solid rgba(45,212,244,0.3);border-radius:7px;color:var(--cyan);cursor:pointer;">+ Tambah</button>
+  <div style="margin-bottom:18px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div style="font-family:var(--font-system);font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(45,212,244,0.45);">🏔️ MILESTONE PERJALANAN</div>
+      <button onclick="openAddMilestone()" style="padding:4px 12px;font-size:11px;font-weight:700;background:rgba(45,212,244,0.07);border:1px solid rgba(45,212,244,0.22);border-radius:7px;color:var(--cyan);cursor:pointer;">+ Tambah</button>
     </div>
     ${msHtml}
   </div>`;
@@ -9755,6 +9918,34 @@ function renderLifeEncyclopedia(){
   `;
 }
 
+function toggleVisiEdit(key) {
+  const view = document.getElementById('visi-view-'+key);
+  const edit = document.getElementById('visi-edit-'+key);
+  const btn  = document.getElementById('visi-editbtn-'+key);
+  if(!view || !edit) return;
+  const isEditing = edit.style.display !== 'none';
+  if(isEditing) {
+    // close without saving
+    cancelVisiEdit(key);
+  } else {
+    view.style.display = 'none';
+    edit.style.display = 'block';
+    if(btn) { btn.textContent = '✕ Tutup'; btn.style.color='var(--muted)'; btn.style.borderColor='rgba(255,255,255,0.12)'; }
+    const ta = document.getElementById('lv-'+key);
+    if(ta) { ta.focus(); ta.selectionStart = ta.value.length; }
+  }
+}
+function cancelVisiEdit(key) {
+  const view = document.getElementById('visi-view-'+key);
+  const edit = document.getElementById('visi-edit-'+key);
+  const btn  = document.getElementById('visi-editbtn-'+key);
+  if(view) view.style.display = 'block';
+  if(edit) edit.style.display = 'none';
+  if(btn) { btn.textContent = '✏️ Edit'; btn.style.color='rgba(240,185,59,0.65)'; btn.style.borderColor='rgba(240,185,59,0.18)'; }
+  // restore textarea value to saved value
+  const ta = document.getElementById('lv-'+key);
+  if(ta) ta.value = (state.lifeVisi && state.lifeVisi[key]) || '';
+}
 function saveLifeVisi(key) {
   const el = document.getElementById('lv-'+key);
   if(!el) return;
@@ -9762,6 +9953,15 @@ function saveLifeVisi(key) {
   state.lifeVisi[key] = el.value;
   save();
   showToast('💾 Tersimpan', 'ach');
+  // update view in-place without full re-render
+  const val = el.value.trim();
+  const view = document.getElementById('visi-view-'+key);
+  if(view) {
+    view.innerHTML = val
+      ? `<div style="font-size:13px;color:var(--bone);line-height:1.75;font-style:italic;padding:6px 10px;border-left:2px solid rgba(240,185,59,0.3);background:rgba(240,185,59,0.03);border-radius:0 8px 8px 0;">"${escapeHtml(val)}"</div>`
+      : `<div style="text-align:center;padding:12px 0 6px;color:var(--muted);font-size:11.5px;line-height:1.6;">Belum ada teks yang disimpan.<span style="display:block;margin-top:8px;"><button onclick="toggleVisiEdit('${key}')" style="padding:5px 14px;font-size:11px;font-weight:700;background:rgba(240,185,59,0.09);border:1px solid rgba(240,185,59,0.22);border-radius:8px;color:var(--gold);cursor:pointer;">✍️ Tulis Sekarang</button></span></div>`;
+  }
+  cancelVisiEdit(key);
 }
 
 function openAddMilestone() {
