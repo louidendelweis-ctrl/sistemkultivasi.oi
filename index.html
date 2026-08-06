@@ -10,19 +10,20 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js" onerror="console.warn('Chart.js gagal dimuat dari CDN — fitur grafik/chart tidak akan berfungsi. Periksa koneksi internet.')"></script>
 <style>
 :root{
-  --void:#08080F;
-  --void-2:#0F1020;
-  --surface:rgba(255,255,255,0.035);
-  --surface-strong:rgba(255,255,255,0.07);
-  --border:rgba(150,135,255,0.16);
-  --border-strong:rgba(170,155,255,0.30);
-  --glass:rgba(18,18,34,0.62);
   --arise:#7C5CFF;
   --arise-bright:#A48BFF;
   --cyan:#2DD4F4;
-  --gold:#F0B93B;
-  --gold-soft:#F7D27A;
   --jade:#34D399;
+  --gold:#F0B93B;
+  --gold-soft:#C8A84B;
+  --surface:#13131F;
+  --surface-strong:#1C1C2E;
+  --border:rgba(255,255,255,0.07);
+  --border-strong:rgba(255,255,255,0.14);
+  --glass:rgba(255,255,255,0.04);
+  --void:#030305;
+  --font-mono:'Courier New',monospace;
+
   --crimson:#FF4768;
   --orange:#FF8A3D;
   --bone:#ECEAF5;
@@ -1890,7 +1891,7 @@ body.hide-history-actions .rh-del { display:none!important; }
 <div id="toast-container"></div>
 
 <script>
-let state = null; let saveTimer = null; let daoChart = null; let financialMomentumChart = null; let lifeMomentumChart = null; let _finTradingRange = '30H'; let lifeMomentumRange = 'weekly'; let _sectionMgrTab = 'home'; let heatmapView = 'monthly'; let _ltExpanded = {};
+let state = null; let saveTimer = null; let daoChart = null; let financialMomentumChart = null; let lifeMomentumChart = null; let _finTradingRange = '30H'; let lifeMomentumRange = 'weekly'; let _sectionMgrTab = 'home'; let heatmapView = 'monthly'; let _ltExpanded = {}; let _charHistActiveTab = 'level'; let _moodChartTab = 'mood'; let _milestoneEditId = null;
 // Navigasi Heatmap Kehidupan: Bulanan bisa mundur/maju bulan, Tahunan bisa mundur/maju tahun kalender penuh (Jan-Des).
 let heatmapMonthYear = new Date().getFullYear(); let heatmapMonthMonth = new Date().getMonth();
 let heatmapYearYear = new Date().getFullYear();
@@ -2715,6 +2716,15 @@ function _applyRemoteState(incoming){
     state.meta.lastActiveDate = _rolledDate;
     state.meta.lastWeekKey = _rolledWeekKey;
     state.meta.lastMonthKey = _rolledMonthKey;
+    // BUGFIX: rollover lokal sudah mereset daily quest ke 'pending'.
+    // Data cloud bisa membawa kembali status 'done'/'failed' dari kemarin.
+    // Pastikan quest yang belum dikerjakan HARI INI tetap di-reset ke pending.
+    const _today = todayStr();
+    (state.quests || []).forEach(q => {
+      if(q.type === 'daily' && q.statusDate !== _today && q.lastCompletedDate !== _today) {
+        q.status = 'pending'; q.statusDate = _today; q.completionsToday = 0;
+      }
+    });
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   rollover(); recomputeLifeScore(); render();
@@ -3973,6 +3983,25 @@ function _riwayatArchiveUpsert(cat, dateField, entry){
   if(existing) Object.assign(existing, entry);
   else arr.push({...entry});
 }
+// Normalisasi timestamp charHistory dari locale string ("05/08/2026, 14.30") ke YYYY-MM-DD.
+// Fail-safe: kalau parsing gagal, kembalikan nilai asli (tidak ada data yang hilang).
+function _normalizeCharHistTs(ts){
+  if(!ts) return ts;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(ts)) return ts; // sudah benar
+  try{
+    const datePart = ts.split(',')[0].trim(); // ambil bagian tanggal sebelum koma
+    const p = datePart.split('/');
+    if(p.length === 3){
+      const dd = p[0].trim().padStart(2,'0');
+      const mm = p[1].trim().padStart(2,'0');
+      const yyyy = p[2].trim();
+      const normalized = `${yyyy}-${mm}-${dd}`;
+      if(/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return normalized;
+    }
+  }catch(e){}
+  return ts; // fail-safe: biarkan entry asli jika gagal parse
+}
+
 function migrateState(s){
   ensureTombstones(s);
   if(!Array.isArray(s.goals)) s.goals = []; if(!Array.isArray(s.habits)) s.habits = []; if(!s.meta.activityLog) s.meta.activityLog = {}; if(!s.meta.activityNotes) s.meta.activityNotes = {}; if(!Array.isArray(s.goalHistory)) s.goalHistory = []; if(!Array.isArray(s.questFailureHistory)) s.questFailureHistory = []; if(!Array.isArray(s.scheduleFailureHistory)) s.scheduleFailureHistory = []; if(!Array.isArray(s.lifeTimeline)) s.lifeTimeline = []; if(!Array.isArray(s.lifeMomentum)) s.lifeMomentum = [];
@@ -4100,9 +4129,21 @@ function migrateState(s){
   if(!s.completedBlocks) s.completedBlocks = {};
   if(!s.dailyJournal) s.dailyJournal = {};
   if(!s.moodLog) s.moodLog = {};
+  if(!s.lifeVisi) s.lifeVisi = {};
+  if(!s.lifeMilestones) s.lifeMilestones = [];
   if(!s.momentum) s.momentum = { history: [], lastRecordedDate: '' };
   if(!Array.isArray(s.momentum.history)) s.momentum.history = [];
   if(typeof s.momentum.lastRecordedDate !== 'string') s.momentum.lastRecordedDate = '';
+  // Migrasi: normalisasi format ts di charHistory.level dan charHistory.realm
+  // (versi lama pakai locale string id-ID "dd/mm/yyyy, hh.mm", versi baru pakai YYYY-MM-DD)
+  if(!s._charHistTsNormalized){
+    ['level','realm'].forEach(key=>{
+      if(Array.isArray((s.charHistory||{})[key])){
+        s.charHistory[key] = s.charHistory[key].map(e=>({...e, ts:_normalizeCharHistTs(e.ts)}));
+      }
+    });
+    s._charHistTsNormalized = true;
+  }
   return s;
 }
 
@@ -4396,12 +4437,12 @@ function gainExp(amount){
     if(leveled){
       SFX.levelUp(); showLevelUp(c.level);
       ensureCharHistory(state);
-      const _chTs = new Date().toLocaleString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+      const _chTs = todayStr(); // YYYY-MM-DD — konsisten dengan hp dan streak
       state.charHistory.level.push({ts:_chTs, val:c.level});
       // Jika realm naik (masuk HT pertama kali), tampilkan animasi breakthrough
       if(c.realmIndex > prevRealmIdx){
         const newRealm = state.realms[c.realmIndex];
-        if(newRealm){ SFX.breakthrough(); triggerBreakthrough(newRealm.nameID); addTimelineEvent('realm', 'Naik ke Realm: ' + newRealm.nameID, '⛰️'); gainBondExp(50); spiritSay(getSpiritBreakthroughLine(newRealm.nameID), true); ensureCharHistory(state); state.charHistory.realm.push({ts:_chTs||todayStr(), val:newRealm.nameID}); }
+        if(newRealm){ SFX.breakthrough(); triggerBreakthrough(newRealm.nameID); addTimelineEvent('realm', 'Naik ke Realm: ' + newRealm.nameID, '⛰️'); gainBondExp(50); spiritSay(getSpiritBreakthroughLine(newRealm.nameID), true); ensureCharHistory(state); state.charHistory.realm.push({ts:_chTs, val:newRealm.nameID}); }
       }
       // Jika sudah di HT dan bridge naik (tiap 100 level), tampilkan notifikasi
       if(isHeavenTrampling() && c.heavenBridges > prevBridges){
@@ -5902,9 +5943,9 @@ function updateMoodChip() {
     const m = (state.moodLog && state.moodLog[today]) || {};
     const moodEmojis  = ['','😞','😕','😐','🙂','😊','😄','😃','🤩','🔥','⚡'];
     const energiEmojis= ['','🪫','😴','😑','🙂','💪','⚡','💥','🔋','🌟','🚀'];
-    if (m.mood || m.energi) {
+    if (m.mood || m.energi || m.fokus || m.stres) {
         chip.textContent = (m.mood ? moodEmojis[m.mood] : '·') + (m.energi ? energiEmojis[m.energi] : '');
-        chip.title = 'Mood: '+(m.mood||'-')+'/10  Energi: '+(m.energi||'-')+'/10 — Lihat Riwayat';
+        chip.title = 'Mood: '+(m.mood||'-')+'/10  Energi: '+(m.energi||'-')+'/10  Fokus: '+(m.fokus||'-')+'/10  Stres: '+(m.stres||'-')+'/10 — Lihat Riwayat';
     } else {
         chip.textContent = '';
     }
@@ -5941,13 +5982,18 @@ function _renderDailyHistoryModal() {
     let sections = '';
 
     // Mood & Energi
-    if (mood.mood || mood.energi) {
+    const fokusEmojis = ['','😵','😑','🙂','💡','🔍','🎯','🧠','💎','⚡','🔮'];
+    const stresEmojis = ['','😌','🙂','😐','😬','😓','😰','😤','😫','🤯','💥'];
+    if (mood.mood || mood.energi || mood.fokus || mood.stres) {
         sections += `<div class="dhist-section">
             <div class="dhist-label">🎭 Mood & Energi</div>
-            <div style="display:flex;gap:16px;">
+            <div style="display:flex;flex-wrap:wrap;gap:16px;">
                 ${mood.mood ? `<div style="text-align:center;"><div style="font-size:22px;">${moodEmojis[mood.mood]}</div><div style="font-size:10px;color:var(--muted);margin-top:2px;">Mood ${mood.mood}/10</div></div>` : ''}
                 ${mood.energi ? `<div style="text-align:center;"><div style="font-size:22px;">${energiEmojis[mood.energi]}</div><div style="font-size:10px;color:var(--muted);margin-top:2px;">Energi ${mood.energi}/10</div></div>` : ''}
+                ${mood.fokus ? `<div style="text-align:center;"><div style="font-size:22px;">${fokusEmojis[mood.fokus]}</div><div style="font-size:10px;color:var(--muted);margin-top:2px;">Fokus ${mood.fokus}/10</div></div>` : ''}
+                ${mood.stres ? `<div style="text-align:center;"><div style="font-size:22px;">${stresEmojis[mood.stres]}</div><div style="font-size:10px;color:var(--muted);margin-top:2px;">Stres ${mood.stres}/10</div></div>` : ''}
             </div>
+            ${mood.catatan ? `<div style="margin-top:8px;font-size:12px;color:var(--bone);line-height:1.6;padding:8px;background:rgba(255,255,255,0.04);border-radius:8px;border-left:2px solid var(--arise);">📝 ${escapeHtml(mood.catatan)}</div>` : ''}
         </div>`;
     }
 
@@ -6031,7 +6077,10 @@ function _renderDailyHistoryModal() {
     // Level up hari itu
     const _levelChanges = ((state.charHistory||{}).level||[]).filter(entry => {
         if(!entry.ts) return false;
-        try{ const p=entry.ts.split(' ')[0].split('/'); return p.length>=3 && (p[2]+'-'+p[1]+'-'+p[0])===d; }catch(e){ return false; }
+        // Setelah migrasi _charHistTsNormalized, semua ts pakai YYYY-MM-DD — cukup equality
+        if(entry.ts === d) return true;
+        // Fallback untuk entry lama yang belum sempat termigrasi (locale string id-ID)
+        try{ const p=entry.ts.split(',')[0].trim().split('/'); return p.length>=3 && (p[2].trim()+'-'+p[1].trim().padStart(2,'0')+'-'+p[0].trim().padStart(2,'0'))===d; }catch(e){ return false; }
     });
     if(_levelChanges.length) {
         sections += `<div class="dhist-section"><div class="dhist-label">🆙 Level Up</div><div style="display:flex;flex-direction:column;gap:5px;">${_levelChanges.map(e=>`<span style="font-size:14px;font-weight:800;color:var(--arise-bright);">⭐ Naik ke Level ${e.val}</span>`).join('')}</div></div>`;
@@ -6229,8 +6278,40 @@ function saveMood(type, val) {
     if(!state.moodLog[today]) state.moodLog[today] = {};
     state.moodLog[today][type] = val;
     save();
+    updateMoodChip();
     const slot = document.getElementById('mood-card-slot');
     if(slot) slot.innerHTML = renderMoodCard();
+}
+function saveMoodNote() {
+    const today = todayStr();
+    const el = document.getElementById('mood-catatan-input');
+    if(!el) return;
+    if(!state.moodLog) state.moodLog = {};
+    if(!state.moodLog[today]) state.moodLog[today] = {};
+    state.moodLog[today].catatan = el.value;
+    save();
+    showToast('📝 Catatan mood tersimpan', 'ach');
+}
+function setMoodChartTab(tab) {
+    _moodChartTab = tab;
+    const slot = document.getElementById('mood-card-slot');
+    if(slot) slot.innerHTML = renderMoodCard();
+}
+function getMoodRecommendation(m) {
+    const mood = m.mood || 0; const energi = m.energi || 0;
+    const fokus = m.fokus || 0; const stres = m.stres || 0;
+    const filled = mood + energi + fokus + stres;
+    if(filled === 0) return { icon:'📝', text:'Isi mood hari ini — 30 detik untuk memahami dirimu sendiri.' };
+    if(mood >= 7 && fokus >= 7 && stres <= 3) return { icon:'🚀', text:'Kondisi puncakmu hari ini. Manfaatkan untuk hal yang paling penting.' };
+    if(stres >= 8) return { icon:'😰', text:'Kamu sedang di bawah tekanan berat. Wajar merasa kewalahan — ambil napas dulu.' };
+    if(mood <= 3 && energi <= 3) return { icon:'🌧️', text:'Hari yang berat. Izinkan dirimu istirahat, besok bisa mulai lagi.' };
+    if(energi <= 3 && fokus <= 3) return { icon:'🪫', text:'Tubuh dan pikiran minta diisi ulang. Prioritaskan tidur dan makan.' };
+    if(stres >= 6 && mood <= 5) return { icon:'😓', text:'Tekanan sedang terasa. Coba tulis satu hal yang kamu syukuri hari ini.' };
+    if(energi >= 8 && mood <= 4) return { icon:'😤', text:'Energi ada tapi mood kurang. Mungkin perlu sesuatu yang menyenangkan dulu.' };
+    if(stres >= 5 && fokus <= 4) return { icon:'🌀', text:'Pikiran agak berserakan. Coba buat daftar prioritas singkat sebelum mulai.' };
+    if(fokus >= 7 && stres <= 4) return { icon:'🎯', text:'Fokusmu tajam hari ini. Deep work mode aktif — hindari distraksi.' };
+    if(mood >= 7 && energi >= 7) return { icon:'💪', text:'Energi dan semangat sedang optimal. Quest-quest besar menunggumu.' };
+    return { icon:'✨', text:'Terus pantau kondisimu hari ini. Setiap langkah kecil tetap berarti.' };
 }
 
 function renderMoodCard() {
@@ -6241,50 +6322,69 @@ function renderMoodCard() {
         const d = new Date(); d.setDate(d.getDate() - (6-i));
         const ds = d.toISOString().slice(0,10);
         const m = (state.moodLog&&state.moodLog[ds])||{};
-        return { label: dayNames[d.getDay()], mood: m.mood||null, energi: m.energi||null };
+        return { label: dayNames[d.getDay()], mood: m.mood||null, energi: m.energi||null, fokus: m.fokus||null, stres: m.stres||null };
     });
     const moodEmojis  = ['','😞','😕','😐','🙂','😊','😄','😃','🤩','🔥','⚡'];
     const energiEmojis= ['','🪫','😴','😑','🙂','💪','⚡','💥','🔋','🌟','🚀'];
-    const moodOpts    = [1,3,5,7,9,10];
-    const energiOpts  = [1,3,5,7,9,10];
-    function barColor(v, type) {
+    const fokusEmojis = ['','😵','😑','🙂','💡','🔍','🎯','🧠','💎','⚡','🔮'];
+    const stresEmojis = ['','😌','🙂','😐','😬','😓','😰','😤','😫','🤯','💥'];
+    const opts = [1,3,5,7,9,10];
+
+    // Dimensi config: [key, label, emojis, activeColor, bgColor]
+    const dims = [
+        ['mood',   'MOOD',   moodEmojis,   'var(--arise)',  'rgba(124,92,255,0.25)'],
+        ['energi', 'ENERGI', energiEmojis, 'var(--cyan)',   'rgba(45,212,244,0.2)'],
+        ['fokus',  'FOKUS',  fokusEmojis,  'var(--jade)',   'rgba(52,211,153,0.2)'],
+        ['stres',  'STRES',  stresEmojis,  'var(--gold)',   'rgba(240,185,59,0.2)'],
+    ];
+
+    function barColor(v, key) {
         if(!v) return 'rgba(255,255,255,0.07)';
-        if(type==='mood') return v>=7?'var(--jade)':v>=4?'var(--gold)':'var(--crimson)';
-        return v>=7?'var(--cyan)':v>=4?'var(--orange)':'var(--crimson)';
+        const colors = { mood: v>=7?'var(--jade)':v>=4?'var(--gold)':'var(--crimson)', energi: v>=7?'var(--cyan)':v>=4?'var(--orange)':'var(--crimson)', fokus: v>=7?'var(--jade)':v>=4?'var(--gold)':'var(--crimson)', stres: v>=7?'var(--crimson)':v>=4?'var(--orange)':'var(--jade)' };
+        return colors[key] || 'var(--muted)';
     }
-    const chartHtml = `<div style="display:flex;gap:6px;align-items:flex-end;height:48px;margin-top:8px;">
-        ${last7.map(day=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;">
-            <div style="width:100%;display:flex;flex-direction:column;gap:2px;height:38px;justify-content:flex-end;">
-                <div style="height:${day.mood?(day.mood/10*19).toFixed(0):1}px;background:${barColor(day.mood,'mood')};border-radius:3px 3px 0 0;min-height:2px;transition:height .3s;"></div>
-                <div style="height:${day.energi?(day.energi/10*19).toFixed(0):1}px;background:${barColor(day.energi,'energi')};border-radius:3px 3px 0 0;min-height:2px;transition:height .3s;"></div>
-            </div>
-            <div style="font-size:9px;color:var(--muted);font-family:var(--font-system);">${day.label}</div>
-        </div>`).join('')}
+
+    const chartTabColors = { mood:'var(--arise)', energi:'var(--cyan)', fokus:'var(--jade)', stres:'var(--gold)' };
+    const chartTabLabels = { mood:'Mood', energi:'Energi', fokus:'Fokus', stres:'Stres' };
+    const chartHtml = `
+    <div style="display:flex;gap:5px;margin-bottom:8px;flex-wrap:wrap;">
+        ${Object.keys(chartTabLabels).map(k=>`<button onclick="setMoodChartTab('${k}')" style="flex:1;min-width:52px;padding:3px 6px;font-size:10px;font-weight:700;font-family:var(--font-system);letter-spacing:0.5px;border-radius:6px;border:1px solid ${_moodChartTab===k?chartTabColors[k]:'var(--border)'};background:${_moodChartTab===k?'rgba(255,255,255,0.08)':'rgba(255,255,255,0.03)'};color:${_moodChartTab===k?chartTabColors[k]:'var(--muted)'};cursor:pointer;transition:all .15s;">${chartTabLabels[k]}</button>`).join('')}
     </div>
-    <div style="display:flex;gap:10px;margin-top:4px;">
-        <div style="display:flex;align-items:center;gap:4px;"><div style="width:10px;height:4px;background:var(--jade);border-radius:2px;"></div><span style="font-size:9px;color:var(--muted);font-family:var(--font-system);">Mood</span></div>
-        <div style="display:flex;align-items:center;gap:4px;"><div style="width:10px;height:4px;background:var(--cyan);border-radius:2px;"></div><span style="font-size:9px;color:var(--muted);font-family:var(--font-system);">Energi</span></div>
+    <div style="display:flex;gap:5px;align-items:flex-end;height:44px;">
+        ${last7.map(day=>{const v=day[_moodChartTab];return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;"><div style="width:100%;height:34px;display:flex;flex-direction:column;justify-content:flex-end;"><div style="height:${v?(v/10*34).toFixed(0):2}px;background:${barColor(v,_moodChartTab)};border-radius:3px 3px 0 0;min-height:2px;transition:height .3s;" title="${v?v+'/10':'—'}"></div></div><div style="font-size:9px;color:var(--muted);font-family:var(--font-system);">${day.label}</div></div>`;}).join('')}
     </div>`;
+
+    const rec = getMoodRecommendation(todayMood);
+    const recHtml = `<div style="margin:10px 0 0;padding:10px 12px;border-radius:10px;background:rgba(124,92,255,0.08);border:1px solid rgba(124,92,255,0.2);font-size:12px;line-height:1.55;color:var(--bone);">
+        <span style="font-size:14px;">${rec.icon}</span> ${escapeHtml(rec.text)}
+    </div>`;
+
+    const dimsHtml = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+    ${dims.map(([key, label, emojis, activeColor, activeBg])=>`<div>
+        <div style="font-size:10px;color:var(--muted);font-family:var(--font-system);font-weight:700;letter-spacing:0.5px;margin-bottom:5px;">${label} ${todayMood[key]?emojis[todayMood[key]]:''}</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+            ${opts.map(v=>`<button onclick="saveMood('${key}',${v})" style="flex:1;min-width:28px;padding:3px 1px;font-size:14px;background:${todayMood[key]===v?activeBg:'rgba(255,255,255,0.04)'};border:1px solid ${todayMood[key]===v?activeColor:'var(--border)'};border-radius:7px;cursor:pointer;transition:all .15s;" title="${v}/10">${emojis[v]}</button>`).join('')}
+        </div>
+        ${todayMood[key]?`<div style="font-size:10px;color:var(--muted);margin-top:3px;text-align:center;">${todayMood[key]}/10</div>`:''}
+    </div>`).join('')}
+    </div>`;
+
+    const catatanHtml = `<div style="margin-top:10px;">
+        <div style="font-size:10px;color:var(--muted);font-family:var(--font-system);font-weight:700;letter-spacing:0.5px;margin-bottom:5px;">📝 CATATAN HARI INI (OPSIONAL)</div>
+        <textarea id="mood-catatan-input" placeholder="Misal: meeting pagi cukup melelahkan, tapi sorenya produktif..." style="width:100%;min-height:64px;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px;color:var(--bone);font-family:var(--font-body);resize:vertical;box-sizing:border-box;">${escapeHtml(todayMood.catatan||'')}</textarea>
+        <button onclick="saveMoodNote()" style="margin-top:6px;padding:6px 16px;background:rgba(124,92,255,0.18);border:1px solid rgba(124,92,255,0.4);border-radius:8px;color:var(--arise-bright);font-size:12px;font-weight:700;cursor:pointer;">Simpan</button>
+    </div>`;
+
     return `
     <div class="section-title">🎭 Mood & Energi Harian</div>
     <div class="card glass-panel" id="mood-card-slot">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px;">
-            <div>
-                <div style="font-size:10.5px;color:var(--muted);font-family:var(--font-system);font-weight:700;letter-spacing:0.5px;margin-bottom:6px;">MOOD ${todayMood.mood?moodEmojis[todayMood.mood]:''}</div>
-                <div style="display:flex;flex-wrap:wrap;gap:5px;">
-                    ${moodOpts.map(v=>`<button onclick="saveMood('mood',${v})" style="flex:1;min-width:32px;padding:4px 2px;font-size:15px;background:${todayMood.mood===v?'rgba(124,92,255,0.25)':'rgba(255,255,255,0.04)'};border:1px solid ${todayMood.mood===v?'var(--arise)':'var(--border)'};border-radius:8px;cursor:pointer;transition:all .15s;" title="${v}/10">${moodEmojis[v]}</button>`).join('')}
-                </div>
-                ${todayMood.mood?`<div style="font-size:10px;color:var(--muted);margin-top:4px;text-align:center;">${todayMood.mood}/10</div>`:''}
-            </div>
-            <div>
-                <div style="font-size:10.5px;color:var(--muted);font-family:var(--font-system);font-weight:700;letter-spacing:0.5px;margin-bottom:6px;">ENERGI ${todayMood.energi?energiEmojis[todayMood.energi]:''}</div>
-                <div style="display:flex;flex-wrap:wrap;gap:5px;">
-                    ${energiOpts.map(v=>`<button onclick="saveMood('energi',${v})" style="flex:1;min-width:32px;padding:4px 2px;font-size:15px;background:${todayMood.energi===v?'rgba(45,212,244,0.2)':'rgba(255,255,255,0.04)'};border:1px solid ${todayMood.energi===v?'var(--cyan)':'var(--border)'};border-radius:8px;cursor:pointer;transition:all .15s;" title="${v}/10">${energiEmojis[v]}</button>`).join('')}
-                </div>
-                ${todayMood.energi?`<div style="font-size:10px;color:var(--muted);margin-top:4px;text-align:center;">${todayMood.energi}/10</div>`:''}
-            </div>
+        ${dimsHtml}
+        ${recHtml}
+        <div style="margin-top:12px;border-top:1px solid rgba(255,255,255,0.06);padding-top:10px;">
+            <div style="font-size:10px;color:var(--muted);font-family:var(--font-system);font-weight:700;letter-spacing:0.5px;margin-bottom:6px;">7 HARI TERAKHIR</div>
+            ${chartHtml}
         </div>
-        ${chartHtml}
+        ${catatanHtml}
     </div>`;
 }
 
@@ -9535,10 +9635,14 @@ function renderHallOfFame(){
         📅 ${formatDateLong(state.meta.startDate)}<br>
         <span style="font-size:9px;font-weight:400;">Mulai Perjalanan ✏️</span>
       </div>
+      ${state.meta.prevStartDate ? `<div class="hof-stat-chip" onclick="restoreStartDate()" style="cursor:pointer;border-color:rgba(239,68,68,0.45);background:rgba(239,68,68,0.08);" title="Kembalikan ke tanggal sebelumnya">
+        ↩️ ${formatDateLong(state.meta.prevStartDate)}<br>
+        <span style="font-size:9px;font-weight:400;color:#f87171;">Kembalikan</span>
+      </div>` : ''}
     </div>
     <div id="hof-start-date-edit" style="display:none;background:rgba(255,200,50,0.07);border:1px solid rgba(255,200,50,0.28);border-radius:12px;padding:12px 14px;margin:10px 0 2px;text-align:left;">
       <div style="font-size:11px;font-weight:700;color:var(--gold-soft);margin-bottom:8px;font-family:var(--font-display);letter-spacing:0.5px;">✏️ Ubah Tanggal Mulai Perjalanan</div>
-      <div style="font-size:10.5px;color:var(--muted);margin-bottom:8px;line-height:1.5;">Mengubah tanggal ini akan memperbarui hitungan Hari ke-N secara otomatis.</div>
+      <div style="font-size:10.5px;color:var(--muted);margin-bottom:8px;line-height:1.5;">Hitungan Hari ke-N ikut berubah otomatis. Finansial &amp; streak tidak terpengaruh. Tanggal lama tersimpan — bisa dikembalikan kapan saja.</div>
       <input type="date" id="hof-start-date-input" class="input" value="${state.meta.startDate||''}" max="${todayStr()}" style="margin-bottom:10px;">
       <div style="display:flex;gap:8px;">
         <button class="btn btn-primary btn-sm" style="flex:1;" onclick="saveStartDate()">Simpan</button>
@@ -9551,78 +9655,161 @@ function renderHallOfFame(){
 }
 function renderLifeEncyclopedia(){
   const c = state.character;
+  const lv = state.lifeVisi || {};
 
+  // ── Visi & Prinsip Hidup ──
+  function visiField(key, icon, label, placeholder) {
+    return `<div style="margin-bottom:16px;">
+      <div style="font-size:11px;font-weight:700;color:var(--gold);letter-spacing:0.5px;margin-bottom:6px;">${icon} ${label}</div>
+      <textarea id="lv-${key}" style="width:100%;min-height:72px;background:rgba(255,255,255,0.04);border:1px solid rgba(240,185,59,0.2);border-radius:8px;padding:9px 10px;font-size:12.5px;color:var(--bone);font-family:var(--font-body);resize:vertical;box-sizing:border-box;line-height:1.6;" placeholder="${placeholder}">${escapeHtml(lv[key]||'')}</textarea>
+      <button onclick="saveLifeVisi('${key}')" style="margin-top:5px;padding:5px 14px;background:rgba(240,185,59,0.12);border:1px solid rgba(240,185,59,0.35);border-radius:7px;color:var(--gold);font-size:11px;font-weight:700;cursor:pointer;">💾 Simpan</button>
+    </div>`;
+  }
+
+  const visiSection = `
+  <div style="background:rgba(240,185,59,0.04);border:1px solid rgba(240,185,59,0.15);border-radius:12px;padding:14px 14px 4px;margin-bottom:14px;">
+    <div style="font-family:var(--font-system);font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(240,185,59,0.6);margin-bottom:14px;">💭 VISI & PRINSIP HIDUP</div>
+    ${visiField('visi5','🔭','Visi 5 Tahun','Apa yang ingin kamu capai dalam 5 tahun ke depan?')}
+    ${visiField('nilaiHidup','⚖️','Nilai Hidup','Hal-hal yang tidak bisa kamu kompromikan...')}
+    ${visiField('inginDikenang','🕯️','Hal yang Ingin Dikenang','Bagaimana kamu ingin diingat oleh orang-orang terdekat?')}
+  </div>`;
+
+  // ── Milestone Perjalanan ──
+  const milestones = [...(state.lifeMilestones||[])].sort((a,b)=>(b.tanggal||'').localeCompare(a.tanggal||''));
+  const msHtml = milestones.length === 0
+    ? `<div style="text-align:center;padding:20px 0;color:var(--muted);font-size:12px;">Belum ada milestone. Tambah momen penting dalam hidupmu!</div>`
+    : milestones.map(ms=>`
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:12px 13px;margin-bottom:10px;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+          <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+            <div style="font-size:24px;flex-shrink:0;">${escapeHtml(ms.emoji||'📌')}</div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:700;font-size:13px;color:var(--bone);word-break:break-word;">${escapeHtml(ms.judul||'')}</div>
+              ${ms.tanggal?`<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">📅 ${ms.tanggal}</div>`:''}
+              ${ms.cerita?`<div style="font-size:11.5px;color:var(--muted-2);margin-top:5px;line-height:1.55;white-space:pre-wrap;word-break:break-word;">"${escapeHtml(ms.cerita)}"</div>`:''}
+            </div>
+          </div>
+          <div style="display:flex;gap:5px;flex-shrink:0;">
+            <button onclick="openEditMilestone('${escapeAttr(ms.id)}')" style="padding:4px 8px;font-size:12px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:6px;color:var(--muted);cursor:pointer;">✏️</button>
+            <button onclick="deleteMilestone('${escapeAttr(ms.id)}')" style="padding:4px 8px;font-size:12px;background:rgba(255,71,104,0.08);border:1px solid rgba(255,71,104,0.2);border-radius:6px;color:var(--crimson);cursor:pointer;">🗑️</button>
+          </div>
+        </div>
+      </div>`).join('');
+
+  const milestoneSection = `
+  <div style="background:rgba(45,212,244,0.03);border:1px solid rgba(45,212,244,0.1);border-radius:12px;padding:14px 14px 8px;margin-bottom:14px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div style="font-family:var(--font-system);font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(45,212,244,0.6);">📌 MILESTONE PERJALANAN</div>
+      <button onclick="openAddMilestone()" style="padding:4px 12px;font-size:11px;font-weight:700;background:rgba(45,212,244,0.1);border:1px solid rgba(45,212,244,0.3);border-radius:7px;color:var(--cyan);cursor:pointer;">+ Tambah</button>
+    </div>
+    ${msHtml}
+  </div>`;
+
+  // ── Rekor Otomatis ──
   const bestStreak = c.longestStreak || 0;
   const topRealm = state.realms[c.realmIndex] || state.realms[0];
   const topRealmName = topRealm.nameID || topRealm.name || '-';
-
-  // Gunakan _getAllFinanceEntries() agar "terbesar seumur hidup" mencakup semua transaksi
-  // termasuk yang sudah diarchive — bukan hanya financeLog aktif (maks 100 entri).
   const _allFinEntries = _getAllFinanceEntries();
   const allIn  = _allFinEntries.filter(l=>l.type==='in');
   const allOut = _allFinEntries.filter(l=>l.type==='out');
   const biggestIn  = allIn.length  ? allIn.reduce((a,b)=>b.amount>a.amount?b:a, allIn[0])  : null;
   const biggestOut = allOut.length ? allOut.reduce((a,b)=>b.amount>a.amount?b:a, allOut[0]) : null;
-
   const goals = (state.goalHistory || []).filter(g=>g.status!=='failed');
   const biggestGoal = goals.length ? goals.reduce((a,b)=>((b.rewardMoney||0)+(b.rewardExp||0))>((a.rewardMoney||0)+(a.rewardExp||0))?b:a, goals[0]) : null;
-
   const momentum = state.lifeMomentum || [];
   const bestLifeScore = momentum.length ? Math.max(...momentum.map(m=>m.lifeScore||0)) : (c.lifeScore||0);
-
   const spLv = state.spiritual.level || 1;
   const spTitle = getSpiritualTitle(spLv);
   const sr = soulRankFor(spLv);
 
   function recCard(icon, title, main, sub, color){
-    return `<div class="card glass-panel" style="border-left:4px solid ${color};margin-bottom:12px;padding:14px 16px;">
-      <div style="display:flex;align-items:center;gap:12px;">
-        <div style="font-size:28px;flex-shrink:0;">${icon}</div>
+    return `<div style="border-left:3px solid ${color};padding:10px 12px;margin-bottom:8px;background:rgba(255,255,255,0.02);border-radius:0 8px 8px 0;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="font-size:22px;flex-shrink:0;">${icon}</div>
         <div style="flex:1;min-width:0;">
-          <div style="font-size:10.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">${title}</div>
-          <div style="font-family:var(--font-display);font-weight:800;font-size:16px;color:${color};margin-top:2px;word-break:break-word;">${main}</div>
-          ${sub?`<div style="font-size:11px;color:var(--muted);margin-top:3px;word-break:break-word;">${sub}</div>`:''}
+          <div style="font-size:9.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">${title}</div>
+          <div style="font-weight:800;font-size:13.5px;color:${color};margin-top:1px;word-break:break-word;">${main}</div>
+          ${sub?`<div style="font-size:10.5px;color:var(--muted);margin-top:2px;word-break:break-word;">${sub}</div>`:''}
         </div>
       </div>
     </div>`;
   }
 
+  const rekorSection = `
+  <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:14px 14px 6px;">
+    <div style="font-family:var(--font-system);font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:12px;">📊 REKOR OTOMATIS</div>
+    ${recCard('🔥','Streak Terbesar', bestStreak + ' Hari', bestStreak >= 30 ? '🏆 Disiplin luar biasa!' : bestStreak >= 7 ? '💪 Konsistensi terbangun' : bestStreak > 0 ? 'Terus pertahankan' : 'Belum ada streak tercatat', 'var(--orange)')}
+    ${recCard('🌌','Realm Tertinggi', escapeHtml(topRealmName), `Level ${c.level} · Realm ke-${c.realmIndex+1} dari ${state.realms.length}`, 'var(--arise-bright)')}
+    ${recCard('💰','Pemasukan Terbesar', biggestIn ? formatRupiah(biggestIn.amount) : '—', biggestIn ? `${biggestIn.date} · ${escapeHtml(biggestIn.note||'Tanpa catatan')}` : 'Belum ada catatan pemasukan', 'var(--jade)')}
+    ${recCard('💸','Pengeluaran Terbesar', biggestOut ? formatRupiah(biggestOut.amount) : '—', biggestOut ? `${biggestOut.date} · ${escapeHtml(biggestOut.note||'Tanpa catatan')}` : 'Belum ada catatan pengeluaran', 'var(--crimson)')}
+    ${biggestGoal ? recCard('🎯','Goal Terbesar (Selesai)', escapeHtml(biggestGoal.title||'-'), biggestGoal.rewardMoney ? `Nilai: ${formatRupiah(biggestGoal.rewardMoney)} · +${(biggestGoal.rewardExp||0).toLocaleString()} EXP` : `+${(biggestGoal.rewardExp||0).toLocaleString()} EXP`, 'var(--gold)') : recCard('🎯','Goal Terbesar (Selesai)','—','Belum ada goal yang diselesaikan','var(--gold)')}
+    ${recCard('⭐','Life Score Tertinggi', bestLifeScore.toLocaleString(), `Level ${c.level} · Streak terpanjang ${bestStreak} hari`, 'var(--cyan)')}
+    ${recCard('🧘','Level Spiritual', `Lv. ${spLv} · ${sr.label}`, `${spTitle.icon} ${spTitle.title} · Sedekah: Rp ${(state.sedekah?.totalLifetime||0).toLocaleString()}`, sr.color)}
+  </div>`;
+
   return `
   <div class="section-title row-between"><span>📖 Life Encyclopedia</span><span class="small muted" style="font-weight:600;">Wikipedia Pribadimu</span></div>
-  <div class="small muted" style="margin:-4px 0 14px;text-align:center;">Rekor & pencapaian terbesar dalam perjalanan hidupmu.</div>
-
-  ${recCard('🔥','Streak Terbesar', bestStreak + ' Hari',
-    bestStreak >= 30 ? '🏆 Disiplin luar biasa!' : bestStreak >= 7 ? '💪 Konsistensi terbangun' : bestStreak > 0 ? 'Terus pertahankan' : 'Belum ada streak tercatat',
-    'var(--orange)')}
-
-  ${recCard('🌌','Realm Tertinggi', escapeHtml(topRealmName),
-    `Level ${c.level} · Realm ke-${c.realmIndex+1} dari ${state.realms.length}`,
-    'var(--arise-bright)')}
-
-  ${recCard('💰','Pemasukan Terbesar (Satu Transaksi)',
-    biggestIn ? formatRupiah(biggestIn.amount) : '—',
-    biggestIn ? `${biggestIn.date} · ${escapeHtml(biggestIn.note||'Tanpa catatan')}` : 'Belum ada catatan pemasukan',
-    'var(--jade)')}
-
-  ${recCard('💸','Pengeluaran Terbesar (Satu Transaksi)',
-    biggestOut ? formatRupiah(biggestOut.amount) : '—',
-    biggestOut ? `${biggestOut.date} · ${escapeHtml(biggestOut.note||'Tanpa catatan')}` : 'Belum ada catatan pengeluaran',
-    'var(--crimson)')}
-
-  ${biggestGoal
-    ? recCard('🎯','Goal Terbesar (Selesai)', escapeHtml(biggestGoal.title||'-'),
-        biggestGoal.rewardMoney ? `Nilai: ${formatRupiah(biggestGoal.rewardMoney)} · +${(biggestGoal.rewardExp||0).toLocaleString()} EXP` : `+${(biggestGoal.rewardExp||0).toLocaleString()} EXP`,
-        'var(--gold)')
-    : recCard('🎯','Goal Terbesar (Selesai)','—','Belum ada goal yang diselesaikan','var(--gold)')}
-
-  ${recCard('⭐','Life Score Tertinggi', bestLifeScore.toLocaleString(),
-    `Level ${c.level} · Streak terpanjang ${bestStreak} hari`,
-    'var(--cyan)')}
-
-  ${recCard('🧘','Level Spiritual', `Lv. ${spLv} · ${sr.label}`,
-    `${spTitle.icon} ${spTitle.title} · Sedekah: Rp ${(state.sedekah?.totalLifetime||0).toLocaleString()}`,
-    sr.color)}
+  ${visiSection}
+  ${milestoneSection}
+  ${rekorSection}
   `;
+}
+
+function saveLifeVisi(key) {
+  const el = document.getElementById('lv-'+key);
+  if(!el) return;
+  if(!state.lifeVisi) state.lifeVisi = {};
+  state.lifeVisi[key] = el.value;
+  save();
+  showToast('💾 Tersimpan', 'ach');
+}
+
+function openAddMilestone() {
+  _milestoneEditId = null;
+  document.getElementById('ms-modal-title').textContent = '+ Tambah Milestone';
+  document.getElementById('ms-emoji').value = '📌';
+  document.getElementById('ms-judul').value = '';
+  document.getElementById('ms-tanggal').value = todayStr();
+  document.getElementById('ms-cerita').value = '';
+  openModal('modal-add-milestone');
+}
+
+function openEditMilestone(id) {
+  const ms = (state.lifeMilestones||[]).find(m=>m.id===id);
+  if(!ms) return;
+  _milestoneEditId = id;
+  document.getElementById('ms-modal-title').textContent = '✏️ Edit Milestone';
+  document.getElementById('ms-emoji').value = ms.emoji||'📌';
+  document.getElementById('ms-judul').value = ms.judul||'';
+  document.getElementById('ms-tanggal').value = ms.tanggal||'';
+  document.getElementById('ms-cerita').value = ms.cerita||'';
+  openModal('modal-add-milestone');
+}
+
+function saveMilestone() {
+  const emoji = document.getElementById('ms-emoji').value.trim() || '📌';
+  const judul = document.getElementById('ms-judul').value.trim();
+  const tanggal = document.getElementById('ms-tanggal').value;
+  const cerita = document.getElementById('ms-cerita').value.trim();
+  if(!judul) { document.getElementById('ms-judul').focus(); return; }
+  if(!state.lifeMilestones) state.lifeMilestones = [];
+  if(_milestoneEditId) {
+    const idx = state.lifeMilestones.findIndex(m=>m.id===_milestoneEditId);
+    if(idx>=0) state.lifeMilestones[idx] = { ...state.lifeMilestones[idx], emoji, judul, tanggal, cerita };
+  } else {
+    state.lifeMilestones.push({ id: uid('ms'), emoji, judul, tanggal, cerita, createdAt: Date.now() });
+  }
+  closeModal('modal-add-milestone');
+  render(); save();
+}
+
+function deleteMilestone(id) {
+  const ms = (state.lifeMilestones||[]).find(m=>m.id===id);
+  if(!ms) return;
+  openConfirm('Hapus milestone "'+escapeHtml(ms.judul)+'"?', ()=>{
+    state.lifeMilestones = state.lifeMilestones.filter(m=>m.id!==id);
+    render(); save();
+  });
 }
 
 function renderRealmEncyclopedia(){
@@ -10097,10 +10284,33 @@ function saveStartDate(){
   if(!input || !input.value){ showToast('Pilih tanggal dulu.', 'bad'); return; }
   const val = input.value; // YYYY-MM-DD
   if(val > todayStr()){ showToast('Tanggal tidak boleh melebihi hari ini.', 'bad'); return; }
-  state.meta.startDate = val;
-  save();
-  render();
-  showToast('📅 Tanggal perjalanan diperbarui ke ' + formatDateLong(val), 'ach');
+  const oldDate = state.meta.startDate || todayStr();
+  if(val === oldDate){ showToast('Tanggal sama, tidak ada perubahan.', 'bad'); toggleStartDateEdit(); return; }
+  openConfirm(
+    `Ubah tanggal mulai perjalanan?\n\nDari: ${formatDateLong(oldDate)}\nKe :  ${formatDateLong(val)}\n\nHitungan Hari ke-N akan ikut berubah otomatis.\nFinansial tidak terpengaruh. Streak tidak berubah.`,
+    () => {
+      state.meta.prevStartDate = oldDate; // simpan untuk tombol undo
+      state.meta.startDate = val;
+      save();
+      render();
+      showToast('📅 Tanggal perjalanan diperbarui ke ' + formatDateLong(val), 'ach');
+    }
+  );
+}
+
+function restoreStartDate(){
+  const prev = state.meta.prevStartDate;
+  if(!prev){ showToast('Tidak ada tanggal sebelumnya untuk dikembalikan.', 'bad'); return; }
+  openConfirm(
+    `Kembalikan tanggal mulai perjalanan ke ${formatDateLong(prev)}?`,
+    () => {
+      state.meta.startDate = prev;
+      delete state.meta.prevStartDate;
+      save();
+      render();
+      showToast('↩️ Tanggal perjalanan dikembalikan ke ' + formatDateLong(prev), 'ach');
+    }
+  );
 }
 
 // Helper: render ulang settings modal tanpa menutupnya.
@@ -10108,9 +10318,32 @@ function saveStartDate(){
 function _keepSettingsOpen() {
   save();
   render();
+  const overlay = document.getElementById('modal-settings');
+  if (overlay && overlay.classList.contains('open')) {
+    // Modal sedang terbuka — update isi saja, jangan replace seluruh overlay.
+    // Kalau overlay di-replace, CSS transition (translateY + opacity) aktif dan
+    // modal terlihat seperti close-lalu-reopen setiap kali checkbox diubah.
+    const sheet = overlay.querySelector('.modal-sheet');
+    if (sheet) {
+      // Simpan posisi scroll dan status <details> sebelum konten diganti
+      const scrollTop = overlay.scrollTop;
+      const detailsOpen = [];
+      overlay.querySelectorAll('details').forEach((d, i) => { detailsOpen[i] = d.open; });
+      // Ambil HTML baru dan ganti hanya isi .modal-sheet (bukan seluruh overlay)
+      const tmp = document.createElement('div');
+      tmp.innerHTML = renderSettingsModal();
+      const freshSheet = tmp.querySelector('.modal-sheet');
+      if (freshSheet) { sheet.innerHTML = freshSheet.innerHTML; }
+      // Pulihkan status <details> (section yang terbuka tetap terbuka)
+      overlay.querySelectorAll('details').forEach((d, i) => { if (detailsOpen[i]) d.open = true; });
+      // Pulihkan posisi scroll (tidak loncat ke atas)
+      overlay.scrollTop = scrollTop;
+      return;
+    }
+  }
+  // Fallback: modal belum ada / belum terbuka — full replace + open
   const slot = document.getElementById('settings-slot');
   if (slot) slot.innerHTML = renderSettingsModal();
-  const overlay = document.getElementById('modal-settings');
   if (overlay) openModal('modal-settings');
 }
 
@@ -10245,6 +10478,16 @@ function buildModals() {
   <div class="modal-overlay" id="modal-add-stat"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">Tambah Stat Kustom</div><div class="field"><label>Nama Stat</label><input type="text" id="as-label" placeholder="Contoh: Kreativitas" class="input"></div><div class="field"><label>Kategori</label><select id="as-group" class="input"><option value="Body">💪 Body</option><option value="Mind">🧠 Mind</option><option value="Social">💬 Social</option><option value="Soul">🌌 Soul</option><option value="Finansial">💰 Finansial</option><option value="Custom" selected>✨ Custom</option></select></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-add-stat')">Batal</button><button class="btn btn-primary" onclick="addCustomStat()">Tambah</button></div></div></div>
   <div class="modal-overlay" id="modal-add-heaven-quest"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title" id="modal-add-heaven-quest-title" style="color:var(--gold-soft);">🌉 Tambah Heaven Quest</div><div class="field"><label>Nama Quest</label><input type="text" id="hq-title" placeholder="Contoh: Capai 10 juta dalam sebulan" class="input"></div><div class="field"><label>Target / Deskripsi</label><textarea id="hq-target" placeholder="Detail target yang harus dicapai..." class="input" rows="3"></textarea></div><div class="field"><label>Reward EXP</label><input type="number" id="hq-exp" placeholder="Contoh: 500000" inputmode="numeric" class="input" min="1"></div><div class="field"><label>Deadline (opsional)</label><input type="date" id="hq-deadline" class="input"></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-add-heaven-quest')">Batal</button><button class="btn btn-gold" onclick="addHeavenQuest()">Simpan</button></div></div></div>
   <div class="modal-overlay" id="modal-add-habit"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">Tambah Habit Baru</div><div class="field"><label>Nama Habit</label><input type="text" id="ah-title" placeholder="Contoh: Minum air 2 Liter" class="input"></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-add-habit')">Batal</button><button class="btn btn-primary" onclick="addHabit()">Simpan Habit</button></div></div></div>
+
+  <div class="modal-overlay" id="modal-add-milestone"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title" id="ms-modal-title">+ Tambah Milestone</div>
+    <div style="display:grid;grid-template-columns:80px 1fr;gap:10px;margin-bottom:10px;">
+      <div class="field"><label>Emoji</label><input type="text" id="ms-emoji" value="📌" class="input" maxlength="4" style="font-size:1.4em;text-align:center;"></div>
+      <div class="field"><label>Judul</label><input type="text" id="ms-judul" placeholder="Contoh: Lulus Kuliah" class="input"></div>
+    </div>
+    <div class="field"><label>Tanggal</label><input type="date" id="ms-tanggal" class="input"></div>
+    <div class="field"><label>Cerita singkat (opsional)</label><textarea id="ms-cerita" class="input" rows="3" placeholder="Apa yang membuat momen ini penting..." style="resize:vertical;"></textarea></div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-add-milestone')">Batal</button><button class="btn btn-primary" onclick="saveMilestone()">Simpan Milestone</button></div>
+  </div></div>
 
   <div class="modal-overlay" id="modal-add-custom-ritual"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">✨ Tambah Ritual Kustom</div><div class="field"><label>Nama Ritual</label><input type="text" id="acr-name" placeholder="Contoh: Baca Buku, Jurnal Harian" class="input" onkeydown="if(event.key==='Enter')submitAddCustomRitual()"></div><div class="field"><label>Ikon (emoji)</label><input type="text" id="acr-icon" placeholder="✨" class="input" maxlength="4" style="font-size:1.4em;width:80px;"></div><div class="field"><label>Reward EXP Spiritual</label><input type="number" id="acr-exp" placeholder="10" inputmode="numeric" class="input" min="1" max="9999"></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-add-custom-ritual')">Batal</button><button class="btn btn-primary" onclick="submitAddCustomRitual()">Simpan Ritual</button></div></div></div>
 
@@ -10967,6 +11210,16 @@ function init(){
           state.character.streak = _rolledStreak;
           state.character.longestStreak = Math.max(state.character.longestStreak || 0, _rolledLongest);
         }
+        // BUGFIX: rollover lokal sudah mereset daily quest ke 'pending'.
+        // Saat Firebase sync membawa data cloud (berisi status 'done'/'failed' dari kemarin),
+        // rollover() kedua tidak jalan karena lastActiveDate sudah = today.
+        // Paksa reset status yang belum diupdate hari ini agar tidak balik ke kemarin.
+        const _syncToday = todayStr();
+        (state.quests || []).forEach(q => {
+          if(q.type === 'daily' && q.statusDate !== _syncToday && q.lastCompletedDate !== _syncToday) {
+            q.status = 'pending'; q.statusDate = _syncToday; q.completionsToday = 0;
+          }
+        });
       }
       rollover(); recomputeLifeScore(); recordMomentumHistory(); render();
       if(cloudTs > localTs) showToast('☁️ Data tersinkron dari cloud!', 'good');
@@ -11349,32 +11602,134 @@ function recordMomentumHistory() {
   save();
 }
 
+// ── Riwayat Statistik Karakter — helper chart (dipanggil saat tab ganti) ──────
+function _renderCharHistChart(){
+  const ch = state.charHistory || {level:[],hp:[],realm:[],streak:[]};
+  const TABS = {
+    level:  { data: ch.level,  icon:'⭐', unit:'',      color:'var(--arise-bright)', isStr:false },
+    hp:     { data: ch.hp,     icon:'❤️', unit:' HP',   color:'var(--crimson)',      isStr:false },
+    realm:  { data: ch.realm,  icon:'⛰️', unit:'',      color:'var(--cyan)',         isStr:true  },
+    streak: { data: ch.streak, icon:'🔥', unit:' hari', color:'var(--orange)',       isStr:false },
+  };
+  const t = TABS[_charHistActiveTab] || TABS.level;
+  const raw = (t.data || []).slice(); // salin data asli, TIDAK dimodifikasi
+
+  // ── Dedup per tanggal (display only) ──────────────────────────────────────
+  // Untuk tab numerik: per tanggal simpan nilai TERTINGGI (misal naik level 3× sehari → tampil 1 baris nilai terbesar).
+  // Untuk tab teks (realm): per tanggal simpan entri TERAKHIR (paling baru).
+  // Data asli di state.charHistory TIDAK diubah.
+  const dedupMap = new Map(); // key: ts, value: entry dengan val tertinggi/terakhir
+  raw.forEach(e => {
+    if(!e || !e.ts) return;
+    if(!dedupMap.has(e.ts)){
+      dedupMap.set(e.ts, e);
+    } else {
+      const existing = dedupMap.get(e.ts);
+      if(t.isStr){
+        dedupMap.set(e.ts, e); // teks: simpan yang terakhir
+      } else if(typeof e.val === 'number' && e.val > existing.val){
+        dedupMap.set(e.ts, e); // numerik: simpan yang lebih tinggi
+      }
+    }
+  });
+  // Ambil 10 tanggal terakhir setelah dedup, urutkan terbaru di atas
+  const data = Array.from(dedupMap.values())
+    .sort((a,b) => (b.ts > a.ts ? 1 : b.ts < a.ts ? -1 : 0))
+    .slice(0, 10);
+  // ──────────────────────────────────────────────────────────────────────────
+
+  if(!data.length) return `<div class="small muted" style="text-align:center;padding:14px 0;">Belum ada riwayat — akan tercatat otomatis saat ada perubahan.</div>`;
+
+  if(t.isStr){
+    // Realm: tampil sebagai daftar teks kronologis
+    return data.map(d=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);">
+        <div style="font-size:9.5px;color:var(--muted);width:90px;flex-shrink:0;">${d.ts}</div>
+        <div style="font-size:10px;font-weight:700;color:${t.color};flex:1;">→ ${escapeHtml(String(d.val))}</div>
+      </div>`).join('');
+  }
+
+  const maxV = Math.max(...data.filter(d=>typeof d.val==='number').map(d=>d.val), 1);
+  return data.map(d=>{
+    const pct = Math.max(4, Math.round((d.val / maxV) * 100));
+    return `
+      <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);">
+        <div style="font-size:9.5px;color:var(--muted);width:90px;flex-shrink:0;">${d.ts}</div>
+        <div style="flex:1;height:9px;background:rgba(255,255,255,0.05);border-radius:3px;overflow:hidden;">
+          <div style="height:100%;width:${pct}%;background:${t.color};border-radius:3px;opacity:0.85;"></div>
+        </div>
+        <div style="font-size:10px;font-weight:700;color:${t.color};min-width:46px;text-align:right;">${d.val.toLocaleString()}${t.unit}</div>
+      </div>`;
+  }).join('');
+}
+
+// Dipanggil saat user klik tab — update chart saja tanpa full re-render
+function switchCharHistTab(tab){
+  _charHistActiveTab = tab;
+  const el = document.getElementById('char-hist-chart');
+  if(el) el.innerHTML = _renderCharHistChart();
+  // Update tampilan aktif tombol tab
+  ['level','hp','realm','streak'].forEach(id=>{
+    const btn = document.getElementById('char-hist-tab-'+id);
+    if(!btn) return;
+    const COLORS = { level:'var(--arise-bright)', hp:'var(--crimson)', realm:'var(--cyan)', streak:'var(--orange)' };
+    const active = id === tab;
+    btn.style.background = active ? COLORS[id] : 'rgba(255,255,255,0.05)';
+    btn.style.color       = active ? '#fff'     : 'var(--muted)';
+  });
+}
+
 function renderCharHistory(){
   const ch = state.charHistory || {level:[],hp:[],realm:[],streak:[]};
-  function _hCard(icon,title,data,unit,color,isStr){
-    if(!data||!data.length) return `<div class="card glass-panel" style="border-left:3px solid ${color};margin-bottom:12px;padding:12px 14px;"><div style="font-size:11px;font-weight:800;color:${color};margin-bottom:6px;">${icon} ${title}</div><div class="small muted" style="text-align:center;padding:8px 0;">Belum ada riwayat — akan tercatat otomatis saat ada perubahan.</div></div>`;
-    const items = data.slice(-30).reverse();
-    const maxV = isStr ? 1 : Math.max(...items.filter(d=>typeof d.val==='number').map(d=>d.val),1);
-    const rows = items.map(d=>{
-      const pct = isStr ? 0 : Math.max(4,Math.round((d.val/maxV)*100));
-      return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);">
-        <div style="font-size:9.5px;color:var(--muted);width:90px;flex-shrink:0;">${d.ts}</div>
-        ${isStr?'':`<div style="flex:1;height:9px;background:rgba(255,255,255,0.05);border-radius:3px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:${color};border-radius:3px;opacity:0.8;"></div></div>`}
-        <div style="font-size:10px;font-weight:700;color:${color};${isStr?'flex:1;':''}min-width:50px;text-align:right;">${typeof d.val==='number'?d.val.toLocaleString():d.val}${unit}</div>
-      </div>`;
-    }).join('');
-    return `<div class="card glass-panel" style="border-left:3px solid ${color};margin-bottom:12px;padding:12px 14px;">
-      <div style="font-size:11px;font-weight:800;color:${color};margin-bottom:8px;letter-spacing:0.4px;">${icon} ${title} <span style="color:var(--muted);font-weight:500;font-size:9.5px;">${data.length} catatan</span></div>
-      ${rows}
-    </div>`;
-  }
+  const c  = state.character  || {};
+  const realmName = (state.realms && state.realms[c.realmIndex||0]) ? state.realms[c.realmIndex||0].nameID : '—';
+
+  // ── 4 stat ringkas ────────────────────────────────────────────────────────
+  const statItems = [
+    { icon:'⭐', val:`Lv.${c.level||1}`,    color:'var(--arise-bright)', small:false },
+    { icon:'❤️', val:`${c.hp||0} HP`,       color:'var(--crimson)',      small:false },
+    { icon:'⛰️', val: realmName,            color:'var(--cyan)',         small:true  },
+    { icon:'🔥', val:`${c.streak||0} hr`,   color:'var(--orange)',       small:false },
+  ];
+  const statRow = statItems.map(s=>`
+    <div style="flex:1;text-align:center;padding:8px 4px;background:rgba(255,255,255,0.04);border-radius:8px;min-width:0;">
+      <div style="font-size:14px;line-height:1;">${s.icon}</div>
+      <div style="font-size:${s.small?'8.5':'11'}px;font-weight:800;color:${s.color};margin-top:3px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(String(s.val))}</div>
+    </div>`).join('');
+
+  // ── Tab buttons ───────────────────────────────────────────────────────────
+  const tabDefs = [
+    { id:'level',  icon:'⭐', label:'Level',  color:'var(--arise-bright)' },
+    { id:'hp',     icon:'❤️', label:'HP',     color:'var(--crimson)'     },
+    { id:'realm',  icon:'⛰️', label:'Realm',  color:'var(--cyan)'        },
+    { id:'streak', icon:'🔥', label:'Streak', color:'var(--orange)'      },
+  ];
+  const tabButtons = tabDefs.map(td=>{
+    const active = _charHistActiveTab === td.id;
+    return `<button id="char-hist-tab-${td.id}" onclick="switchCharHistTab('${td.id}')" style="
+      flex:1;padding:6px 2px;font-size:10px;font-weight:700;border:none;cursor:pointer;border-radius:6px;
+      background:${active ? td.color : 'rgba(255,255,255,0.05)'};
+      color:${active ? '#fff' : 'var(--muted)'};
+      transition:background 0.15s,color 0.15s;line-height:1.3;">${td.icon}<br>${td.label}</button>`;
+  }).join('');
+
+  // Hitung total catatan tab aktif untuk label
+  const TABS_DATA = { level: ch.level, hp: ch.hp, realm: ch.realm, streak: ch.streak };
+  const totalRec = ((TABS_DATA[_charHistActiveTab])||[]).length;
+
   return `<div style="margin-top:20px;">
     <div class="section-title" style="margin-bottom:4px;">📊 Riwayat Statistik Karakter</div>
-    <div class="small muted" style="margin-bottom:14px;text-align:center;">Rekam jejak perkembanganmu — tercatat otomatis setiap ada perubahan.</div>
-    ${_hCard('⭐','Riwayat Level',ch.level,'','var(--arise-bright)',false)}
-    ${_hCard('❤️','Riwayat HP',ch.hp,' HP','var(--crimson)',false)}
-    ${_hCard('⛰️','Riwayat Realm',ch.realm,'','var(--cyan)',true)}
-    ${_hCard('🔥','Riwayat Streak',ch.streak,' hari','var(--orange)',false)}
+    <div class="small muted" style="margin-bottom:12px;text-align:center;">Rekam jejak perkembanganmu — tercatat otomatis setiap ada perubahan.</div>
+
+    <div style="display:flex;gap:7px;margin-bottom:12px;">${statRow}</div>
+
+    <div class="card glass-panel" style="padding:12px 14px;">
+      <div style="display:flex;gap:5px;margin-bottom:12px;">${tabButtons}</div>
+      <div id="char-hist-chart">${_renderCharHistChart()}</div>
+      <div style="font-size:9px;color:var(--muted-2);text-align:right;margin-top:7px;">
+        10 terakhir · total ${totalRec} catatan
+      </div>
+    </div>
   </div>`;
 }
 
