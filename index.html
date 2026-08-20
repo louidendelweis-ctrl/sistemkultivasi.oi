@@ -3510,7 +3510,8 @@ function getTitleStyle(title) {
 
 const DEFAULT_SCHEDULE = {
   pagi: [ {time:'03:00–03:05', label:'Matikan alarm, minum air'}, {time:'03:05–03:20', label:'Baca buku & review target'}, {time:'03:20–03:40', label:'Latihan public speaking'}, {time:'03:40–04:00', label:'Olahraga & Bela diri'}, {time:'04:00–04:30', label:'Spiritual & Meditasi'}, {time:'04:30–05:30', label:'Fokus project pribadi'}, {time:'05:30–06:00', label:'Persiapan pagi & Mandi'}, {time:'06:00–07:00', label:'Berangkat aktivitas'}, {time:'07:00–18:00', label:'⚙️ SHIFT UTAMA'}, {time:'18:00–19:00', label:'Istirahat'}, {time:'19:00–21:00', label:'Evaluasi & Belajar'}, {time:'21:00–22:00', label:'Riset besok'}, {time:'22:00–03:00', label:'Tidur'} ],
-  siang: [ {time:'05:00–06:00', label:'Bangun, Spiritual, Olahraga'}, {time:'06:00–08:00', label:'Project Pribadi'}, {time:'08:00–11:00', label:'Fokus Bisnis/Belajar'}, {time:'11:00–12:00', label:'Persiapan & Istirahat'}, {time:'12:00–13:00', label:'Berangkat'}, {time:'13:00–23:00', label:'⚙️ SHIFT SIANG'}, {time:'23:00–05:00', label:'Tidur'} ]
+  siang: [ {time:'05:00–06:00', label:'Bangun, Spiritual, Olahraga'}, {time:'06:00–08:00', label:'Project Pribadi'}, {time:'08:00–11:00', label:'Fokus Bisnis/Belajar'}, {time:'11:00–12:00', label:'Persiapan & Istirahat'}, {time:'12:00–13:00', label:'Berangkat'}, {time:'13:00–23:00', label:'⚙️ SHIFT SIANG'}, {time:'23:00–05:00', label:'Tidur'} ],
+  malam: [ {time:'14:00–15:00', label:'Bangun & Persiapan'}, {time:'15:00–17:00', label:'Project Pribadi'}, {time:'17:00–18:00', label:'Berangkat'}, {time:'18:00–02:00', label:'⚙️ SHIFT MALAM'}, {time:'02:00–03:00', label:'Pulang & Istirahat'}, {time:'03:00–11:00', label:'Tidur'} ]
 };
 
 function DEFAULT_SETTINGS(){
@@ -3886,7 +3887,8 @@ function DEFAULT_STATE(){
     weeklyShiftPlan: {senin:'pagi', selasa:'pagi', rabu:'siang', kamis:'siang', jumat:'pagi', sabtu:'siang', minggu:'libur'},
     weeklyDaySchedule: {
       pagi:   {senin:{tasks:[],lastReset:''}, selasa:{tasks:[],lastReset:''}, rabu:{tasks:[],lastReset:''}, kamis:{tasks:[],lastReset:''}, jumat:{tasks:[],lastReset:''}, sabtu:{tasks:[],lastReset:''}, minggu:{tasks:[],lastReset:''}},
-      siang:  {senin:{tasks:[],lastReset:''}, selasa:{tasks:[],lastReset:''}, rabu:{tasks:[],lastReset:''}, kamis:{tasks:[],lastReset:''}, jumat:{tasks:[],lastReset:''}, sabtu:{tasks:[],lastReset:''}, minggu:{tasks:[],lastReset:''}},
+       siang:  {senin:{tasks:[],lastReset:''}, selasa:{tasks:[],lastReset:''}, rabu:{tasks:[],lastReset:''}, kamis:{tasks:[],lastReset:''}, jumat:{tasks:[],lastReset:''}, sabtu:{tasks:[],lastReset:''}, minggu:{tasks:[],lastReset:''}},
+       malam:  {senin:{tasks:[],lastReset:''}, selasa:{tasks:[],lastReset:''}, rabu:{tasks:[],lastReset:''}, kamis:{tasks:[],lastReset:''}, jumat:{tasks:[],lastReset:''}, sabtu:{tasks:[],lastReset:''}, minggu:{tasks:[],lastReset:''}},
       custom: {senin:{tasks:[],lastReset:''}, selasa:{tasks:[],lastReset:''}, rabu:{tasks:[],lastReset:''}, kamis:{tasks:[],lastReset:''}, jumat:{tasks:[],lastReset:''}, sabtu:{tasks:[],lastReset:''}, minggu:{tasks:[],lastReset:''}},
     },
     commerce_deadline: new Date(new Date().getFullYear(), 11, 1).toISOString(),
@@ -4060,6 +4062,7 @@ function migrateState(s){
   if(!Array.isArray(s.goals)) s.goals = []; if(!Array.isArray(s.habits)) s.habits = []; if(!s.meta.activityLog) s.meta.activityLog = {}; if(!s.meta.activityNotes) s.meta.activityNotes = {}; if(!Array.isArray(s.goalHistory)) s.goalHistory = []; if(!Array.isArray(s.questFailureHistory)) s.questFailureHistory = []; if(!Array.isArray(s.scheduleFailureHistory)) s.scheduleFailureHistory = []; if(!Array.isArray(s.lifeTimeline)) s.lifeTimeline = []; if(!Array.isArray(s.lifeMomentum)) s.lifeMomentum = [];
   if(!s.meta.dailyExpLog) s.meta.dailyExpLog = {};
   if(!s.schedule || !s.schedule.pagi) s.schedule = JSON.parse(JSON.stringify(DEFAULT_SCHEDULE));
+  if(!s.schedule.malam) s.schedule.malam = JSON.parse(JSON.stringify(DEFAULT_SCHEDULE.malam));
   if(!s._realmMigratedV2){ s.character.realmIndex = s.character.realmIndex || 0; s._realmMigratedV2 = true; }
   s.realms = DEFAULT_REALMS.map(r => ({...r}));
   syncRealmWithLevel(s); // Perbaikan sinkron Level <-> Tahapan (terutama saat import data lama/tidak konsisten)
@@ -4147,7 +4150,7 @@ function migrateState(s){
   if(typeof s.settings.showDailySchedule !== 'boolean') s.settings.showDailySchedule = true;
   // Migrasi weeklyDaySchedule ke format template (pagi/siang/custom)
   const _wdDays = ['senin','selasa','rabu','kamis','jumat','sabtu','minggu'];
-  const _wdTpls = ['pagi','siang','custom'];
+  const _wdTpls = ['pagi','siang','malam','custom'];
   if(!s.weeklyDaySchedule) s.weeklyDaySchedule = {};
   // Format lama: key langsung nama hari → pindahkan ke template 'pagi'
   if(s.weeklyDaySchedule['senin'] !== undefined && !s.weeklyDaySchedule['pagi']){
@@ -4890,7 +4893,7 @@ function processScheduleRollover(fromDate, toDate){
   let date = fromDate;
   while(date < toDate){
     const dayName = dayNameForDate(date);
-    ['pagi','siang','custom'].forEach(tpl => {
+    ['pagi','siang','malam','custom'].forEach(tpl => {
       const day = state.weeklyDaySchedule[tpl]?.[dayName];
       if(!day || !Array.isArray(day.tasks)) return;
       day.tasks.forEach(t => {
@@ -6052,7 +6055,11 @@ function openDailyHistory(dateStr) {
 function _navHistory(delta) {
     const d = new Date(_historyDate + 'T00:00:00');
     d.setDate(d.getDate() + delta);
-    _historyDate = d.toISOString().slice(0,10);
+    // Gunakan tanggal lokal, bukan toISOString() (UTC), agar zona Asia/Bangkok
+    // tidak membuat navigasi Kemarin/Besok melompat satu hari tambahan.
+    _historyDate = d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0');
     _renderDailyHistoryModal();
 }
 function _renderDailyHistoryModal() {
@@ -6636,7 +6643,7 @@ function toggleWeeklyExpand(day) { _expandedWeeklyDay = _expandedWeeklyDay === d
 function renderWeeklyShiftCalendar() {
     if(!state.settings.showWeeklyCalendar) return '';
     const map = ['minggu','senin','selasa','rabu','kamis','jumat','sabtu']; const labelMap = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
-    const SHIFT_BADGE = { pagi: { label:'☀️ Pagi', color:'var(--cyan)' }, siang: { label:'🌅 Siang', color:'var(--gold)' }, libur: { label:'🌙 Libur', color:'var(--muted)'}, custom: { label:'⚙️ Normal', color:'var(--orange)'} };
+    const SHIFT_BADGE = { pagi: { label:'☀️ Pagi', color:'var(--cyan)' }, siang: { label:'🌅 Siang', color:'var(--gold)' }, malam: { label:'🌙 Malam', color:'var(--arise-bright)' }, libur: { label:'⏸️ Libur', color:'var(--muted)'}, custom: { label:'⚙️ Normal', color:'var(--orange)'} };
     const cells = map.map((day, i) => {
         const shift = state.weeklyShiftPlan?.[day] || 'libur'; const badge = SHIFT_BADGE[shift];
         const schedule = state.schedule?.[shift] || [];
@@ -9642,7 +9649,8 @@ function renderProfile(){
           <div class="btn-group" style="width:100%; display:flex;">
              ${shiftBtn(day, 'pagi', '☀️', 'Pagi')}
              ${shiftBtn(day, 'siang', '🌅', 'Siang')}
-             ${shiftBtn(day, 'libur', '🌙', 'Libur')}
+             ${shiftBtn(day, 'malam', '🌙', 'Malam')}
+             ${shiftBtn(day, 'libur', '⏸️', 'Libur')}
              ${shiftBtn(day, 'custom', '⚙️', 'Normal')}
           </div>
       </div>
@@ -9654,7 +9662,7 @@ function renderProfile(){
   const _pActivity = `<div class="section-title">Riwayat Aktivitas & Performa</div><div class="card"><div class="row-between small"><span class="muted">Quest Berhasil</span><span style="color:var(--jade)">${c.totalQuests||0}</span></div><div class="row-between small mt-10"><span class="muted">Quest Gagal</span><span style="color:var(--crimson)">${c.failedQuests||0}</span></div><div class="row-between small mt-10" style="border-top:1px solid rgba(255,255,255,0.05); padding-top:10px;"><span class="muted">Goal Tercapai</span><span style="color:var(--cyan)">${c.goalsCompleted||0}</span></div><div class="row-between small mt-10"><span class="muted">Goal Gagal/Terlewat</span><span style="color:var(--crimson)">${c.failedGoals||0}</span></div><div class="row-between small mt-10" style="border-top:1px solid rgba(255,255,255,0.05); padding-top:10px;"><span class="muted">Target Finansial Tembus</span><span style="color:var(--gold)">${c.bossesDefeated||0}</span></div><div class="row-between small mt-10"><span class="muted">Project Terlewat</span><span style="color:var(--crimson)">${c.failedProjects||0}</span></div><div class="row-between small mt-10"><span class="muted">Streak Terpanjang</span><span>${c.longestStreak||0} hari</span></div></div>`;
   const _pTimeline = `<div class="section-title">📜 Timeline Kehidupan</div><div class="card" style="padding:14px 16px;">${renderLifeTimeline()}</div>`;
   const _pRealm = `<div class="section-title">Cultivation Realms Tracker</div><div class="card">${realmHtml}</div>`;
-  const _pShift = `<div class="section-title">Manajemen Shift Mingguan</div><div class="card"><div class="small muted mb-14">Atur roster mingguan Anda di sini. Jadwal akan terganti otomatis mengikuti hari.</div>${shiftPlanHtml}<div style="height:1px; background:var(--border); margin:16px 0;"></div><div class="shift-toggle"><div class="shift-opt ${c.shift==='pagi'?'active':''}" onclick="setShift('pagi')">Edit Jadwal Pagi</div><div class="shift-opt ${c.shift==='siang'?'active':''}" onclick="setShift('siang')">Edit Jadwal Siang</div><div class="shift-opt ${c.shift==='custom'?'active':''}" onclick="setShift('custom')">Edit Normal</div></div><div class="mt-10">${schedHtml}</div><button class="btn btn-ghost btn-block mt-10" onclick="addScheduleBlock('${c.shift}')">+ Tambah Blok Waktu</button><button class="btn btn-ghost btn-block mt-10" onclick="resetSchedule('${c.shift}')">Reset Jadwal ke Default</button>
+  const _pShift = `<div class="section-title">Manajemen Shift Mingguan</div><div class="card"><div class="small muted mb-14">Atur roster mingguan Anda di sini. Jadwal akan terganti otomatis mengikuti hari.</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;"><button class="btn btn-ghost btn-sm" onclick="applyShiftToAllDays('pagi')">☀️ Semua Pagi</button><button class="btn btn-ghost btn-sm" onclick="applyShiftToAllDays('siang')">🌅 Semua Siang</button><button class="btn btn-ghost btn-sm" onclick="applyShiftToAllDays('malam')">🌙 Semua Malam</button><button class="btn btn-ghost btn-sm" onclick="applyShiftToAllDays('custom')">⚙️ Semua Normal</button></div>${shiftPlanHtml}<div style="height:1px; background:var(--border); margin:16px 0;"></div><div class="shift-toggle"><div class="shift-opt ${c.shift==='pagi'?'active':''}" onclick="setShift('pagi')">Edit Jadwal Pagi</div><div class="shift-opt ${c.shift==='siang'?'active':''}" onclick="setShift('siang')">Edit Jadwal Siang</div><div class="shift-opt ${c.shift==='malam'?'active':''}" onclick="setShift('malam')">Edit Jadwal Malam</div><div class="shift-opt ${c.shift==='custom'?'active':''}" onclick="setShift('custom')">Edit Normal</div></div><div class="mt-10">${schedHtml}</div><button class="btn btn-ghost btn-block mt-10" onclick="addScheduleBlock('${c.shift}')">+ Tambah Blok Waktu</button><button class="btn btn-ghost btn-block mt-10" onclick="resetSchedule('${c.shift}')">Reset Jadwal ke Default</button>
     <div style="height:1px;background:var(--border);margin:16px 0;"></div>
     <div style="font-family:var(--font-system);font-size:10px;font-weight:800;color:var(--gold-soft);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px;">📦 Apa Itu Time Boxing?</div>
     <div style="font-size:11.5px;color:var(--muted);line-height:1.6;font-family:var(--font-body);">Time Boxing = batas waktu fokus intensif per sesi (bukan durasi blok). Contoh: blok <strong>Belajar 13:00–17:00</strong> bisa diatur Time Box <strong>2 jam</strong> — artinya kamu fokus 2 jam lalu istirahat, bukan terus-menerus 4 jam.<br><span style="font-size:10px;color:var(--muted-2);">Isi kolom "📦 Time Box" di tiap baris blok di atas.</span></div>
@@ -10844,6 +10852,13 @@ function shiftBtn(day, shiftVal, icon, label) {
     const activeStyle = isActive ? 'background:var(--arise);color:#fff;border-color:var(--arise);font-weight:800;' : '';
     return `<button class="btn btn-secondary btn-sm" style="flex:1;font-size:11px;${activeStyle}" onclick="state.weeklyShiftPlan['${day}']='${shiftVal}';render();save();">${icon} ${label}</button>`;
 }
+function applyShiftToAllDays(shiftVal) {
+    if(!state.weeklyShiftPlan) state.weeklyShiftPlan = {};
+    _WD_DAYS.forEach(day => { state.weeklyShiftPlan[day] = shiftVal; });
+    state.character.shift = shiftVal === 'libur' ? (state.character.shift || 'pagi') : shiftVal;
+    render(); save();
+    showToast('Shift ' + (shiftVal === 'custom' ? 'Normal' : shiftVal.charAt(0).toUpperCase()+shiftVal.slice(1)) + ' diterapkan ke semua hari.', 'ach');
+}
 function addScheduleBlock(shift) {
     if(!state.schedule[shift]) state.schedule[shift] = [];
     state.schedule[shift].push({time: '00:00–01:00', label: 'Blok Baru'});
@@ -10864,6 +10879,7 @@ function resetSchedule(shift) {
         const defaults = {
             pagi: [{time:'03:00–03:05',label:'Matikan alarm, minum air'},{time:'04:00–04:30',label:'Spiritual & Meditasi'},{time:'04:30–05:30',label:'Fokus project pribadi'},{time:'07:00–18:00',label:'⚙️ SHIFT UTAMA'},{time:'19:00–21:00',label:'Evaluasi & Belajar'},{time:'22:00–03:00',label:'Tidur'}],
             siang: [{time:'05:00–06:00',label:'Bangun, Spiritual, Olahraga'},{time:'06:00–08:00',label:'Project Pribadi'},{time:'13:00–23:00',label:'⚙️ SHIFT SIANG'},{time:'23:00–05:00',label:'Tidur'}],
+            malam: [{time:'14:00–15:00',label:'Bangun & Persiapan'},{time:'17:00–18:00',label:'Berangkat'},{time:'18:00–02:00',label:'⚙️ SHIFT MALAM'},{time:'02:00–03:00',label:'Pulang & Istirahat'},{time:'03:00–11:00',label:'Tidur'}],
             custom: []
         };
         state.schedule[shift] = JSON.parse(JSON.stringify(defaults[shift] || []));
@@ -10879,9 +10895,14 @@ const _WD_LABEL = {senin:'Senin',selasa:'Selasa',rabu:'Rabu',kamis:'Kamis',jumat
 
 function getTodayDayName(){ return _WD_DAYS[([0,1,2,3,4,5,6].map(i=>_WD_DAYS[[6,0,1,2,3,4,5][i]]))[new Date().getDay()]&&0] || _WD_DAYS[[6,0,1,2,3,4,5][new Date().getDay()]]; }
 
-// Mengembalikan objek {tasks, lastReset} untuk template aktif + hari tertentu
-function _wdGetDay(day){
-  const tpl = _wdActiveTemplate || 'pagi';
+// Mengembalikan objek {tasks, lastReset}. Editor memakai template aktif,
+// sedangkan Home dapat meminta template shift yang benar-benar ditugaskan ke hari itu.
+function _wdAssignedTemplate(day){
+  const shift = state.weeklyShiftPlan?.[day];
+  return ['pagi','siang','malam','custom'].includes(shift) ? shift : 'custom';
+}
+function _wdGetDay(day, templateOverride){
+  const tpl = templateOverride || _wdActiveTemplate || 'pagi';
   if(!state.weeklyDaySchedule[tpl]) state.weeklyDaySchedule[tpl] = {};
   if(!state.weeklyDaySchedule[tpl][day]) state.weeklyDaySchedule[tpl][day] = {tasks:[], lastReset:''};
   return state.weeklyDaySchedule[tpl][day];
@@ -10893,7 +10914,7 @@ function autoResetWeeklySchedule(){
   const today = todayStr();
   const dayName = _WD_DAYS[[6,0,1,2,3,4,5][new Date().getDay()]];
   // Reset centang hari ini di semua template jika belum di-reset hari ini
-  ['pagi','siang','custom'].forEach(tpl => {
+  ['pagi','siang','malam','custom'].forEach(tpl => {
     const day = state.weeklyDaySchedule[tpl]?.[dayName];
     if(day && day.lastReset !== today){
       day.tasks.forEach(t=>{ t.done=false; t.failed=false; });
@@ -10925,15 +10946,15 @@ function updateDayTask(dayName, taskId, field, value){
   save();
 }
 
-function checkDayTask(dayName, taskId){
-  const t = _wdGetDay(dayName).tasks.find(x=>x.id===taskId); if(!t) return;
+function checkDayTask(dayName, taskId, templateOverride){
+  const t = _wdGetDay(dayName, templateOverride).tasks.find(x=>x.id===taskId); if(!t) return;
   if(t.done || t.failed) return;
   t.done = true;
   save(); render();
 }
 
-function failDayTask(dayName, taskId){
-  const t = _wdGetDay(dayName).tasks.find(x=>x.id===taskId); if(!t) return;
+function failDayTask(dayName, taskId, templateOverride){
+  const t = _wdGetDay(dayName, templateOverride).tasks.find(x=>x.id===taskId); if(!t) return;
   if(t.done || t.failed) return; // terkunci setelah dipilih
   t.failed = true;
   if(true){
@@ -11005,6 +11026,7 @@ const _SVG_TRASH = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" 
 
 function _wdTaskRow(day, t, forHome){
   const isEditing = !forHome && _wdEditing === day+':'+t.id;
+  const homeTemplate = forHome ? _wdAssignedTemplate(day) : '';
   const timeBadge = t.time
     ? `<span style="font-size:10px;font-weight:800;color:rgba(200,168,75,0.85);margin-right:5px;font-family:var(--font-system);flex-shrink:0;">${escapeHtml(t.time)}</span>`
     : '';
@@ -11029,10 +11051,10 @@ function _wdTaskRow(day, t, forHome){
   const _locked = t.done || t.failed;
   const checkBtn = _locked
     ? `<button class="btn btn-sm ${t.done?'btn-primary':'btn-secondary'}" disabled style="${t.done?'background:rgba(52,211,153,0.25);border-color:rgba(52,211,153,0.5);color:#34d399;':'opacity:0.25;'}font-size:11px;padding:0 9px;height:30px;white-space:nowrap;cursor:default;">✓ Selesai</button>`
-    : `<button class="btn btn-sm btn-secondary" onclick="checkDayTask('${day}','${t.id}')" style="font-size:11px;padding:0 9px;height:30px;white-space:nowrap;">✓ Selesai</button>`;
+    : `<button class="btn btn-sm btn-secondary" onclick="checkDayTask('${day}','${t.id}','${homeTemplate}')" style="font-size:11px;padding:0 9px;height:30px;white-space:nowrap;">✓ Selesai</button>`;
   const failBtn = _locked
     ? `<button class="btn btn-sm ${t.failed?'btn-danger':'btn-secondary'}" disabled style="${t.failed?'background:rgba(239,68,68,0.2);border-color:rgba(239,68,68,0.5);color:#ef4444;':'opacity:0.25;'}font-size:11px;padding:0 9px;height:30px;cursor:default;">✕ Gagal</button>`
-    : `<button class="btn btn-sm btn-secondary" onclick="failDayTask('${day}','${t.id}')" style="font-size:11px;padding:0 9px;height:30px;">✕ Gagal</button>`;
+    : `<button class="btn btn-sm btn-secondary" onclick="failDayTask('${day}','${t.id}','${homeTemplate}')" style="font-size:11px;padding:0 9px;height:30px;">✕ Gagal</button>`;
   const editBtn  = forHome ? '' : `<button class="icon-btn" onclick="startEditDayTask('${day}','${t.id}')" title="Edit">${_SVG_EDIT}</button>`;
   const delBtn   = forHome ? '' : `<button class="icon-btn" onclick="deleteDayTask('${day}','${t.id}')" title="Hapus">${_SVG_TRASH}</button>`;
 
@@ -11063,7 +11085,8 @@ function renderTodayScheduleCard(){
 
   /* ── Roster header ── */
   const rosterCols = _WD_DAYS.map(day=>{
-    const tasks     = _wdGetDay(day).tasks;
+    const dayShift  = state.weeklyShiftPlan?.[day] || 'libur';
+    const tasks     = dayShift === 'libur' ? [] : _wdGetDay(day, _wdAssignedTemplate(day)).tasks;
     const isToday   = day === todayDay;
     const isActive  = day === activeDay;
     const hasFailed = tasks.some(t=>t.failed);
@@ -11088,20 +11111,21 @@ function renderTodayScheduleCard(){
   /* ── Panel hari aktif ── */
   const label   = _WD_LABEL[activeDay];
   const isToday = activeDay === todayDay;
-  const tasks   = _wdGetDay(activeDay).tasks;
+  const activeShift = state.weeklyShiftPlan?.[activeDay] || 'libur';
+  const tasks   = activeShift === 'libur' ? [] : _wdGetDay(activeDay, _wdAssignedTemplate(activeDay)).tasks;
   const done    = tasks.filter(t=>t.done).length;
   const failed  = tasks.filter(t=>t.failed).length;
   const pct     = tasks.length ? Math.round((done/tasks.length)*100) : 0;
 
   const taskHTML = tasks.length
     ? tasks.map(t=>_wdTaskRow(activeDay,t,true)).join('')
-    : `<div style="text-align:center;padding:14px 0;font-size:12px;color:rgba(255,255,255,0.3);font-style:italic;">Belum ada jadwal hari ${label}.</div>`;
+     : `<div style="text-align:center;padding:14px 0;font-size:12px;color:rgba(255,255,255,0.3);font-style:italic;">${activeShift === 'libur' ? '⏸️ Hari ini dijadwalkan Libur.' : `Belum ada jadwal hari ${label}.`}</div>`;
 
   const panel = `<div style="margin-top:10px;background:rgba(255,255,255,0.03);border:1px solid ${isToday?'rgba(200,168,75,0.35)':'rgba(255,255,255,0.08)'};border-radius:12px;overflow:hidden;">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 14px 10px;border-bottom:1px solid rgba(255,255,255,0.06);">
       <div style="display:flex;align-items:center;gap:8px;">
         ${isToday?`<span style="font-size:8px;font-weight:900;letter-spacing:0.8px;background:rgba(200,168,75,0.15);color:rgba(200,168,75,1);border:1px solid rgba(200,168,75,0.35);border-radius:4px;padding:2px 7px;">HARI INI</span>`:''}
-        <span style="font-family:var(--font-display);font-weight:900;font-size:14px;color:rgba(200,168,75,0.95);">${label}</span>
+        <span style="font-family:var(--font-display);font-weight:900;font-size:14px;color:rgba(200,168,75,0.95);">${label} <span style="font-size:10px;color:var(--muted);font-weight:700;">· ${activeShift === 'custom' ? 'Normal' : activeShift === 'libur' ? 'Libur' : activeShift.charAt(0).toUpperCase()+activeShift.slice(1)}</span></span>
         ${tasks.length?`<span style="font-size:11px;color:rgba(255,255,255,0.35);">${done}/${tasks.length} selesai${failed>0?` · <span style="color:rgba(239,68,68,0.7);">${failed} gagal</span>`:''}</span>`:''}
       </div>
       <div style="font-family:var(--font-system);font-size:16px;font-weight:900;color:rgba(200,168,75,0.85);">${pct}%</div>
@@ -11127,7 +11151,7 @@ function renderWeeklyScheduleEditor(){
   const todayDay = _WD_DAYS[[6,0,1,2,3,4,5][new Date().getDay()]];
 
   /* ── Pilihan template shift ── */
-  const _WD_TPLS = [{id:'pagi',label:'☀️ Pagi'},{id:'siang',label:'🌅 Siang'},{id:'custom',label:'⚙️ Normal'}];
+  const _WD_TPLS = [{id:'pagi',label:'☀️ Pagi'},{id:'siang',label:'🌅 Siang'},{id:'malam',label:'🌙 Malam'},{id:'custom',label:'⚙️ Normal'}];
   const tplTabs = _WD_TPLS.map(tpl=>{
     const active = _wdActiveTemplate === tpl.id;
     return `<button onclick="setWdTemplate('${tpl.id}')" style="flex:1;padding:7px 4px;border-radius:9px;border:1px solid ${active?'rgba(200,168,75,0.6)':'rgba(255,255,255,0.1)'};background:${active?'rgba(200,168,75,0.12)':'transparent'};color:${active?'rgba(200,168,75,1)':'rgba(255,255,255,0.45)'};font-family:var(--font-display);font-weight:700;font-size:11px;cursor:pointer;transition:all 0.2s;">${tpl.label}</button>`;
@@ -12594,9 +12618,6 @@ function resetNavGroupOrder() {
   };
 })();
 </script>
-
-</body>
-</html>
 
 </body>
 </html>
