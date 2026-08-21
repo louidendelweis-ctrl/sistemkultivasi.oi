@@ -2298,6 +2298,15 @@ function formatRupiah(n){
   if(abs >= 1_000_000_000)     return prefix + shortNum(abs / 1_000_000_000) + 'B';
   return prefix + abs.toLocaleString('id-ID');
 }
+function formatFinancialInput(el){
+  if(!el) return;
+  const digits = String(el.value || '').replace(/\D/g, '');
+  el.value = digits ? Number(digits).toLocaleString('id-ID') : '';
+}
+function parseFinancialInput(value){
+  const digits = String(value || '').replace(/\D/g, '');
+  return digits ? parseInt(digits, 10) : 0;
+}
 function escapeHtml(str){ return str===undefined||str===null?'':String(str).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function getTipeIcon(type){const map={'Buku':'📖','Course':'🎓','Video':'🎬','Artikel':'📄','Catatan':'📝','Finansial':'💰','Investasi':'📈','Bisnis':'💼','Olahraga':'🏋️','Skill':'🎯','Proyek':'🔨','Mindset':'🧘','Riset':'🌐','Lainnya':'📦'};return map[type]||'📦';}
 function escapeAttr(str){ return escapeHtml(str); }
@@ -5405,7 +5414,7 @@ function checkSedekahDupeWarn(){
 }
 
 function addFinanceTransaction(){
-  const amount = parseInt(document.getElementById('bi-amount').value,10); 
+  const amount = parseFinancialInput(document.getElementById('bi-amount').value); 
   const note = document.getElementById('bi-note').value.trim();
   const type = document.getElementById('bi-type').value;
   const cat = document.getElementById('bi-cat').value.trim() || 'Lainnya';
@@ -5451,7 +5460,7 @@ function _doAddFinanceTransaction(amount, note, type, cat, akun){
 // Pindah saldo antar kantong Cash <-> Saldo. Tidak dihitung sebagai pemasukan/pengeluaran —
 // hanya memindahkan posisi uang, Total Uang (Cash+Saldo) tidak berubah.
 function transferSaldo(){
-  const amount = parseInt(document.getElementById('ts-amount').value,10);
+  const amount = parseFinancialInput(document.getElementById('ts-amount').value);
   const dari = document.getElementById('ts-dari').value;
   const ke = document.getElementById('ts-ke').value;
   const note = document.getElementById('ts-note').value.trim();
@@ -5514,9 +5523,9 @@ function updateEditFinanceSyncInfo(){
   if(isTransfer){ infoEl.textContent = ''; return; }
   const syncOn = state.settings && state.settings.financeEditSync !== false;
   const origType   = document.getElementById('ef-orig-type').value;
-  const origAmount = parseInt(document.getElementById('ef-orig-amount').value || '0', 10);
+  const origAmount = parseFinancialInput(document.getElementById('ef-orig-amount').value);
   const newType    = document.getElementById('ef-type').value;
-  const newAmount  = parseInt(document.getElementById('ef-amount').value || '0', 10);
+  const newAmount  = parseFinancialInput(document.getElementById('ef-amount').value);
   infoEl.textContent = _efSyncInfoText(origType, newType, origAmount, newAmount, syncOn);
 }
 
@@ -5538,7 +5547,7 @@ function openEditFinance(id){
     akunEl.value = e.akun || 'cash';
     document.getElementById('ef-cat').value = e.cat || '';
   }
-  document.getElementById('ef-amount').value = e.amount || '';
+  document.getElementById('ef-amount').value = e.amount ? Number(e.amount).toLocaleString('id-ID') : '';
   document.getElementById('ef-note').value = e.note || '';
   updateEditFinanceSyncInfo();
   openModal('modal-edit-finance');
@@ -5550,7 +5559,7 @@ function saveEditFinance(){
   const e = _findFinanceEntry(id);
   if(!e){ showToast('Transaksi tidak ditemukan.', 'bad'); return; }
 
-  const newAmount = parseInt(document.getElementById('ef-amount').value, 10);
+  const newAmount = parseFinancialInput(document.getElementById('ef-amount').value);
   if(!newAmount || newAmount <= 0){ document.getElementById('ef-amount').focus(); showToast('Jumlah tidak valid.', 'bad'); return; }
   const newNote = document.getElementById('ef-note').value.trim();
 
@@ -5759,7 +5768,7 @@ function openUpdateTargetModal(id) {
 }
 
 function updateBossTarget(){
-  const amount = parseInt(document.getElementById('bt-amount').value,10); 
+  const amount = parseFinancialInput(document.getElementById('bt-amount').value); 
   if(!amount || !_updatingTargetId){ return; } 
   const target = state.targets.find(t => t.id === _updatingTargetId);
   if(!target) return;
@@ -5791,14 +5800,14 @@ function openEditTargetModal(id) {
     if(!target) return;
     _editingTargetId = id;
     document.getElementById('nb-name').value = target.name;
-    document.getElementById('nb-maxhp').value = target.maxHp;
+    document.getElementById('nb-maxhp').value = Number(target.maxHp || 0).toLocaleString('id-ID');
     document.getElementById('nb-deadline').value = target.deadline || '';
     openModal('modal-new-boss');
 }
 
 function setNewBoss(){
   const name = document.getElementById('nb-name').value.trim(); 
-  const maxHp = parseInt(document.getElementById('nb-maxhp').value,10);
+  const maxHp = parseFinancialInput(document.getElementById('nb-maxhp').value);
   const deadline = document.getElementById('nb-deadline').value || '';
   if(!name || !maxHp || maxHp<=0) return;
 
@@ -6664,7 +6673,7 @@ function renderHabits(){
 }
 
 function addSedekah(evt){
-  const nominal = parseInt(document.getElementById('sedekah-nominal').value, 10); if(!nominal || nominal <= 0) return;
+  const nominal = parseFinancialInput(document.getElementById('sedekah-nominal').value); if(!nominal || nominal <= 0) return;
   const today = todayStr(); if(state.sedekah.lastExpDate !== today){ state.sedekah.dailyExpGained = 0; state.sedekah.lastExpDate = today; }
   const expGained = Math.floor(nominal / 1000) * 10;
   const _sedekahEntry = { id: Date.now().toString(), nominal, date: document.getElementById('sedekah-date').value || today, note: document.getElementById('sedekah-note').value.trim(), expGained, createdAt: new Date().toISOString() };
@@ -6896,7 +6905,7 @@ function renderRitual(){
     <div class="section-title mt-14" style="color:var(--gold);">🌟 Sedekah & Amal</div>
     <div class="card" style="border-top:3px solid var(--gold);">
       <div class="small muted mb-14" style="text-align:center;">Total Seumur Hidup: <b style="color:var(--gold);">Rp ${(state.sedekah?.totalLifetime||0).toLocaleString()}</b></div>
-      <div class="form-row"><input id="sedekah-nominal" type="number" class="input" placeholder="Nominal (Rp)"><input id="sedekah-date" type="date" class="input" value="${today}"></div>
+      <div class="form-row"><input id="sedekah-nominal" type="text" inputmode="numeric" class="input" placeholder="Nominal (Rp)" oninput="formatFinancialInput(this)"><input id="sedekah-date" type="date" class="input" value="${today}"></div>
       <div class="form-row mt-10"><input id="sedekah-note" type="text" class="input" placeholder="Catatan/Tujuan (opsional)..."><select id="sedekah-akun" class="input" style="max-width:130px;"><option value="cash">💵 Cash</option><option value="saldo">🏦 Saldo</option></select></div>
       <button class="btn btn-gold btn-block mt-10" onclick="addSedekah(event)">Catat Sedekah</button>
       <table class="stats-table" style="margin-top:1rem;"><thead><tr><th>Waktu</th><th>Nominal</th><th>EXP</th><th>Catatan</th></tr></thead><tbody>${sedekahRows}</tbody></table>
@@ -10650,7 +10659,7 @@ function buildModals() {
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">${getCategorySuggestions().map(c=>`<button type="button" class="btn btn-ghost btn-sm" style="font-size:10.5px;padding:3px 10px;" onclick="fillCatChip('${escapeHtml(c).replace(/'/g,"\\'")}')">${escapeHtml(c)}</button>`).join('')}</div>
     </div>
     <div id="bi-sedekah-warn" style="display:none;margin-bottom:8px;font-size:12px;font-weight:600;color:#fff;background:linear-gradient(90deg,rgba(255,138,61,0.35),rgba(255,138,61,0.12));border:1px solid rgba(255,138,61,0.5);border-radius:10px;padding:8px 10px;line-height:1.5;">⚠️ Kamu sudah mencatat Sedekah hari ini via Ritual Sedekah. Menyimpan ini akan mengurangi saldo dua kali.</div>
-    <div class="field"><label>Jumlah (Rp)</label><input type="number" id="bi-amount" placeholder="100000" inputmode="numeric" class="input"></div><div class="field"><label>Catatan (opsional)</label><input type="text" id="bi-note" placeholder="Hasil proyek, target tercapai, dll" class="input"></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-log-income')">Batal</button><button class="btn btn-primary" onclick="addFinanceTransaction()">Catat</button></div></div></div>
+    <div class="field"><label>Jumlah (Rp)</label><input type="text" id="bi-amount" placeholder="100.000" inputmode="numeric" class="input" oninput="formatFinancialInput(this)"></div><div class="field"><label>Catatan (opsional)</label><input type="text" id="bi-note" placeholder="Hasil proyek, target tercapai, dll" class="input"></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-log-income')">Batal</button><button class="btn btn-primary" onclick="addFinanceTransaction()">Catat</button></div></div></div>
   <div class="modal-overlay" id="modal-edit-finance"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">✏️ Edit Transaksi</div>
     <input type="hidden" id="ef-id">
     <input type="hidden" id="ef-is-transfer">
@@ -10664,7 +10673,7 @@ function buildModals() {
     <div id="ef-body-transfer" style="display:none;">
       <div class="small muted" style="margin-bottom:10px;line-height:1.5;">Transfer: hanya jumlah dan catatan yang bisa diubah. Arah transfer tidak dapat diedit.</div>
     </div>
-    <div class="field"><label>Jumlah (Rp)</label><input type="number" id="ef-amount" placeholder="100000" inputmode="numeric" class="input" oninput="updateEditFinanceSyncInfo()"></div>
+    <div class="field"><label>Jumlah (Rp)</label><input type="text" id="ef-amount" placeholder="100.000" inputmode="numeric" class="input" oninput="formatFinancialInput(this); updateEditFinanceSyncInfo()"></div>
     <div class="field"><label>Catatan (opsional)</label><input type="text" id="ef-note" placeholder="Catatan..." class="input"></div>
     <div class="small muted" id="ef-sync-info" style="margin-bottom:10px;line-height:1.5;"></div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-edit-finance')">Batal</button><button class="btn btn-primary" onclick="saveEditFinance()">Simpan Perubahan</button></div>
@@ -10674,11 +10683,11 @@ function buildModals() {
     <div class="field"><label>Dari</label><select id="ts-dari" class="input"><option value="cash">💵 Cash</option><option value="saldo">🏦 Saldo</option></select></div>
     <div style="text-align:center;margin:-4px 0 4px;"><button type="button" class="icon-btn" title="Tukar arah" onclick="swapTransferDirection()">⇄</button></div>
     <div class="field"><label>Ke</label><select id="ts-ke" class="input"><option value="cash">💵 Cash</option><option value="saldo" selected>🏦 Saldo</option></select></div>
-    <div class="field"><label>Jumlah (Rp)</label><input type="number" id="ts-amount" placeholder="100000" inputmode="numeric" class="input"></div>
+    <div class="field"><label>Jumlah (Rp)</label><input type="text" id="ts-amount" placeholder="100.000" inputmode="numeric" class="input" oninput="formatFinancialInput(this)"></div>
     <div class="field"><label>Catatan (opsional)</label><input type="text" id="ts-note" placeholder="Setor ke rekening, tarik tunai, dll" class="input"></div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-transfer-saldo')">Batal</button><button class="btn btn-primary" onclick="transferSaldo()">Pindahkan</button></div></div></div>
-  <div class="modal-overlay" id="modal-update-boss"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">Progress Target Custom</div><div class="field"><label>Jumlah Progress (Rp/Poin)</label><input type="number" id="bt-amount" placeholder="10000" inputmode="numeric" class="input"></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-update-boss')">Batal</button><button class="btn btn-primary" onclick="updateBossTarget()">Proses</button></div></div></div>
-  <div class="modal-overlay" id="modal-new-boss"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">Edit / Set Target Finansial Spesifik Baru</div><div class="field"><label>Nama Target</label><input type="text" id="nb-name" placeholder="Target Dana Darurat" class="input"></div><div class="field"><label>Goal Angka/Nominal (Rp/Poin)</label><input type="number" id="nb-maxhp" placeholder="10000000" inputmode="numeric" class="input"></div><div class="field"><label>⏳ Deadline / Cooldown Target (Opsional)</label><input type="date" id="nb-deadline" class="input"><div class="small muted" style="margin-top:4px;">Isi deadline untuk memunculkan timer countdown pada target</div></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-new-boss')">Batal</button><button class="btn btn-gold" onclick="setNewBoss()">Tetapkan Target</button></div></div></div>
+  <div class="modal-overlay" id="modal-update-boss"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">Progress Target Custom</div><div class="field"><label>Jumlah Progress (Rp/Poin)</label><input type="text" id="bt-amount" placeholder="10.000" inputmode="numeric" class="input" oninput="formatFinancialInput(this)"></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-update-boss')">Batal</button><button class="btn btn-primary" onclick="updateBossTarget()">Proses</button></div></div></div>
+  <div class="modal-overlay" id="modal-new-boss"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">Edit / Set Target Finansial Spesifik Baru</div><div class="field"><label>Nama Target</label><input type="text" id="nb-name" placeholder="Target Dana Darurat" class="input"></div><div class="field"><label>Goal Angka/Nominal (Rp/Poin)</label><input type="text" id="nb-maxhp" placeholder="10.000.000" inputmode="numeric" class="input" oninput="formatFinancialInput(this)"></div><div class="field"><label>⏳ Deadline / Cooldown Target (Opsional)</label><input type="date" id="nb-deadline" class="input"><div class="small muted" style="margin-top:4px;">Isi deadline untuk memunculkan timer countdown pada target</div></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-new-boss')">Batal</button><button class="btn btn-gold" onclick="setNewBoss()">Tetapkan Target</button></div></div></div>
   <div class="modal-overlay" id="modal-confirm"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">Konfirmasi</div><div class="small" id="confirm-message" style="line-height:1.5;color:var(--bone);"></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-confirm')">Batal</button><button class="btn btn-danger" onclick="runConfirm()">Ya, Lanjutkan</button></div></div></div>
   <div class="modal-overlay" id="modal-add-goal"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title" id="modal-add-goal-title">Tambah Goal</div><div class="field"><label>Nama Goal</label><input type="text" id="ag-title" placeholder="Contoh: Turun berat badan" class="input"></div><div class="field"><label>Target</label><input type="number" id="ag-target" placeholder="Biarkan kosong jika dari hari deadline" class="input"></div><div class="field"><label>Satuan (Opsional)</label><input type="text" id="ag-unit" placeholder="kg, hari, dll" class="input"></div><div class="field"><label>Deadline (opsional)</label><input type="date" id="ag-deadline" class="input"></div><div class="field"><label>Catatan (opsional)</label><textarea id="ag-notes" placeholder="Detail tambahan..." class="input"></textarea></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-add-goal')">Batal</button><button class="btn btn-primary" onclick="addGoal()">Simpan Goal</button></div></div></div>
   <div class="modal-overlay" id="modal-update-goal"><div class="modal-sheet"><div class="modal-handle"></div><div class="modal-title">Update Progress Goal</div><input type="hidden" id="ug-goal-id"><div class="field"><label>Tambah progress (boleh negatif)</label><input type="number" id="ug-amount" placeholder="1" class="input"></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('modal-update-goal')">Batal</button><button class="btn btn-primary" onclick="submitGoalProgress()">Simpan</button></div></div></div>
@@ -12619,5 +12628,7 @@ function resetNavGroupOrder() {
 })();
 </script>
 
+</body>
+</html>
 </body>
 </html>
