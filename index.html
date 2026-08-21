@@ -1040,9 +1040,25 @@ body.hide-history-actions .rh-del { display:none!important; }
 .lt-empty { text-align:center; color:var(--muted); font-size:12px; padding:24px 0; }
 
 .settings-modal { max-height:90vh; overflow-y:auto; width:min(600px,95vw); }
-.settings-section { border: 1px solid var(--border); border-radius:8px; margin-bottom:0.5rem; }
-.settings-section summary { padding:0.75rem 1rem; cursor:pointer; font-family:var(--font-head); font-size:0.9rem; color:var(--arise-bright); }
-.settings-body { padding:0.75rem 1rem; }
+.settings-modal > .modal-title { margin-bottom:6px; }
+.settings-section { border:1px solid var(--border); border-radius:14px; margin-bottom:10px; overflow:hidden; background:linear-gradient(145deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018)); transition:border-color .2s,box-shadow .2s,background .2s; }
+.settings-section:hover { border-color:var(--border-strong); background:linear-gradient(145deg,rgba(124,92,255,0.10),rgba(255,255,255,0.025)); }
+.settings-section[open] { border-color:rgba(164,139,255,0.55); box-shadow:0 0 18px rgba(124,92,255,0.12),inset 0 1px 0 rgba(255,255,255,0.05); background:rgba(18,18,34,0.72); }
+.settings-section summary { position:relative; display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:58px; padding:13px 14px; cursor:pointer; list-style:none; font-family:var(--font-head); font-size:0.82rem; letter-spacing:.45px; color:var(--bone); font-weight:700; }
+.settings-section summary::-webkit-details-marker { display:none; }
+.settings-section summary::after { content:'›'; color:var(--muted); font-family:var(--font-system); font-size:23px; line-height:1; transition:transform .2s,color .2s; }
+.settings-section[open] summary::after { transform:rotate(90deg); color:var(--arise-bright); }
+.settings-section summary:hover { color:var(--arise-bright); }
+.settings-body { padding:0 14px 14px; border-top:1px solid rgba(164,139,255,0.12); }
+.settings-modal > .settings-section { display:block; width:100%; margin-right:0; }
+.settings-modal > button[onclick="openSecMgr()"] { margin-top:4px !important; border-color:rgba(45,212,244,0.35); color:var(--cyan); background:linear-gradient(90deg,rgba(45,212,244,0.08),rgba(124,92,255,0.08)); }
+.settings-modal > button[onclick="openSecMgr()"]:hover { border-color:var(--cyan); background:linear-gradient(90deg,rgba(45,212,244,0.15),rgba(124,92,255,0.14)); }
+.modal-overlay#modal-settings { display:flex; align-items:center; justify-content:center; padding:16px; }
+.modal-overlay#modal-settings .settings-modal { position:relative; left:auto; right:auto; bottom:auto; width:min(600px,calc(100vw - 32px)); max-height:calc(100vh - 32px); margin:0; border-radius:20px; transform:scale(.96) translateY(10px); transition:transform .24s cubic-bezier(.2,.8,.2,1); }
+.modal-overlay#modal-settings.open .settings-modal { transform:scale(1) translateY(0); }
+.modal-overlay#modal-daily-history { display:flex; align-items:center; justify-content:center; padding:16px; }
+.modal-overlay#modal-daily-history > .modal-sheet { position:relative; left:auto; right:auto; bottom:auto; width:min(600px,calc(100vw - 32px)); max-height:calc(100vh - 32px) !important; margin:0; border-radius:20px; transform:scale(.96) translateY(10px); transition:transform .24s cubic-bezier(.2,.8,.2,1); }
+.modal-overlay#modal-daily-history.open > .modal-sheet { transform:scale(1) translateY(0); }
 .toggle-row { display:flex; justify-content:space-between; align-items:center; padding:0.3rem 0; font-size:0.85rem;}
 .settings-btn-row { display:flex; flex-wrap:wrap; gap:0.5rem; margin:0.5rem 0; }
 .settings-divider { font-size:0.75rem; color:var(--muted); border-top:1px solid var(--border); padding-top:0.5rem; margin-top:0.75rem; }
@@ -1198,7 +1214,8 @@ body.hide-history-actions .rh-del { display:none!important; }
   box-shadow:0 0 0 1px rgba(99,102,241,.16),0 0 24px rgba(99,102,241,.12),0 0 6px rgba(45,212,244,.06),0 10px 30px rgba(0,0,0,.36),inset 0 1px 0 rgba(99,102,241,.12) !important;
   backdrop-filter:blur(13px) !important; }
 
-/* 7  Illusory Yin — violet+indigo, hologram sedikit kaya */
+/* 7  Illusory Yin 
+�� violet+indigo, hologram sedikit kaya */
 .pac-7 {
   background:linear-gradient(135deg,rgba(139,92,246,.09),rgba(12,12,28,.60),rgba(99,102,241,.06)) !important;
   border:1px solid rgba(139,92,246,.34) !important;
@@ -3387,7 +3404,7 @@ const HOF_DEFS = [
   {id:'hof_realm_nv',  cat:'realm', tier:'g', icon:'⚜️', label:'Void Nirvana',           desc:'Memasuki Realm Void Nirvana',             check:s=>(s.character.realmIndex||0)>=12},
   {id:'hof_realm_vt',  cat:'realm', tier:'p', icon:'⚜️', label:'Void Tribulant',         desc:'Memasuki Realm Void Tribulant',           check:s=>(s.character.realmIndex||0)>=15},
   {id:'hof_realm_ht',  cat:'realm', tier:'l', icon:'⚜️', label:'Heaven Trampling Pertama',desc:'Menembus Puncak Kultivasi — Heaven Trampling', check:s=>(s.character.realmIndex||0)>=16},
-  // ── HEAVEN TRAMPLING BRIDGES ────────────────────────────────────────────────
+  // ── HEAVEN TRAMPLING BRIDGES ────:��───────────────────────────────────────────
   {id:'hof_br1',  cat:'heaven',  tier:'s', icon:'🌉', label:'Bridge 1 — Warden',          desc:'Menembus Jembatan Surga ke-1',           check:s=>(s.character.heavenBridges||0)>=1},
   {id:'hof_br2',  cat:'heaven',  tier:'s', icon:'🌉', label:'Bridge 2 — Sovereign',       desc:'Menembus Jembatan Surga ke-2',           check:s=>(s.character.heavenBridges||0)>=2},
   {id:'hof_br3',  cat:'heaven',  tier:'g', icon:'🌉', label:'Bridge 3 — Transcendent',    desc:'Menembus Jembatan Surga ke-3',           check:s=>(s.character.heavenBridges||0)>=3},
@@ -8329,7 +8346,7 @@ function renderProjectKanban() {
         const ok = (c.dailyCheckins||[]).filter(x=>x.ok).length;
         const tot = (c.dailyCheckins||[]).length;
         const exp = c.expGained || Math.max(100, Math.round(ok * 20 * mult));
-        return _riwayatItem('🏆', c.title,
+        return _riwayatItem('ida�', c.title,
             `📦 ${c.type||'Projek'} · ✅ ${c.completedAt||'-'} · ✓ ${ok}/${tot} hari`,
             exp,
             `<button class="btn btn-ghost btn-sm rh-del" style="font-size:9px;margin-top:3px;color:var(--crimson);" onclick="deleteKanbanCard('${c.id}')">🗑 Hapus</button>`
@@ -12628,7 +12645,5 @@ function resetNavGroupOrder() {
 })();
 </script>
 
-</body>
-</html>
 </body>
 </html>
